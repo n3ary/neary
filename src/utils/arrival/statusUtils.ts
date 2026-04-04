@@ -6,7 +6,8 @@
 import { calculateDistance } from '../location/distanceUtils.ts';
 import { ARRIVAL_CONFIG } from '../../utils/core/constants.ts';
 import { determineTargetStopRelation } from './arrivalUtils.ts';
-import type { TranzyStopResponse, TranzyVehicleResponse, TranzyTripResponse, TranzyStopTimeResponse, ArrivalStatus } from '../../types/arrivalTime.ts';
+import type { TranzyStopResponse, TranzyTripResponse, TranzyStopTimeResponse, ArrivalStatus } from '../../types/arrivalTime.ts';
+import type { EnhancedVehicleData } from '../vehicle/vehicleEnhancementUtils.ts';
 import type { Coordinates } from '../location/distanceUtils.ts';
 
 /**
@@ -39,7 +40,7 @@ function isWithinProximityThreshold(vehiclePosition: Coordinates, targetStop: Tr
  */
 export function getArrivalStatus(
   estimatedMinutes: number,
-  vehicle: TranzyVehicleResponse,
+  vehicle: EnhancedVehicleData,
   targetStop: TranzyStopResponse,
   trips: TranzyTripResponse[],
   stopTimes: TranzyStopTimeResponse[],
