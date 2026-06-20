@@ -1,21 +1,29 @@
-# Neary Documentation
+# Documentation
 
 ## For Users
-- [Getting Started](getting-started.md) — setup, install, first run
-- [User Guide](user-guide.md) — how to use the app
+
+| Document | Description |
+|----------|-------------|
+| [Getting Started](getting-started.md) | Setup, install, first run |
+| [User Guide](user-guide.md) | How to use the app |
 
 ## For Developers
-- [Developer Guide](developer-guide.md) — architecture, patterns, deployment
-- [API Services](api-services.md) — service layer reference
-- [Route Shapes](route-shapes.md) — shape caching and distance calculations
-- [Changelog](changelog.md) — recent changes (last 2 weeks)
+
+| Document | Description |
+|----------|-------------|
+| [Developer Guide](developer-guide.md) | Architecture, patterns, build, deploy, iOS |
+| [API Services](api-services.md) | Service layer reference |
+| [Route Shapes](route-shapes.md) | Shape caching, distance calculations, debugging |
+| [Changelog](changelog.md) | Recent changes (last 2 weeks) |
 
 ## Troubleshooting
-- [Index](troubleshooting/README.md) — quick navigation
-- [Common Issues](troubleshooting/common-issues.md)
-- [API & Auth](troubleshooting/api-authentication.md)
-- [Station & Routes](troubleshooting/station-route-issues.md)
-- [Mobile & PWA](troubleshooting/mobile-pwa-issues.md)
-- [Performance & Caching](troubleshooting/performance-caching.md)
-- [Testing & Dev](troubleshooting/testing-development.md)
-- [Emergency Recovery](troubleshooting/emergency-recovery.md)
+
+| Document | Description |
+|----------|-------------|
+| [Common Issues](troubleshooting/common-issues.md) | Frequent problems and fixes |
+| [API & Auth](troubleshooting/api-authentication.md) | API key and authentication issues |
+| [Station & Routes](troubleshooting/station-route-issues.md) | Station filtering, route display |
+| [Mobile & PWA](troubleshooting/mobile-pwa-issues.md) | PWA install, mobile-specific issues |
+| [Performance & Caching](troubleshooting/performance-caching.md) | Cache, refresh, speed issues |
+| [Testing & Dev](troubleshooting/testing-development.md) | Test setup, dev environment |
+| [Emergency Recovery](troubleshooting/emergency-recovery.md) | Data reset, recovery procedures |
