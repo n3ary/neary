@@ -2,6 +2,17 @@
   command = "npm run build"
   publish = "dist"
 
+# Local `netlify dev` configuration.
+# This project's Vite dev server runs on port 5175 (see vite.config.ts), not
+# Vite's default 5173. Without this, Netlify Dev auto-detects Vite, waits on
+# 5173, and times out. `#custom` disables framework auto-detection and just
+# runs the command, waits for targetPort, then serves on `port` (8888).
+[dev]
+  command = "npm run dev"
+  targetPort = 5175
+  framework = "#custom"
+  publish = "dist"
+
 # API proxy redirects (must come BEFORE the SPA redirect)
 [[redirects]]
   from = "/api/tranzy/*"

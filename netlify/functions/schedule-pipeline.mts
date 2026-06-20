@@ -42,13 +42,15 @@ const GTFS_FEED_URL = 'https://external.gtfs.ro/cluj/CLUJ.zip';
  */
 const MAX_ZIP_SIZE_BYTES = 50 * 1024 * 1024;
 
-/** GTFS CSV files the pipeline extracts from the archive. */
-const REQUIRED_GTFS_FILES = [
-  'stop_times.txt',
-  'calendar.txt',
-  'calendar_dates.txt',
-  'trips.txt',
-] as const;
+/**
+ * GTFS CSV files the pipeline extracts from the archive.
+ * Only stop_times.txt and trips.txt are strictly required; calendar.txt and
+ * calendar_dates.txt are OPTIONAL per the GTFS spec (the Cluj feed ships only
+ * calendar.txt, for example). Missing optional files are simply skipped.
+ */
+const REQUIRED_GTFS_FILES = ['stop_times.txt', 'trips.txt'] as const;
+const OPTIONAL_GTFS_FILES = ['calendar.txt', 'calendar_dates.txt'] as const;
+const GTFS_FILES = [...REQUIRED_GTFS_FILES, ...OPTIONAL_GTFS_FILES] as const;
 
 /**
  * Netlify Blobs store + key holding the compact schedule payload.
@@ -158,26 +160,29 @@ async function fetchGtfsZip(): Promise<Uint8Array> {
 
 /**
  * Decompresses the ZIP archive in-memory and returns the decoded text of each
- * required GTFS CSV file, keyed by filename. Throws if any required file is
- * missing from the archive.
+ * GTFS CSV file present, keyed by filename. Throws if a REQUIRED file
+ * (stop_times.txt, trips.txt) is missing; optional files (calendar.txt,
+ * calendar_dates.txt) are skipped when absent.
  */
 function extractRequiredFiles(zipBytes: Uint8Array): Record<string, string> {
   const unzipped = unzipSync(zipBytes, {
-    filter: (file) => REQUIRED_GTFS_FILES.includes(file.name as (typeof REQUIRED_GTFS_FILES)[number]),
+    filter: (file) => (GTFS_FILES as readonly string[]).includes(file.name),
   });
 
   const decoder = new TextDecoder('utf-8');
   const files: Record<string, string> = {};
 
-  for (const name of REQUIRED_GTFS_FILES) {
+  for (const name of GTFS_FILES) {
     const bytes = unzipped[name];
-    if (!bytes) {
+    if (bytes) {
+      files[name] = decoder.decode(bytes);
+    } else if ((REQUIRED_GTFS_FILES as readonly string[]).includes(name)) {
       throw new Error(`Required GTFS file missing from archive: ${name}`);
     }
-    files[name] = decoder.decode(bytes);
+    // Missing optional file -> skipped; the transform defaults it to empty.
   }
 
-  console.log(`${LOG_PREFIX} extracted ${REQUIRED_GTFS_FILES.length} CSV files`);
+  console.log(`${LOG_PREFIX} extracted ${Object.keys(files).length} CSV files`);
   return files;
 }
 

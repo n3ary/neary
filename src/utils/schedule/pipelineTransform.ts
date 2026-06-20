@@ -162,16 +162,20 @@ export function transformToPayload(
   csvFiles: Record<string, string>,
   now: Date = new Date(),
 ): SchedulePayload {
+  // Only stop_times.txt and trips.txt are strictly required. Per the GTFS spec,
+  // calendar.txt and calendar_dates.txt are optional and many real feeds (e.g.
+  // Cluj) ship only one of them — treat missing ones as empty rather than
+  // failing the whole pipeline.
   requireFile(csvFiles, GTFS_FILENAMES.stopTimes);
-  requireFile(csvFiles, GTFS_FILENAMES.calendar);
-  requireFile(csvFiles, GTFS_FILENAMES.calendarDates);
   requireFile(csvFiles, GTFS_FILENAMES.trips);
 
   const stopTimes = buildStopTimes(csvFiles[GTFS_FILENAMES.stopTimes]);
-  const calendar = buildCalendar(csvFiles[GTFS_FILENAMES.calendar]);
-  const calendarExceptions = buildCalendarExceptions(
-    csvFiles[GTFS_FILENAMES.calendarDates],
-  );
+  const calendarCsv = csvFiles[GTFS_FILENAMES.calendar];
+  const calendar = calendarCsv ? buildCalendar(calendarCsv) : [];
+  const calendarDatesCsv = csvFiles[GTFS_FILENAMES.calendarDates];
+  const calendarExceptions = calendarDatesCsv
+    ? buildCalendarExceptions(calendarDatesCsv)
+    : [];
   const tripServiceMap = buildTripServiceMap(csvFiles[GTFS_FILENAMES.trips]);
 
   return {

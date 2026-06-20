@@ -125,4 +125,22 @@ T1,,05:05:00,4521,0`;
     delete incomplete[GTFS_FILENAMES.trips];
     expect(() => transformToPayload(incomplete, fixedNow)).toThrow(/trips\.txt/);
   });
+
+  it('treats calendar_dates.txt as optional (Cluj feed omits it)', () => {
+    const without = files();
+    delete without[GTFS_FILENAMES.calendarDates];
+    const payload = transformToPayload(without, fixedNow);
+    expect(payload.calendarExceptions).toEqual([]);
+    // calendar + stop times still parsed normally
+    expect(payload.calendar.length).toBeGreaterThan(0);
+    expect(Object.keys(payload.stopTimes).length).toBeGreaterThan(0);
+  });
+
+  it('treats calendar.txt as optional', () => {
+    const without = files();
+    delete without[GTFS_FILENAMES.calendar];
+    const payload = transformToPayload(without, fixedNow);
+    expect(payload.calendar).toEqual([]);
+    expect(Object.keys(payload.stopTimes).length).toBeGreaterThan(0);
+  });
 });
