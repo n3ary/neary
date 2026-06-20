@@ -177,16 +177,11 @@ export function useStationFilter(): StationFilterResult {
       const cacheKey = getCacheKey(currentPosition);
       const cachedStations = cacheKey ? getCachedStations(cacheKey) : null;
       
-      if (cachedStations) {
-        // Use cached filtered stations immediately
+      if (cachedStations && !hasLocationChanged && lastFilterPosition !== null) {
+        // Location hasn't changed — use cached station list for instant display
+        // but still run the full filter to recalculate arrival times with
+        // updated vehicle positions (predictions update every 15s)
         setFilteredStations(cachedStations);
-        
-        // If location hasn't changed and we have results, skip re-filtering entirely
-        // Vehicles will be updated by the next automatic refresh cycle
-        if (!hasLocationChanged && !hasNoResults && lastFilterPosition !== null) {
-          setProcessing(false);
-          return;
-        }
       }
 
       setProcessing(true);
