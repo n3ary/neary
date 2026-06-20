@@ -1,55 +1,80 @@
 # Documentation Guidelines
 
-## Documentation Placement
+## Placement
 
-Three tiers, each with a clear purpose:
-
-| Tier | Purpose | Consumer | Update pattern |
-|------|---------|----------|----------------|
-| **Code** (`src/`) | Implementation details, type definitions, inline comments | Agents reading code | Updated with code changes |
-| **Docs** (`docs/`) | Architecture decisions, user guides, troubleshooting | Humans + agents needing context beyond code | Manually maintained |
-| **Steering** (`.kiro/steering/`) | Cross-cutting rules, conventions, principles | Agents on every interaction | Updated when conventions change |
-| **Specs** (`.kiro/specs/`) | Feature designs, requirements, task lists | Agents during feature work | Created per feature, archived when done |
+| Tier | Purpose | Consumer |
+|------|---------|----------|
+| **Code** (`src/`) | Implementation details, type definitions, inline comments | Agents reading code |
+| **Docs** (`docs/`) | Architecture, user guides, troubleshooting | Humans + agents needing context beyond code |
+| **Steering** (`.kiro/steering/`) | Cross-cutting rules, conventions, principles | Agents on every interaction |
+| **Specs** (`.kiro/specs/`) | Feature designs, requirements, task lists | Agents during feature work |
 
 ### Decision Framework
 
-Before writing documentation, ask:
+1. **Readable from code?** → Don't document it
+2. **Convention or principle?** → Steering file
+3. **Feature design?** → Spec
+4. **Architecture, user-facing, or troubleshooting?** → Docs
+5. **One-time artifact?** → Don't write it (git history is enough)
+6. **Restatement of library docs?** → Link to official source, document only our delta
 
-1. **Is this readable from code?** → Don't document it. Code is the source of truth for implementation.
-2. **Is this a convention or principle?** → Steering file.
-3. **Is this a feature design?** → Spec.
-4. **Is this architecture, user-facing, or troubleshooting?** → Docs.
-5. **Is this a one-time artifact (migration, benchmark, verification)?** → Don't write it. Git history is enough.
-6. **Is this a restatement of library/vendor docs?** → Link to the official source. Document only our decisions on top.
+## File Structure
+
+```
+docs/
+├── README.md              # Index (table format)
+├── getting-started.md     # Setup, install, first run
+├── user-guide.md          # End-user guide
+├── developer-guide.md     # Architecture, patterns, deployment
+├── changelog.md           # Last 2 weeks only
+├── api-services.md        # Service layer reference
+├── route-shapes.md        # Shape caching, distance calcs
+└── troubleshooting/       # Split by category
+    └── README.md          # Table index
+```
+
+## Routing Rules
+
+| Content type | Destination |
+|-------------|-------------|
+| Setup/install | `getting-started.md` |
+| User features | `user-guide.md` + `changelog.md` |
+| Architecture/patterns | `developer-guide.md` |
+| API details | `api-services.md` |
+| Route shapes | `route-shapes.md` |
+| Bug fixes | appropriate `troubleshooting/` file |
+| Conventions/principles | `.kiro/steering/` |
+| Feature designs | `.kiro/specs/` |
+| Issues/backlog | GitHub Issues |
 
 ## Content Rules
 
-- NEVER create markdown files in project root (except README.md)
+- Never create markdown files in project root (except README.md)
 - Update existing files, don't create new ones
 - Keep files under 300 lines
 - Prefer tables over prose for reference data
-- Prefer code paths over code examples (e.g., "see `src/utils/core/constants.ts`" not copying constants)
-- Keep docs scannable: short sections, clear headers, no emoji walls
-- Every `docs/` subdirectory must have a README.md index as a table of `| Document | Description |`
+- Prefer code paths over code examples (e.g., "see `src/utils/core/constants.ts`")
+- Keep docs scannable: short sections, clear headers, no emoji
+- Every `docs/` subdirectory must have a README.md index as a table
+- Use Mermaid for diagrams (no ASCII art, no image files)
 
 ## What NOT to Document
 
-- Implementation details readable from code (hook internals, store logic, component props)
-- One-time migration artifacts or verification results (use git history)
-- Performance benchmarks without automated SDLC integration
-- Feature backlogs or deferred ideas (use specs or issue tracker)
-- Content already in `.kiro/steering/` or `.kiro/specs/`
-- Tutorials for public libraries (link to official docs, document only our delta)
-- Temporal artifacts (investigation notes, spike results) — use `temporary/` folder
+- Implementation details readable from code
+- Performance benchmarks without CI integration
+- Feature backlogs (use GitHub Issues)
+- Content already in steering or specs
+- Tutorials for public libraries (link to official docs)
+- Temporal artifacts (use `temporary/` folder, git-ignored)
 
 ## Changelog
 
-- Keep last 2 weeks only, git handles history
-- Format: one line per change, `**TYPE**: Description`
+- Keep last 2 weeks only
+- Format: `**TYPE**: Description`
 - Archive by deleting
 
 ## Troubleshooting Entries
 
-- Format: `**Problem**: Brief description` / `**Solution**: One-line fix`
+- Format: `**Problem**: Brief` / `**Solution**: One-line fix`
 - Max 3 lines per issue
-- Mark resolved issues with `(FIXED)` and delete after 1 month
+- Delete resolved issues after 1 month

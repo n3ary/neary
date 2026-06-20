@@ -1,200 +1,64 @@
-# 🚌 Neary
+# Neary
 
-A real-time bus tracking application providing live vehicle locations and schedule data.
+Real-time transit tracking app for Cluj-Napoca. Shows live vehicle positions, arrival estimates, and route information using the Tranzy API. Built as a mobile-first PWA with React + TypeScript.
 
-## ✨ Features
+## Quick Start
 
-- **🔴 Live Vehicle Tracking** - Real-time bus locations and ETAs via Tranzy API
-- **🎯 Smart Favorites** - Personalized route tracking based on location
-- **📱 Mobile-First Design** - Responsive interface optimized for mobile devices
-- **⚡ Real-time Updates** - Automatic refresh with live data
-- **🌐 Offline Support** - Service worker for offline functionality
-
-## 🚀 Quick Start
-
-### Prerequisites
-- Node.js 18+ 
-- npm or yarn
-
-### Installation
 ```bash
-# Clone the repository
-git clone <repository-url>
-cd neary
-
-# Install dependencies
 npm install
-
-# Start development server
-npm run dev
+npm run dev        # http://localhost:5175
 ```
 
-The app will be available at `http://localhost:5175/`
+Requires a [Tranzy API key](https://tranzy.ai) — entered on first launch.
 
-### Production Build
-```bash
-npm run build
-npm run preview
+## Commands
+
+| Command | Purpose |
+|---------|---------|
+| `npm run dev` | Development server (port 5175) |
+| `npm run build` | Production build → `dist/` |
+| `npm test` | Run tests (191 tests, 29 files) |
+| `npm run build:ios` | Build + sync to iOS project |
+| `npm run open:ios` | Open Xcode workspace |
+
+## Stack
+
+- **React 19** + TypeScript + Vite
+- **Material-UI 7** for components
+- **Zustand** for state management
+- **Leaflet** for maps
+- **Axios** for API calls
+- **Capacitor** for iOS native packaging
+
+## Project Structure
+
+```
+src/
+├── components/    # React components (features/, layout/, theme/)
+├── services/      # API services and business logic
+├── stores/        # Zustand state stores
+├── hooks/         # Custom React hooks
+├── utils/         # Pure utilities and helpers
+├── types/         # TypeScript type definitions
+└── context/       # App-level context and initialization
 ```
 
-## 🏗️ Project Structure
+## API
 
-```
-neary/
-├── 📂 src/                    # Source code
-│   ├── 📂 components/         # React components
-│   ├── 📂 services/           # API services & business logic
-│   ├── 📂 stores/             # State management (Zustand)
-│   └── 📂 utils/              # Utility functions
-├── 📂 docs/                   # Documentation
-├── 📂 tools/                  # Development tools
-├── 📄 PROJECT_STRUCTURE.md    # Detailed structure guide
-└── 📄 SETUP_GUIDE.md         # Setup instructions
-```
+All transit data comes from the Tranzy API. In development and production (web), requests to `/api/tranzy/*` are proxied to `https://api.tranzy.ai/*`. On iOS native, an axios interceptor rewrites the paths directly — see [`src/services/apiInterceptor.ts`](src/services/apiInterceptor.ts).
 
-## 🔧 Configuration
+Configuration: [`src/utils/core/constants.ts`](src/utils/core/constants.ts)
 
-### Environment Setup
-The app uses proxy configuration for API requests:
-- **Tranzy API**: `/api/tranzy` → `https://api.tranzy.ai`
+## Documentation
 
-### Key Configuration Files
-- `vite.config.ts` - Build configuration and API proxies
-- `src/services/` - API service configurations
-- `tailwind.config.js` - UI styling configuration
+See [`docs/`](docs/) for detailed guides:
 
-## 📊 Data Sources
+- [Getting Started](docs/getting-started.md) — setup and first run
+- [Developer Guide](docs/developer-guide.md) — architecture, build, deploy, iOS
+- [API Services](docs/api-services.md) — service layer reference
+- [Troubleshooting](docs/troubleshooting/) — common issues and fixes
 
-### Primary Data Source
-1. **🔴 Tranzy API** (Real-time Transit Data)
-   - Live vehicle positions and tracking
-   - Route information and schedules
-   - Real-time ETAs based on current vehicle locations
+## Deployment
 
-### Data Processing
-- **Route Labels**: User-facing route numbers (e.g., "42")
-- **Route IDs**: Internal API identifiers (e.g., "40")
-- **Mapping**: Route Label "42" ↔ Tranzy Route ID "40"
-
-## 🎯 Key Features
-
-### Smart Favorites System
-- **Location-Based**: Automatically determines direction based on GPS
-- **Context-Aware**: Shows "towards work" or "towards home" routes
-- **Real-time Updates**: Live vehicle tracking with ETA calculations
-
-### Confidence Indicators
-- **🔴 LIVE**: Real-time vehicle tracking data from Tranzy API
-- **⏱️ ESTIMATED**: Calculated timing based on available data
-
-### Error Handling
-- **Graceful Fallbacks**: Handles API failures and network issues
-- **Network Resilience**: Retry logic for reliable data fetching
-- **User Feedback**: Clear error messages and loading states
-
-## 🧪 Testing
-
-```bash
-# Run all tests
-npm test
-
-# Run tests in watch mode
-npm run test:watch
-
-# Run specific test file
-npm test -- src/stores/vehicleStore.test.ts
-```
-
-### Test Coverage
-- **271 tests** with **100% pass rate**
-- Unit tests for all services and components
-- Integration tests for API interactions
-- Mock configurations for reliable testing
-
-## 🛠️ Development Tools
-
-### Debug Tools (`/tools/debug/`)
-- `debug-config.js` - Configuration validation
-- `debug-favorites.js` - Favorites system debugging
-- `debug-schedule-issue.js` - Schedule service debugging
-
-### Test Scripts (`/tools/test/`)
-- API integration verification
-- Route mapping validation
-- Proxy functionality testing
-
-## 📚 Documentation
-
-### Implementation Guides (`/docs/implementation/`)
-- Feature implementation summaries
-- API integration guides
-- Architecture documentation
-
-### Troubleshooting (`/docs/troubleshooting/`)
-- Common issues and solutions
-- Error fix documentation
-- Performance optimization guides
-
-## 🔍 Architecture
-
-### State Management
-- **Zustand** for lightweight state management
-- **Enhanced Bus Store** for main application state
-- **Location Store** for GPS and user location
-- **Config Store** for user preferences
-
-### API Layer
-- **Service Pattern** for API interactions
-- **Error Boundaries** for graceful error handling
-- **Caching Strategy** for performance optimization
-- **Retry Logic** for network resilience
-
-### UI Components
-- **React + TypeScript** for type safety
-- **Tailwind CSS** for responsive design
-- **Component Library** for consistent UI
-- **Mobile-First** responsive design approach
-
-## 🚀 Deployment
-
-### Production Checklist
-- [ ] Environment variables configured
-- [ ] API keys and endpoints verified
-- [ ] Build optimization enabled
-- [ ] Service worker configured
-- [ ] Error monitoring setup
-
-### Performance Optimization
-- **Code Splitting** for faster initial load
-- **Service Worker** for offline functionality
-- **API Caching** for reduced network requests
-- **Bundle Optimization** for smaller file sizes
-
-## 🤝 Contributing
-
-1. **Fork** the repository
-2. **Create** a feature branch (`git checkout -b feature/amazing-feature`)
-3. **Commit** your changes (`git commit -m 'Add amazing feature'`)
-4. **Push** to the branch (`git push origin feature/amazing-feature`)
-5. **Open** a Pull Request
-
-### Development Guidelines
-- Follow TypeScript best practices
-- Write tests for new features
-- Update documentation as needed
-- Follow the existing code style
-
-## 📄 License
-
-This project is licensed under the MIT License - see the LICENSE file for details.
-
-## 🆘 Support
-
-- **Documentation**: Check `/docs/` for detailed guides
-- **Issues**: Report bugs via GitHub Issues
-- **Setup Help**: See `SETUP_GUIDE.md` for installation help
-- **Architecture**: See `PROJECT_STRUCTURE.md` for technical details
-
----
-
-**🎯 Built with ❤️ for public transportation**
+- **Web**: Netlify (auto-deploys from `main`). Config: [`netlify.toml`](netlify.toml)
+- **iOS**: Capacitor + Xcode. See [Developer Guide — iOS Build](docs/developer-guide.md#ios-build-capacitor)
