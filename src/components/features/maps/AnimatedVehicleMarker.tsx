@@ -209,7 +209,7 @@ export const AnimatedVehicleMarker: FC<AnimatedVehicleMarkerProps> = ({
             {vehicle.speed > 0 && ` (${Number(vehicle.speed).toFixed(2)} km/h)`}
           </div>
           
-          {/* Debug info */}
+          {/* Timestamps */}
           <div style={{ 
             fontSize: '12px', 
             color: '#666', 
@@ -217,11 +217,19 @@ export const AnimatedVehicleMarker: FC<AnimatedVehicleMarkerProps> = ({
             borderTop: '1px solid #eee',
             paddingTop: '4px'
           }}>
-            <strong>Trip:</strong> {vehicle.trip_id || 'N/A'} | <strong>ID:</strong> {vehicle.id} | <strong>Update:</strong> {formatAbsoluteTime(new Date(vehicle.timestamp).getTime()).replace('at ', '')}
+            <strong>GPS:</strong> {formatAbsoluteTime(new Date(vehicle.timestamp).getTime()).replace('at ', '')}
             {(() => {
               const relativeTime = formatCompactRelativeTime(new Date(vehicle.timestamp).getTime());
-              return relativeTime ? ` (~${relativeTime})` : '';
+              return relativeTime ? ` (${relativeTime} ago)` : '';
             })()}
+          </div>
+          
+          {/* Vehicle metadata */}
+          <div style={{ 
+            fontSize: '12px', 
+            color: '#666'
+          }}>
+            <strong>Trip:</strong> {vehicle.trip_id || 'N/A'} | <strong>ID:</strong> {vehicle.id}
           </div>
           
           {/* Prediction info */}

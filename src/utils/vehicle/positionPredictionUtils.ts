@@ -119,6 +119,35 @@ export function predictVehiclePosition(
       };
     }
 
+    // Suppress prediction for stationary vehicles at start station (Issue #16)
+    // When a vehicle is at the first stop with speed 0, it's likely waiting for
+    // scheduled departure — don't predict forward movement.
+    if (vehicle.speed === 0 && tripStopTimes.length > 0) {
+      const firstStopTime = tripStopTimes[0];
+      const firstStop = stops.find(s => s.stop_id === firstStopTime.stop_id);
+      if (firstStop) {
+        const distanceToFirstStop = calculateDistance(
+          vehiclePosition,
+          { lat: firstStop.stop_lat, lon: firstStop.stop_lon }
+        );
+        if (distanceToFirstStop < ARRIVAL_CONFIG.PROXIMITY_THRESHOLD) {
+          return {
+            predictedPosition: vehiclePosition,
+            metadata: {
+              predictedDistance: 0,
+              stationsEncountered: 0,
+              totalDwellTime: 0,
+              method: 'route_shape',
+              success: true,
+              timestampAge,
+              isAtStation: true,
+              stationId: firstStop.stop_id
+            } as any
+          };
+        }
+      }
+    }
+
     // Simulate movement along route with enhanced speed support (Requirements 5.1, 5.3)
     const movementData: RouteMovementData = {
       routeShape,
