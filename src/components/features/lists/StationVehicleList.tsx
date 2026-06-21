@@ -540,7 +540,14 @@ const VehicleCard: FC<VehicleCardProps> = memo(({ vehicle, route, trip, arrivalT
                 size="small"
                 variant="outlined"
                 color="info"
-                startIcon={<ScheduleIcon sx={{ fontSize: '0.9rem !important' }} />}
+                startIcon={
+                  <ScheduleIcon
+                    sx={{
+                      fontSize: '0.9rem !important',
+                      color: 'success.main',
+                    }}
+                  />
+                }
                 onClick={() => setScheduleView('today')}
                 sx={{ fontSize: { xs: '0.7rem', sm: '0.75rem' }, textTransform: 'none', py: 0.25 }}
               >
