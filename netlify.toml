@@ -20,12 +20,13 @@
   status = 200
   force = true
 
-# Serve the GTFS schedule payload from Netlify Blobs.
-# Netlify Blobs have no built-in public URL, so /data/schedule.json is rewritten
-# to the schedule-serve function, which reads the blob and returns it as JSON.
+# Serve the GTFS schedule payload from Netlify Blobs (one blob per agency).
+# Netlify Blobs have no built-in public URL, so /data/schedule/<agencyId>.json
+# is rewritten to the schedule-serve function, which parses the agency id from
+# the path, reads that agency's blob, and returns it as JSON.
 # Must come BEFORE the SPA catch-all so it is not swallowed by /* -> /index.html.
 [[redirects]]
-  from = "/data/schedule.json"
+  from = "/data/schedule/*"
   to = "/.netlify/functions/schedule-serve"
   status = 200
 
