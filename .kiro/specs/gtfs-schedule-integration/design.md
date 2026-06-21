@@ -228,38 +228,53 @@ interface VehicleMatchResult {
 
 ## Data Models
 
-### Compact JSON Format
+### Compact JSON Format (pattern-deduplicated)
 
-The schedule JSON uses short keys and integer encoding to minimize payload size:
+The CDN payload deduplicates stop-time sequences. Real measurement on the Cluj
+feed: **14,755 trips collapse to 194 unique relative patterns (98.7%
+redundant)** — the same route pattern runs many times a day differing only by
+start time. Storing each pattern once + a per-trip reference cut the payload
+from 7.22 MB raw / 1.13 MB gz to **718 KB raw / 116 KB gz** (well under the
+500 KB budget, Req 2.1).
+
+Format (`CompactSchedulePayload`):
+- `patterns`: array of unique stop-time sequences; each stop's `a`/`d` are
+  **offsets in minutes from the trip's first-stop departure** (not absolute).
+- `trips`: `trip_id → { p: patternIndex, t: startMinutes, s: serviceId }`.
+- `calendar`, `calendarExceptions`, `version` as before.
 
 ```json
 {
   "version": "2025-01-15T03:00:00Z",
-  "stopTimes": {
-    "CJ1001_1_Mon-Fri": [
-      { "s": 4521, "q": 0, "a": 305, "d": 305 },
-      { "s": 4522, "q": 1, "a": 308, "d": 308 },
-      { "s": 4523, "q": 2, "a": 312, "d": 313 }
+  "patterns": [
+    [
+      { "s": 4521, "q": 0, "a": 0, "d": 0 },
+      { "s": 4522, "q": 1, "a": 3, "d": 3 },
+      { "s": 4523, "q": 2, "a": 7, "d": 8 }
     ]
+  ],
+  "trips": {
+    "CJ1001_1_LV_0501": { "p": 0, "t": 305, "s": "LV" }
   },
   "calendar": [
     {
-      "serviceId": "Mon-Fri",
+      "serviceId": "LV",
       "monday": true, "tuesday": true, "wednesday": true,
       "thursday": true, "friday": true, "saturday": false, "sunday": false,
-      "startDate": "20250101", "endDate": "20251231"
+      "startDate": "20251101", "endDate": "20260630"
     }
   ],
-  "calendarExceptions": [
-    { "serviceId": "Mon-Fri", "date": "20250501", "exceptionType": 2 }
-  ],
-  "tripServiceMap": {
-    "CJ1001_1_Mon-Fri": "Mon-Fri"
-  }
+  "calendarExceptions": []
 }
 ```
 
-**Size estimation**: Cluj has ~4,000 trips × ~20 stops/trip = ~80,000 stop time entries. At ~20 bytes per entry (compact JSON) = ~1.6 MB raw, ~200-300 KB gzipped. Well within the 500 KB budget.
+**Client expansion**: `expandSchedule()` (in `schedulePayloadCodec.ts`) rebuilds
+the queryable `SchedulePayload` (absolute minutes-since-midnight) in memory:
+`stopTime.a = pattern[i].a + trip.t`. The pipeline runs `compactifySchedule()`;
+the store persists the compact form to localStorage and expands on
+load/hydration, keeping both the download and the cache footprint small.
+`calendar.txt`/`calendar_dates.txt` are treated as optional (the Cluj feed ships
+no `calendar_dates.txt`).
 
 ### Client Persistence (compressed localStorage)
 

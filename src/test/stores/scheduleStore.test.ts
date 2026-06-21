@@ -8,6 +8,7 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { useScheduleStore } from '../../stores/scheduleStore';
 import type { SchedulePayload, CalendarEntry } from '../../types/schedule';
+import { compactifySchedule } from '../../utils/schedule/schedulePayloadCodec';
 
 /** A calendar entry active on every weekday across a very wide date range. */
 function allDaysEntry(serviceId: string): CalendarEntry {
@@ -87,7 +88,7 @@ describe('ScheduleStore', () => {
     it('fetches the payload from the CDN and populates state (Req 3.1)', async () => {
       const fetchMock = vi.fn().mockResolvedValue({
         ok: true,
-        json: async () => SAMPLE_PAYLOAD,
+        json: async () => compactifySchedule(SAMPLE_PAYLOAD),
       });
       vi.stubGlobal('fetch', fetchMock);
 
@@ -274,7 +275,7 @@ describe('ScheduleStore', () => {
         calendar: [allDaysEntry('always')],
         calendarExceptions: [],
       };
-      const fetchMock = vi.fn().mockResolvedValue({ ok: true, json: async () => payload });
+      const fetchMock = vi.fn().mockResolvedValue({ ok: true, json: async () => compactifySchedule(payload) });
       vi.stubGlobal('fetch', fetchMock);
 
       await useScheduleStore.getState().loadSchedule();

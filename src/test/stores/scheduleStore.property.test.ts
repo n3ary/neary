@@ -30,6 +30,7 @@ import fc from 'fast-check';
 import { useScheduleStore } from '../../stores/scheduleStore';
 import { API_CACHE_DURATION } from '../../utils/core/constants';
 import type { SchedulePayload } from '../../types/schedule';
+import { compactifySchedule } from '../../utils/schedule/schedulePayloadCodec';
 
 // Feature: gtfs-schedule-integration, Property 3: Cache freshness and version logic
 
@@ -64,12 +65,13 @@ function payloadWithVersion(version: string): SchedulePayload {
   };
 }
 
-/** Stub global fetch to resolve with the given CDN payload; returns the mock. */
+/** Stub global fetch to resolve with the given CDN payload (compact form, as
+ *  served by the pipeline); returns the mock. */
 function stubFetchWith(payload: SchedulePayload) {
   const fetchMock = vi.fn().mockResolvedValue({
     ok: true,
     status: 200,
-    json: async () => payload,
+    json: async () => compactifySchedule(payload),
   });
   vi.stubGlobal('fetch', fetchMock);
   return fetchMock;

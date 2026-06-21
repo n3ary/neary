@@ -46,6 +46,51 @@ export interface ScheduleStopTime {
   d: number;
 }
 
+// ============================================================================
+// Compact (deduplicated) CDN payload
+// ============================================================================
+//
+// The on-CDN / on-disk format. The Cluj feed runs ~14.7k trips that collapse to
+// only ~194 unique relative stop-time sequences (98.7% redundant). To keep the
+// download and the localStorage footprint small, the payload stores each unique
+// pattern ONCE (as offsets from the trip's first departure) plus a per-trip
+// reference {patternIndex, startMinutes, serviceId}. The client expands this
+// back into a full {@link SchedulePayload} in memory (see schedulePayloadCodec).
+
+/**
+ * One stop within a reusable pattern. `a`/`d` are OFFSETS in minutes from the
+ * trip's first-stop departure (not absolute minutes-since-midnight). Shares the
+ * shape of {@link ScheduleStopTime} so expansion is just `+ startMinutes`.
+ */
+export type PatternStop = ScheduleStopTime;
+
+/** Per-trip reference into the shared pattern table. */
+export interface TripScheduleRef {
+  /** Index into {@link CompactSchedulePayload.patterns}. */
+  p: number;
+  /** Trip's first-stop departure (minutes since midnight) — the offset base. */
+  t: number;
+  /** service_id (from trips.txt). */
+  s: string;
+}
+
+/**
+ * The compact, deduplicated payload served from the CDN. Expanded client-side
+ * into a {@link SchedulePayload} for querying.
+ */
+export interface CompactSchedulePayload {
+  /** ISO timestamp of when the payload was last processed. */
+  version: string;
+  /** Unique relative stop-time patterns (a/d are offsets from trip start). */
+  patterns: PatternStop[][];
+  /** Per-trip reference: trip_id → {patternIndex, startMinutes, serviceId}. */
+  trips: Record<string, TripScheduleRef>;
+  /** Calendar entries from calendar.txt. */
+  calendar: CalendarEntry[];
+  /** Date-specific overrides from calendar_dates.txt. */
+  calendarExceptions: CalendarException[];
+}
+
 /** Calendar entry from calendar.txt */
 export interface CalendarEntry {
   serviceId: string;

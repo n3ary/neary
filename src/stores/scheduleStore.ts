@@ -20,7 +20,12 @@
 import { create } from 'zustand';
 import { persist, createJSONStorage } from 'zustand/middleware';
 
-import type { SchedulePayload, ScheduleStopTime, UpcomingDeparture } from '../types/schedule';
+import type {
+  SchedulePayload,
+  CompactSchedulePayload,
+  ScheduleStopTime,
+  UpcomingDeparture,
+} from '../types/schedule';
 import { API_CACHE_DURATION } from '../utils/core/constants';
 import { createCompressedStorage } from '../utils/core/compressedStorage';
 import {
@@ -28,6 +33,11 @@ import {
   minutesSinceMidnight,
   isTimeInWindow,
 } from '../utils/schedule/activeServiceUtils';
+import {
+  expandSchedule,
+  compactifySchedule,
+  isCompactSchedulePayload,
+} from '../utils/schedule/schedulePayloadCodec';
 
 /** CDN location of the compact schedule payload produced by the daily pipeline. */
 const SCHEDULE_CDN_URL = '/data/schedule.json';
@@ -200,15 +210,18 @@ export const useScheduleStore = create<ScheduleStore>()(
             throw new Error(`Schedule fetch failed with status ${response.status}`);
           }
 
-          const data = (await response.json()) as SchedulePayload;
+          const data = (await response.json()) as unknown;
 
           // Guard against malformed payloads - treat as a fetch failure
-          if (!data || typeof data !== 'object' || typeof data.stopTimes !== 'object') {
+          if (!isCompactSchedulePayload(data)) {
             throw new Error('Malformed schedule payload');
           }
 
+          // Expand the compact CDN payload into the queryable in-memory form.
+          const expanded = expandSchedule(data);
+
           set({
-            scheduleData: data,
+            scheduleData: expanded,
             dataVersion: data.version ?? null,
             lastUpdated: Date.now(),
             loading: false,
@@ -394,13 +407,30 @@ export const useScheduleStore = create<ScheduleStore>()(
       // the same persistence mechanism as other large stores instead of a
       // bespoke adapter.
       storage: createJSONStorage(() => createCompressedStorage(LOG_PREFIX)),
-      // Only persist the payload and metadata; activeServiceIds is recomputed and
-      // transient loading/error state is not persisted.
+      // Only persist the schedule payload and metadata; activeServiceIds is
+      // recomputed and transient loading/error state is not persisted. The
+      // payload is stored in its COMPACT form to keep the localStorage footprint
+      // small (~0.1 MB vs ~7 MB expanded); `merge` re-expands it on hydration.
       partialize: (state) => ({
-        scheduleData: state.scheduleData,
+        schedule: state.scheduleData ? compactifySchedule(state.scheduleData) : null,
         dataVersion: state.dataVersion,
         lastUpdated: state.lastUpdated,
       }),
+      merge: (persistedState, currentState) => {
+        const persisted = persistedState as
+          | Partial<{
+              schedule: CompactSchedulePayload | null;
+              dataVersion: string | null;
+              lastUpdated: number | null;
+            }>
+          | undefined;
+        return {
+          ...currentState,
+          scheduleData: persisted?.schedule ? expandSchedule(persisted.schedule) : null,
+          dataVersion: persisted?.dataVersion ?? null,
+          lastUpdated: persisted?.lastUpdated ?? null,
+        };
+      },
     }
   )
 );

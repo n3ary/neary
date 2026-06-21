@@ -21,8 +21,9 @@
 
 import { getStore } from '@netlify/blobs';
 import { unzipSync } from 'fflate';
-import type { SchedulePayload } from '../../src/types/schedule';
+import type { CompactSchedulePayload } from '../../src/types/schedule';
 import { transformToPayload } from '../../src/utils/schedule/pipelineTransform';
+import { compactifySchedule } from '../../src/utils/schedule/schedulePayloadCodec';
 
 // ============================================================================
 // Configuration
@@ -77,29 +78,30 @@ export default async function handler(): Promise<Response> {
     // 2. Decompress the archive in-memory and pull out the required CSVs.
     const csvFiles = extractRequiredFiles(zipBytes);
 
-    // 3. Transform the CSVs into the compact payload.
-    //    Parses stop_times.txt, calendar.txt, calendar_dates.txt, and the
-    //    service_id column of trips.txt, converts HH:MM:SS times to
-    //    minutes-since-midnight integers, and assembles the SchedulePayload.
-    //    Pure transform logic lives in src/utils/schedule/pipelineTransform.ts
-    //    so it can be unit- and property-tested independently of this runtime.
-    const payload: SchedulePayload = transformToPayload(csvFiles);
+    // 3. Transform the CSVs into the (expanded) SchedulePayload, then compact
+    //    it for delivery. Pure logic lives in src/utils/schedule/ so it can be
+    //    unit- and property-tested independently of this runtime.
+    const payload = transformToPayload(csvFiles);
 
     if (!payload || Object.keys(payload.stopTimes).length === 0) {
       // All-or-nothing: nothing is written unless transformation yields trips.
       throw new Error('Transformation produced an empty payload');
     }
 
-    // 4. Persist the compact JSON.
-    //    Writes `payload` to Netlify Blobs (served at `/data/schedule.json`).
-    //    Only reached after a fully successful fetch + transform, so the
-    //    previous valid blob is retained on any earlier failure.
-    await persistPayload(payload);
+    // Deduplicate into the compact CDN format (~194 patterns vs ~14.7k trips
+    // for Cluj → ~90% smaller download + localStorage footprint).
+    const compact: CompactSchedulePayload = compactifySchedule(payload);
+
+    // 4. Persist the compact JSON to Netlify Blobs (served at
+    //    `/data/schedule.json`). Only reached after a fully successful fetch +
+    //    transform, so the previous valid blob is retained on any earlier failure.
+    await persistPayload(compact);
 
     return jsonResponse(200, {
       ok: true,
-      version: payload.version,
-      tripCount: Object.keys(payload.stopTimes).length,
+      version: compact.version,
+      tripCount: Object.keys(compact.trips).length,
+      patternCount: compact.patterns.length,
     });
   } catch (error) {
     // All-or-nothing write strategy: on any failure we do NOT touch the blob
@@ -217,7 +219,7 @@ function extractRequiredFiles(zipBytes: Uint8Array): Record<string, string> {
  * rewrite-to-function rather than any "built-in" blob URL because Netlify Blobs
  * does not provide direct public HTTP access.
  */
-async function persistPayload(payload: SchedulePayload): Promise<void> {
+async function persistPayload(payload: CompactSchedulePayload): Promise<void> {
   const store = getStore(SCHEDULE_BLOB_STORE);
   await store.setJSON(SCHEDULE_BLOB_KEY, payload);
   console.log(
