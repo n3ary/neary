@@ -13,6 +13,7 @@ import {
 import { ThemeToggle } from '../../theme/ThemeToggle';
 import { useConfigStore } from '../../../stores/configStore';
 import { FreshnessDebugPanel } from '../status/FreshnessDebugPanel';
+import { AppVersionPanel } from '../status/AppVersionPanel';
 
 interface SettingsViewProps {
   onNavigateToSetup?: () => void;
@@ -66,6 +67,12 @@ export const SettingsView: FC<SettingsViewProps> = ({ onNavigateToSetup }) => {
       <Card variant="outlined" sx={{ mt: 2 }}>
         <CardContent>
           <FreshnessDebugPanel />
+        </CardContent>
+      </Card>
+
+      <Card variant="outlined" sx={{ mt: 2 }}>
+        <CardContent>
+          <AppVersionPanel />
         </CardContent>
       </Card>
 

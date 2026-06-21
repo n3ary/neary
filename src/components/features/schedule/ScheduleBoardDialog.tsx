@@ -37,11 +37,17 @@ interface ScheduleBoardDialogProps {
   routeShortName: string;
   headsign: string;
   directionId: number | null;
+  /**
+   * Optional GTFS trip id to pin as the "past departure" entry on Today, so
+   * the run that the source ghost card represents is always shown — even if
+   * its scheduled departure is older than the regular 10-min past window.
+   */
+  pinnedPastTripId?: string | null;
   onClose: () => void;
 }
 
 export const ScheduleBoardDialog: FC<ScheduleBoardDialogProps> = ({
-  open, initialMode, station, routeId, routeShortName, headsign, directionId, onClose,
+  open, initialMode, station, routeId, routeShortName, headsign, directionId, pinnedPastTripId, onClose,
 }) => {
   const [mode, setMode] = useState<BoardMode>(initialMode);
   // Tomorrow defaults to the morning (until noon) with a "See more" expander.
@@ -65,11 +71,23 @@ export const ScheduleBoardDialog: FC<ScheduleBoardDialogProps> = ({
     const tripRouteMap = buildTripRouteMap(trips);
     const common = { scheduleData, tripRouteMap, stopId: station.stop_id, routes, routeId, directionId };
     if (mode === 'today') {
-      return buildStationDepartureBoard({ ...common, date: now, fromMinutes: minutesSinceMidnight(now) });
+      // Include the soonest past departure within the last 10 minutes (matches
+      // the ghost "Departed" window cap), so a recently-passed run is visible
+      // alongside the upcoming list — useful when the dialog is opened from a
+      // ghost "Departed" chip. When the source is a ghost we ALSO pin that
+      // ghost's own trip as the past entry so it shows even when older than
+      // the regular 10-min window (e.g. a long route still en route).
+      return buildStationDepartureBoard({
+        ...common,
+        date: now,
+        fromMinutes: minutesSinceMidnight(now),
+        pastWindowMinutes: 10,
+        pinnedPastTripId: pinnedPastTripId ?? null,
+      });
     }
     const tomorrow = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1, 12, 0, 0);
     return buildStationDepartureBoard({ ...common, date: tomorrow, fromMinutes: null });
-  }, [open, station, mode, scheduleData, trips, routes, routeId, directionId]);
+  }, [open, station, mode, scheduleData, trips, routes, routeId, directionId, pinnedPastTripId]);
 
   // Tomorrow defaults to morning (before noon); "See more" reveals the rest.
   const NOON_MINUTES = 12 * 60;
@@ -128,36 +146,56 @@ export const ScheduleBoardDialog: FC<ScheduleBoardDialogProps> = ({
                 gap: 1,
               }}
             >
-              {visibleBoard.map((d, i) => {
-                // For the soonest TODAY departure, show "(In X minutes)" using the
-                // same wording as the arrival bubble.
-                const minutesUntil = d.departureMinutes - minutesSinceMidnight(new Date());
-                const showEta = mode === 'today' && i === 0 && minutesUntil >= 0;
-                const etaLabel =
-                  minutesUntil < 1 ? 'Departing now' : generateStatusMessage('in_minutes', minutesUntil);
-                return (
-                  <Box
-                    key={`${d.tripId}-${i}`}
-                    sx={{
-                      py: 1,
-                      px: 0.5,
-                      textAlign: 'center',
-                      borderRadius: 1,
-                      bgcolor: showEta ? 'info.main' : 'action.hover',
-                      color: showEta ? 'info.contrastText' : 'text.primary',
-                      fontVariantNumeric: 'tabular-nums',
-                      fontWeight: 600,
-                    }}
-                  >
-                    {formatBoardTime(d.departureMinutes)}
-                    {showEta && (
-                      <Typography variant="caption" component="div" sx={{ fontWeight: 400 }}>
-                        ({etaLabel})
-                      </Typography>
-                    )}
-                  </Box>
-                );
-              })}
+              {(() => {
+                const nowMin = minutesSinceMidnight(new Date());
+                // Index of the first non-past row — gets the "soonest upcoming"
+                // highlight in Today mode.
+                const firstUpcomingIdx = visibleBoard.findIndex((d) => !d.past);
+                return visibleBoard.map((d, i) => {
+                  const isPast = d.past === true;
+                  const minutesUntil = d.departureMinutes - nowMin;
+                  const showSoonest = mode === 'today' && i === firstUpcomingIdx && minutesUntil >= 0;
+                  const upcomingLabel =
+                    minutesUntil < 1 ? 'Departing now' : generateStatusMessage('in_minutes', minutesUntil);
+                  // "Departed Xm ago" caption for the recently-passed row.
+                  const minutesAgo = Math.max(0, Math.round(-minutesUntil));
+                  const pastLabel = minutesAgo === 0 ? 'just now' : `${minutesAgo} min ago`;
+
+                  // Three visual states: past (muted, italic), soonest
+                  // (info-filled), and the rest (subtle action.hover).
+                  const bg = isPast ? 'transparent' : showSoonest ? 'info.main' : 'action.hover';
+                  const fg = isPast ? 'text.secondary' : showSoonest ? 'info.contrastText' : 'text.primary';
+                  return (
+                    <Box
+                      key={`${d.tripId}-${i}`}
+                      sx={{
+                        py: 1,
+                        px: 0.5,
+                        textAlign: 'center',
+                        borderRadius: 1,
+                        bgcolor: bg,
+                        color: fg,
+                        border: isPast ? '1px dashed' : 'none',
+                        borderColor: isPast ? 'divider' : 'transparent',
+                        fontVariantNumeric: 'tabular-nums',
+                        fontWeight: 600,
+                        opacity: isPast ? 0.75 : 1,
+                      }}
+                    >
+                      {formatBoardTime(d.departureMinutes)}
+                      {(isPast || showSoonest) && (
+                        <Typography
+                          variant="caption"
+                          component="div"
+                          sx={{ fontWeight: 400, fontStyle: isPast ? 'italic' : 'normal' }}
+                        >
+                          ({isPast ? pastLabel : upcomingLabel})
+                        </Typography>
+                      )}
+                    </Box>
+                  );
+                });
+              })()}
             </Box>
             {hasMore && (
               <Box sx={{ display: 'flex', justifyContent: 'center', mt: 2 }}>

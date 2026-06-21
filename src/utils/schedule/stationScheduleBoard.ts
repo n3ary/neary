@@ -23,6 +23,12 @@ export interface BoardDeparture {
   headsign: string;
   /** Scheduled departure from the station, minutes since midnight. */
   departureMinutes: number;
+  /**
+   * True when this entry sits in the past (its scheduled departure is before
+   * `fromMinutes`). Used by the dialog to render it distinctly with an
+   * "(X minutes ago)" caption. Always false on the Tomorrow board.
+   */
+  past?: boolean;
 }
 
 export interface StationBoardParams {
@@ -35,6 +41,22 @@ export interface StationBoardParams {
   date: Date;
   /** When set, only departures at/after this minute-of-day are kept (Today). */
   fromMinutes?: number | null;
+  /**
+   * When set together with `fromMinutes`, the soonest past departure within
+   * this many minutes of `fromMinutes` is also returned (marked `past: true`),
+   * so the user can see the run that just left this stop. Defaults to 0
+   * (no past departures included).
+   */
+  pastWindowMinutes?: number;
+  /**
+   * Optional GTFS trip id whose scheduled departure from this stop should
+   * ALWAYS be surfaced as the past entry, regardless of how long ago it was.
+   * Used by the ghost card so the user always sees the run that bus is on as
+   * "Departed X min ago" — even when the trip departed beyond the regular
+   * `pastWindowMinutes` window. When the pinned trip's departure is in the
+   * future or the trip doesn't serve this stop, this prop is a no-op.
+   */
+  pinnedPastTripId?: string | null;
   routes: TranzyRouteResponse[];
   /** When set, keep only departures of this route. */
   routeId?: number | null;
@@ -62,7 +84,17 @@ export function formatBoardTime(minutes: number): string {
  * Build the scheduled departure board for a station on a given day.
  */
 export function buildStationDepartureBoard(params: StationBoardParams): BoardDeparture[] {
-  const { scheduleData, stopId, date, fromMinutes = null, routes, routeId = null, directionId = null } = params;
+  const {
+    scheduleData,
+    stopId,
+    date,
+    fromMinutes = null,
+    pastWindowMinutes = 0,
+    pinnedPastTripId = null,
+    routes,
+    routeId = null,
+    directionId = null,
+  } = params;
   if (!scheduleData) return [];
 
   const routeMap =
@@ -76,7 +108,16 @@ export function buildStationDepartureBoard(params: StationBoardParams): BoardDep
   const index = buildScheduleStopIndex(scheduleData);
   const entries = index.get(stopId) ?? [];
 
-  const board: BoardDeparture[] = [];
+  // Past lower bound: when caller asked for a past window, accept departures
+  // from `fromMinutes - pastWindowMinutes` (inclusive) to `fromMinutes`
+  // (exclusive). Of those, only the SOONEST (largest dep) is kept — that's the
+  // bus that just left this stop.
+  const pastLowerBound =
+    fromMinutes != null && pastWindowMinutes > 0 ? fromMinutes - pastWindowMinutes : null;
+
+  const upcoming: BoardDeparture[] = [];
+  let mostRecentPast: BoardDeparture | null = null;
+
   for (const { tripId, entry } of entries) {
     const serviceId = scheduleData.tripServiceMap[tripId] ?? '';
     if (!active.has(serviceId)) continue;
@@ -93,17 +134,52 @@ export function buildStationDepartureBoard(params: StationBoardParams): BoardDep
     if (entry.q === lastQ) continue;
 
     const dep = entry.d;
-    if (fromMinutes != null && dep < fromMinutes) continue;
+    const isPast = fromMinutes != null && dep < fromMinutes;
+    if (isPast) {
+      // The past entry can come from two sources:
+      //   1. The pinned trip (the ghost's own run) — wins unconditionally over
+      //      the windowed candidate so the user always sees that bus's
+      //      departure as "Departed X min ago", even when older than the
+      //      regular window.
+      //   2. The soonest past departure within `pastWindowMinutes`.
+      const isPinned = pinnedPastTripId != null && tripId === pinnedPastTripId;
+      const inWindow = pastLowerBound != null && dep >= pastLowerBound;
+      if (isPinned || inWindow) {
+        const candidate: BoardDeparture = {
+          tripId,
+          routeId: tripRouteId,
+          routeShortName:
+            tripRouteId != null
+              ? routesById.get(tripRouteId)?.route_short_name ?? String(tripRouteId)
+              : '?',
+          headsign: headsignMap[tripId] ?? '',
+          departureMinutes: dep,
+          past: true,
+        };
+        if (
+          // Pinned always wins over a non-pinned existing pick.
+          isPinned ||
+          !mostRecentPast ||
+          (mostRecentPast.tripId !== pinnedPastTripId && dep > mostRecentPast.departureMinutes)
+        ) {
+          mostRecentPast = candidate;
+        }
+      }
+      continue;
+    }
 
-    board.push({
+    upcoming.push({
       tripId,
       routeId: tripRouteId,
-      routeShortName: tripRouteId != null ? routesById.get(tripRouteId)?.route_short_name ?? String(tripRouteId) : '?',
+      routeShortName:
+        tripRouteId != null
+          ? routesById.get(tripRouteId)?.route_short_name ?? String(tripRouteId)
+          : '?',
       headsign: headsignMap[tripId] ?? '',
       departureMinutes: dep,
     });
   }
 
-  board.sort((a, b) => a.departureMinutes - b.departureMinutes);
-  return board;
+  upcoming.sort((a, b) => a.departureMinutes - b.departureMinutes);
+  return mostRecentPast ? [mostRecentPast, ...upcoming] : upcoming;
 }

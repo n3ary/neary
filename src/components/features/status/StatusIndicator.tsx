@@ -39,22 +39,22 @@ export const StatusIndicator: FC<StatusIndicatorProps> = ({
     setNetworkStatus
   } = useStatusStore();
 
-  // Handle GPS icon click - always request location, optionally show toast
+  // Handle GPS icon click - always request location AND show feedback toast.
+  // The toast is shown regardless of `showGpsDetails` so users get immediate
+  // confirmation that the button did something (status, accuracy, or why it
+  // can't acquire — e.g. permission denied) on every page where the icon is
+  // visible (#21 follow-up).
   const handleGpsClick = () => {
-    // Always request fresh location (no caching, browser handles fallback)
     requestLocation();
-    
-    // Only show toast in settings view
-    if (showGpsDetails) {
-      const { message, severity } = getGpsToastMessage(
-        currentPosition ? 'available' : 'unavailable',
-        locationAccuracy,
-        permissionState
-      );
-      setToastMessage(message);
-      setToastSeverity(severity);
-      setToastOpen(true);
-    }
+
+    const { message, severity } = getGpsToastMessage(
+      currentPosition ? 'available' : 'unavailable',
+      locationAccuracy,
+      permissionState
+    );
+    setToastMessage(message);
+    setToastSeverity(severity);
+    setToastOpen(true);
   };
 
   // Handle API icon click - show toast with connection info

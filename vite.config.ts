@@ -4,6 +4,13 @@ import react from '@vitejs/plugin-react'
 // Clean, minimal Vite configuration for clean architecture
 export default defineConfig({
   plugins: [react()],
+
+  // Expose the package.json version as `__APP_VERSION__` at build time so the
+  // Settings panel can show the release marker (e.g. "1.4.1") alongside the
+  // build/cache-bust timestamp from the index.html meta tag.
+  define: {
+    __APP_VERSION__: JSON.stringify(process.env.npm_package_version),
+  },
   
   // Simple build configuration
   build: {
