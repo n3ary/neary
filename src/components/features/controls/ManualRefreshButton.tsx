@@ -3,7 +3,7 @@
 
 import type { FC } from 'react';
 import { useEffect, useState } from 'react';
-import { IconButton, Box, CircularProgress } from '@mui/material';
+import { IconButton, Box, CircularProgress, Snackbar, Alert } from '@mui/material';
 import { Refresh as RefreshIcon } from '@mui/icons-material';
 import { getDataFreshnessMonitor, type ApiFreshnessStatus } from '../../../utils/core/apiFreshnessMonitor';
 import { automaticRefreshService } from '../../../services/automaticRefreshService';
@@ -11,11 +11,28 @@ import { manualRefreshService } from '../../../services/manualRefreshService';
 import { useConfigStore } from '../../../stores/configStore';
 import { useStatusStore } from '../../../stores/statusStore';
 import { useVehicleStore } from '../../../stores/vehicleStore';
+import { formatCompactRelativeTime } from '../../../utils/time/timestampFormatUtils';
 import { API_FETCH_FRESHNESS_THRESHOLDS, MANUAL_REFRESH_DEBOUNCE_MS } from '../../../utils/core/constants';
 
 interface ManualRefreshButtonProps {
   className?: string;
   disabled?: boolean;
+}
+
+/**
+ * Newest GPS timestamp age across real (GPS-tracked) vehicles, as a compact
+ * label like "12s ago", or null when there are no GPS vehicles. Synthetic
+ * scheduled/ghost vehicles carry a non-positive id and no live GPS, so they are
+ * excluded.
+ */
+function newestGpsAgeLabel(vehicles: { id: number; timestamp: string }[]): string | null {
+  let newest = 0;
+  for (const v of vehicles) {
+    if (v.id <= 0) continue;
+    const ts = Date.parse(v.timestamp);
+    if (Number.isFinite(ts) && ts > newest) newest = ts;
+  }
+  return newest > 0 ? formatCompactRelativeTime(newest) : null;
 }
 
 /**
@@ -44,6 +61,16 @@ export const ManualRefreshButton: FC<ManualRefreshButtonProps> = ({
   // Local busy state for the in-debounce "predict only" tap (no API call, so it
   // does not show up in manualRefreshService.isRefreshInProgress()).
   const [isPredicting, setIsPredicting] = useState(false);
+
+  // Outcome toast (#21): an explicit tap always tells the user what happened.
+  const [toast, setToast] = useState<{
+    open: boolean;
+    message: string;
+    severity: 'success' | 'info' | 'warning' | 'error';
+  }>({ open: false, message: '', severity: 'info' });
+
+  const showToast = (message: string, severity: 'success' | 'info' | 'warning' | 'error') =>
+    setToast({ open: true, message, severity });
 
   // Subscribe to freshness monitor for fresh/stale status
   useEffect(() => {
@@ -91,24 +118,55 @@ export const ManualRefreshButton: FC<ManualRefreshButtonProps> = ({
       return;
     }
 
-    const lastApiFetch = useVehicleStore.getState().lastApiFetch;
-    const vehicleAge = lastApiFetch ? Date.now() - lastApiFetch : Infinity;
+    // Offline: nothing to do, but the tap still gets feedback (#21).
+    if (!manualRefreshService.isNetworkAvailable()) {
+      showToast('Offline — can’t refresh right now', 'warning');
+      return;
+    }
+
+    const before = useVehicleStore.getState();
+    const beforeFetch = before.lastApiFetch ?? 0;
+    const beforeCount = before.vehicles.length;
+    const vehicleAge = beforeFetch ? Date.now() - beforeFetch : Infinity;
     const outsideDebounce = vehicleAge >= MANUAL_REFRESH_DEBOUNCE_MS;
 
     if (outsideDebounce) {
       console.log('[Manual Refresh] User tap -> force fetch');
       try {
         await automaticRefreshService.triggerManualRefresh(true);
+
+        const after = useVehicleStore.getState();
+        const afterFetch = after.lastApiFetch ?? 0;
+        const afterCount = after.vehicles.length;
+        const gps = newestGpsAgeLabel(after.vehicles);
+
+        if (afterFetch > beforeFetch) {
+          // A real fetch happened. Report the new vehicle count and how it
+          // changed, plus how fresh the GPS is.
+          const delta = afterCount - beforeCount;
+          const deltaLabel = delta !== 0 ? ` (${delta > 0 ? '+' : ''}${delta})` : '';
+          const gpsLabel = gps ? ` · GPS ${gps}` : '';
+          showToast(`Refreshed · ${afterCount} vehicles${deltaLabel}${gpsLabel}`, 'success');
+        } else {
+          // Force bypasses the debounce, so this is rare (e.g. the fetch
+          // returned no fresh snapshot). Report honestly rather than implying
+          // an update.
+          showToast('No new data — showing the latest available', 'info');
+        }
       } catch (error) {
         console.warn('Manual refresh encountered errors:', error);
+        showToast('Refresh failed — check your connection', 'error');
       }
     } else {
       console.log('[Manual Refresh] User tap within debounce -> prediction update');
       setIsPredicting(true);
       try {
         await automaticRefreshService.triggerPredictionUpdate();
+        const lastLabel = beforeFetch ? formatCompactRelativeTime(beforeFetch) : 'recently';
+        showToast(`Data is recent (${lastLabel}) · positions updated`, 'info');
       } catch (error) {
         console.warn('Manual prediction update failed:', error);
+        showToast('Could not update positions', 'error');
       } finally {
         setIsPredicting(false);
       }
@@ -179,6 +237,22 @@ export const ManualRefreshButton: FC<ManualRefreshButtonProps> = ({
           <RefreshIcon />
         )}
       </IconButton>
+
+      <Snackbar
+        open={toast.open}
+        autoHideDuration={4000}
+        onClose={() => setToast((t) => ({ ...t, open: false }))}
+        anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
+      >
+        <Alert
+          onClose={() => setToast((t) => ({ ...t, open: false }))}
+          severity={toast.severity}
+          variant="filled"
+          sx={{ width: '100%' }}
+        >
+          {toast.message}
+        </Alert>
+      </Snackbar>
     </Box>
   );
 };

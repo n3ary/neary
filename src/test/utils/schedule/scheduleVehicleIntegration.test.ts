@@ -283,6 +283,56 @@ describe('applyScheduleMatching', () => {
     expect(byId.get(2)?.showWarningIndicator).toBe(true);
   });
 
+  it('skips suspect-duplicate flagging on a high-frequency route (#24)', () => {
+    // Three trips 5 min apart -> median headway 5 min (< 10 min tolerance), so
+    // the route is high-frequency and duplicate flagging is skipped entirely.
+    const scheduleData = makeSchedule({
+      T1: tripStops(480, 30),
+      T2: tripStops(485, 30),
+      T3: tripStops(490, 30),
+    });
+    // Two vehicles on T1 (would normally tie -> one suspect) plus an unmatchable
+    // vehicle (unknown trip) that would normally be flagged too.
+    const vehicles = [
+      makeVehicle(1, 'T1'),
+      makeVehicle(2, 'T1'),
+      makeVehicle(3, 'T_UNKNOWN'),
+    ];
+
+    const matched = applyScheduleMatching({
+      vehicles,
+      activeTrips: ['T1', 'T2', 'T3'],
+      scheduleData,
+      currentMinutes: 488,
+    });
+
+    // No vehicle is flagged as a suspect duplicate on a high-frequency route.
+    for (const m of matched) {
+      expect(m.match?.isSuspectDuplicate).toBe(false);
+      expect(m.match?.showWarningIndicator).toBe(false);
+    }
+  });
+
+  it('keeps suspect-duplicate flagging on a low-frequency route (#24)', () => {
+    // Trips 30 min apart -> headway 30 min (>= 10), normal duplicate detection.
+    const scheduleData = makeSchedule({
+      T1: tripStops(480, 30),
+      T2: tripStops(510, 30),
+    });
+    const vehicles = [makeVehicle(1, 'T1'), makeVehicle(2, 'T1')];
+
+    const matched = applyScheduleMatching({
+      vehicles,
+      activeTrips: ['T1', 'T2'],
+      scheduleData,
+      currentMinutes: 490,
+    });
+
+    const byId = new Map(matched.map((m) => [m.vehicle.id, m.match]));
+    expect(byId.get(1)?.isSuspectDuplicate).toBe(false);
+    expect(byId.get(2)?.isSuspectDuplicate).toBe(true);
+  });
+
   it('returns all vehicles unannotated when schedule data is unavailable (8.6)', () => {
     const vehicles = [makeVehicle(1, 'T1'), makeVehicle(2, 'T2')];
 

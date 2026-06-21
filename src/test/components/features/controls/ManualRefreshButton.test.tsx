@@ -14,6 +14,8 @@ vi.mock('../../../../stores/vehicleStore', () => {
   const mockStoreState = {
     refreshData: mockRefreshData,
     lastUpdated: Date.now(),
+    lastApiFetch: Date.now(),
+    vehicles: [],
     loading: false
   };
   

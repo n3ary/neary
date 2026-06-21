@@ -51,6 +51,23 @@ import { CONFIDENCE_LEVELS } from '../core/stringConstants';
 /** Maximum timing difference (minutes) for a vehicle to match a trip. */
 export const TIMING_TOLERANCE_MINUTES = 10;
 
+/**
+ * Headway threshold (minutes) below which a route is considered "high
+ * frequency". On such routes, many legitimate vehicles fall within the ±10 min
+ * matching tolerance of multiple trips, so suspect-duplicate flagging becomes
+ * unreliable and noisy — callers skip it entirely (issue #24). Equal to the
+ * matching tolerance: if scheduled trips are closer together than the tolerance
+ * itself, duplicate detection cannot be trusted.
+ */
+export const HIGH_FREQUENCY_HEADWAY_MINUTES = TIMING_TOLERANCE_MINUTES;
+
+/**
+ * Window (minutes) around the current time used to sample a route's headway.
+ * Trips whose scheduled start is within this window of "now" represent the
+ * service level the rider currently sees.
+ */
+const HEADWAY_SAMPLE_WINDOW_MINUTES = 60;
+
 /** Timing delta thresholds (minutes) used to grade a real match's confidence. */
 const HIGH_CONFIDENCE_MAX_DELTA = 3;
 const MEDIUM_CONFIDENCE_MAX_DELTA = 7;
@@ -213,4 +230,68 @@ export function matchVehiclesToSchedule(
       timingDeltaMinutes: match.delta,
     };
   });
+}
+
+/**
+ * Estimate a route's scheduled headway (minutes) near the current time.
+ *
+ * Headway is the typical gap between consecutive scheduled departures. We sample
+ * the candidate trips whose start time is within {@link HEADWAY_SAMPLE_WINDOW_MINUTES}
+ * of `currentMinutes` (falling back to all candidates when fewer than two are in
+ * the window), sort their start times, and return the MEDIAN consecutive gap.
+ * The median is robust to a single outlier pair, so one coincidentally-close
+ * pair on an otherwise sparse route does not make it look high-frequency.
+ *
+ * `activeTrips` must be scoped to a single route by the caller (the same
+ * contract as {@link matchVehiclesToSchedule}); the result is otherwise the
+ * headway across whatever mix of routes was passed in.
+ *
+ * @returns Median consecutive gap in minutes, or null when fewer than two
+ *   candidate trips have a resolvable scheduled start (headway undefined).
+ */
+export function computeScheduledHeadwayMinutes(
+  activeTrips: string[],
+  scheduleData: SchedulePayload,
+  currentMinutes: number,
+): number | null {
+  const allStarts: number[] = [];
+  for (const tripId of activeTrips) {
+    const start = getScheduledStartMinutes(tripId, scheduleData);
+    if (start !== null) allStarts.push(start);
+  }
+  if (allStarts.length < 2) return null;
+
+  // Prefer trips near "now"; fall back to all when the window is too sparse.
+  const inWindow = allStarts.filter(
+    (start) => Math.abs(start - currentMinutes) <= HEADWAY_SAMPLE_WINDOW_MINUTES,
+  );
+  const sample = inWindow.length >= 2 ? inWindow : allStarts;
+
+  const sorted = [...sample].sort((a, b) => a - b);
+  const gaps: number[] = [];
+  for (let i = 1; i < sorted.length; i++) {
+    gaps.push(sorted[i] - sorted[i - 1]);
+  }
+  if (gaps.length === 0) return null;
+
+  gaps.sort((a, b) => a - b);
+  const mid = Math.floor(gaps.length / 2);
+  return gaps.length % 2 === 0 ? (gaps[mid - 1] + gaps[mid]) / 2 : gaps[mid];
+}
+
+/**
+ * Whether a route should skip suspect-duplicate flagging because it runs at high
+ * frequency (headway below the matching tolerance). See issue #24.
+ *
+ * @returns true when the sampled headway is defined and strictly below
+ *   {@link HIGH_FREQUENCY_HEADWAY_MINUTES}. Returns false when the headway is
+ *   undefined (too few trips), so sparse routes keep normal duplicate detection.
+ */
+export function isHighFrequencyRoute(
+  activeTrips: string[],
+  scheduleData: SchedulePayload,
+  currentMinutes: number,
+): boolean {
+  const headway = computeScheduledHeadwayMinutes(activeTrips, scheduleData, currentMinutes);
+  return headway !== null && headway < HIGH_FREQUENCY_HEADWAY_MINUTES;
 }

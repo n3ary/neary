@@ -12,6 +12,7 @@ import {
 } from '@mui/material';
 import { ThemeToggle } from '../../theme/ThemeToggle';
 import { useConfigStore } from '../../../stores/configStore';
+import { FreshnessDebugPanel } from '../status/FreshnessDebugPanel';
 
 interface SettingsViewProps {
   onNavigateToSetup?: () => void;
@@ -59,6 +60,12 @@ export const SettingsView: FC<SettingsViewProps> = ({ onNavigateToSetup }) => {
           >
             Reconfigure
           </Button>
+        </CardContent>
+      </Card>
+
+      <Card variant="outlined" sx={{ mt: 2 }}>
+        <CardContent>
+          <FreshnessDebugPanel />
         </CardContent>
       </Card>
 

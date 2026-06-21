@@ -28,9 +28,13 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import fc from 'fast-check';
 import { useScheduleStore } from '../../stores/scheduleStore';
+import { useConfigStore } from '../../stores/configStore';
 import { API_CACHE_DURATION } from '../../utils/core/constants';
 import type { SchedulePayload } from '../../types/schedule';
 import { compactifySchedule } from '../../utils/schedule/schedulePayloadCodec';
+
+/** Tranzy agency_id with a registered GTFS feed (CTP Cluj). */
+const TEST_AGENCY_ID = 2;
 
 // Feature: gtfs-schedule-integration, Property 3: Cache freshness and version logic
 
@@ -51,7 +55,11 @@ function resetStore() {
     error: null,
     lastUpdated: null,
     dataVersion: null,
+    dataAgencyId: null,
   });
+  // The schedule layer is per-agency; configure an agency with a feed so
+  // loadSchedule fetches rather than degrading to GPS-only.
+  useConfigStore.setState({ agency_id: TEST_AGENCY_ID });
 }
 
 /** Build a minimal valid payload carrying a specific version string. */
@@ -108,6 +116,7 @@ describe('ScheduleStore property tests', () => {
             useScheduleStore.setState({
               scheduleData: payloadWithVersion(cachedVersion),
               dataVersion: cachedVersion,
+              dataAgencyId: TEST_AGENCY_ID,
               lastUpdated: Date.now() - age,
             });
 
@@ -142,6 +151,7 @@ describe('ScheduleStore property tests', () => {
             useScheduleStore.setState({
               scheduleData: payloadWithVersion(cachedVersion),
               dataVersion: cachedVersion,
+              dataAgencyId: TEST_AGENCY_ID,
               lastUpdated: Date.now() - age,
             });
 
@@ -149,7 +159,7 @@ describe('ScheduleStore property tests', () => {
 
             // Stale cache => refetch occurs.
             expect(fetchMock).toHaveBeenCalledTimes(1);
-            expect(fetchMock).toHaveBeenCalledWith('/data/schedule.json', { cache: 'no-cache' });
+            expect(fetchMock).toHaveBeenCalledWith('/data/schedule/2.json', { cache: 'no-cache' });
 
             // On fetch, the freshly fetched payload's version replaces the cached
             // version — the implemented half of Req 3.6.

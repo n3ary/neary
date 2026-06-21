@@ -86,6 +86,7 @@ export function compactifySchedule(payload: SchedulePayload): CompactSchedulePay
 
   return {
     version: payload.version,
+    ...(payload.agencyId !== undefined ? { agencyId: payload.agencyId } : {}),
     patterns,
     trips,
     calendar: payload.calendar,
@@ -119,6 +120,7 @@ export function expandSchedule(compact: CompactSchedulePayload): SchedulePayload
 
   return {
     version: compact.version,
+    ...(compact.agencyId !== undefined ? { agencyId: compact.agencyId } : {}),
     stopTimes,
     calendar: compact.calendar,
     calendarExceptions: compact.calendarExceptions,

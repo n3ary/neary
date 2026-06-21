@@ -38,9 +38,11 @@ import {
   compactifySchedule,
   isCompactSchedulePayload,
 } from '../utils/schedule/schedulePayloadCodec';
-
-/** CDN location of the compact schedule payload produced by the daily pipeline. */
-const SCHEDULE_CDN_URL = '/data/schedule.json';
+import {
+  scheduleUrlForAgency,
+  hasScheduleForAgency,
+} from '../utils/schedule/agencyFeeds';
+import { useConfigStore } from './configStore';
 
 /**
  * Optional GPS/route context supplied by the caller of `getUpcomingDepartures`.
@@ -118,6 +120,13 @@ interface ScheduleStore {
   error: string | null;
   lastUpdated: number | null;
   dataVersion: string | null;
+  /**
+   * Tranzy agency_id the currently loaded/cached payload belongs to. Used to
+   * self-heal the cache when the user switches agency: a cache for a different
+   * agency is treated as unusable and refetched (or cleared when the new agency
+   * has no published schedule). Null when no payload is loaded.
+   */
+  dataAgencyId: number | null;
 
   // Actions
   /** Fetch the schedule payload from the CDN, using fresh cache when available. */
@@ -183,6 +192,7 @@ export const useScheduleStore = create<ScheduleStore>()(
       error: null,
       lastUpdated: null,
       dataVersion: null,
+      dataAgencyId: null,
 
       // Actions
       loadSchedule: async () => {
@@ -193,13 +203,30 @@ export const useScheduleStore = create<ScheduleStore>()(
           return;
         }
 
-        // Use cached data without refetching when it is still fresh (Req 3.3)
-        // AND it has the current schema (a tripRouteMap). Older cached payloads
-        // (pre route-embedding) lack it; force a refetch so format upgrades
-        // self-heal instead of waiting out the 24h TTL.
+        // The schedule layer is per-agency: fetch the payload for the agency the
+        // user is currently configured for. The agency_id is the same one the
+        // app uses for Tranzy (configStore / X-Agency-Id header).
+        const agencyId = useConfigStore.getState().agency_id;
+
+        // No agency selected, or no schedule is published for it: the schedule
+        // layer is unavailable. Drop any payload left over from a different
+        // agency and degrade to GPS-only WITHOUT surfacing an error (additive).
+        if (!hasScheduleForAgency(agencyId)) {
+          if (currentState.scheduleData || currentState.dataAgencyId !== null) {
+            get().clearSchedule();
+          }
+          return;
+        }
+
+        // Use cached data without refetching when it is still fresh (Req 3.3),
+        // belongs to THIS agency, AND has the current schema (route/headsign
+        // maps). A cache for a different agency or an older schema is treated as
+        // unusable so an agency switch or format upgrade self-heals instead of
+        // waiting out the 24h TTL.
         const cached = currentState.scheduleData;
         const cacheUsable =
           !!cached &&
+          currentState.dataAgencyId === agencyId &&
           currentState.isDataFresh() &&
           !!cached.tripRouteMap &&
           Object.keys(cached.tripRouteMap).length > 0 &&
@@ -213,7 +240,7 @@ export const useScheduleStore = create<ScheduleStore>()(
         set({ loading: true, error: null });
 
         try {
-          const response = await fetch(SCHEDULE_CDN_URL, { cache: 'no-cache' });
+          const response = await fetch(scheduleUrlForAgency(agencyId), { cache: 'no-cache' });
 
           if (!response.ok) {
             throw new Error(`Schedule fetch failed with status ${response.status}`);
@@ -231,6 +258,7 @@ export const useScheduleStore = create<ScheduleStore>()(
 
           set({
             scheduleData: expanded,
+            dataAgencyId: agencyId,
             dataVersion: data.version ?? null,
             lastUpdated: Date.now(),
             loading: false,
@@ -241,18 +269,18 @@ export const useScheduleStore = create<ScheduleStore>()(
           get().resolveActiveServices();
         } catch (error) {
           const message = error instanceof Error ? error.message : 'Failed to load schedule';
-          const { scheduleData } = get();
+          const { scheduleData, dataAgencyId } = get();
 
-          if (scheduleData) {
-            // Req 3.4: CDN fetch failed but cache exists - keep using cached data.
-            // Reduced freshness is derivable via isDataFresh() returning false.
+          if (scheduleData && dataAgencyId === agencyId) {
+            // Req 3.4: CDN fetch failed but cache for THIS agency exists - keep
+            // using it. Reduced freshness is derivable via isDataFresh().
             console.warn(`${LOG_PREFIX} CDN fetch failed, using cached data: ${message}`);
             set({ loading: false, error: null });
           } else {
-            // Req 3.5: CDN fetch failed and no cache - expose error, disable
-            // schedule features. The app continues on GPS-only behavior.
+            // Req 3.5: CDN fetch failed and no usable cache - expose error,
+            // disable schedule features. The app continues on GPS-only behavior.
             console.error(`${LOG_PREFIX} CDN fetch failed, no cache available: ${message}`);
-            set({ loading: false, error: message, scheduleData: null });
+            set({ loading: false, error: message, scheduleData: null, dataAgencyId: null });
           }
         }
       },
@@ -371,6 +399,7 @@ export const useScheduleStore = create<ScheduleStore>()(
           error: null,
           lastUpdated: null,
           dataVersion: null,
+          dataAgencyId: null,
         }),
 
       clearError: () => set({ error: null }),
@@ -423,6 +452,7 @@ export const useScheduleStore = create<ScheduleStore>()(
       partialize: (state) => ({
         schedule: state.scheduleData ? compactifySchedule(state.scheduleData) : null,
         dataVersion: state.dataVersion,
+        dataAgencyId: state.dataAgencyId,
         lastUpdated: state.lastUpdated,
       }),
       merge: (persistedState, currentState) => {
@@ -430,6 +460,7 @@ export const useScheduleStore = create<ScheduleStore>()(
           | Partial<{
               schedule: CompactSchedulePayload | null;
               dataVersion: string | null;
+              dataAgencyId: number | null;
               lastUpdated: number | null;
             }>
           | undefined;
@@ -437,6 +468,7 @@ export const useScheduleStore = create<ScheduleStore>()(
           ...currentState,
           scheduleData: persisted?.schedule ? expandSchedule(persisted.schedule) : null,
           dataVersion: persisted?.dataVersion ?? null,
+          dataAgencyId: persisted?.dataAgencyId ?? null,
           lastUpdated: persisted?.lastUpdated ?? null,
         };
       },

@@ -7,8 +7,12 @@
 
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { useScheduleStore } from '../../stores/scheduleStore';
+import { useConfigStore } from '../../stores/configStore';
 import type { SchedulePayload, CalendarEntry } from '../../types/schedule';
 import { compactifySchedule } from '../../utils/schedule/schedulePayloadCodec';
+
+/** Tranzy agency_id with a registered GTFS feed (CTP Cluj). */
+const TEST_AGENCY_ID = 2;
 
 /** A calendar entry active on every weekday across a very wide date range. */
 function allDaysEntry(serviceId: string): CalendarEntry {
@@ -47,12 +51,16 @@ function resetStore() {
     error: null,
     lastUpdated: null,
     dataVersion: null,
+    dataAgencyId: null,
   });
 }
 
 describe('ScheduleStore', () => {
   beforeEach(() => {
     resetStore();
+    // The schedule layer is per-agency; configure an agency that has a feed so
+    // loadSchedule fetches rather than degrading to GPS-only.
+    useConfigStore.setState({ agency_id: TEST_AGENCY_ID });
     vi.restoreAllMocks();
   });
 
@@ -97,7 +105,7 @@ describe('ScheduleStore', () => {
       await useScheduleStore.getState().loadSchedule();
 
       const state = useScheduleStore.getState();
-      expect(fetchMock).toHaveBeenCalledWith('/data/schedule.json', { cache: 'no-cache' });
+      expect(fetchMock).toHaveBeenCalledWith('/data/schedule/2.json', { cache: 'no-cache' });
       expect(state.scheduleData).toEqual(SAMPLE_PAYLOAD);
       expect(state.dataVersion).toBe(SAMPLE_PAYLOAD.version);
       expect(state.lastUpdated).not.toBeNull();
@@ -111,6 +119,7 @@ describe('ScheduleStore', () => {
 
       useScheduleStore.setState({
         scheduleData: SAMPLE_PAYLOAD,
+        dataAgencyId: TEST_AGENCY_ID,
         lastUpdated: Date.now() - 1000,
       });
 
@@ -126,6 +135,7 @@ describe('ScheduleStore', () => {
       // Stale cache so it attempts a refetch
       useScheduleStore.setState({
         scheduleData: SAMPLE_PAYLOAD,
+        dataAgencyId: TEST_AGENCY_ID,
         dataVersion: SAMPLE_PAYLOAD.version,
         lastUpdated: Date.now() - (25 * 60 * 60 * 1000),
       });
@@ -301,6 +311,7 @@ describe('ScheduleStore', () => {
           calendar: [allDaysEntry('always')],
           calendarExceptions: [],
         },
+        dataAgencyId: TEST_AGENCY_ID,
         lastUpdated: Date.now() - 1000,
         activeServiceIds: new Set<string>(),
         lastResolvedDate: null,

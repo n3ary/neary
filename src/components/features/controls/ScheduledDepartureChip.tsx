@@ -12,6 +12,12 @@ import { useState } from 'react';
 import { Chip, Snackbar, Alert } from '@mui/material';
 
 interface ScheduledDepartureChipProps {
+  /**
+   * Whether this scheduled vehicle has DEPARTED and is shown as a moving
+   * estimate (ghost) vs a FUTURE departure still waiting at its start station.
+   * Controls the explanatory toast.
+   */
+  isGhost?: boolean;
   /** Optional callback when info is clicked */
   onInfoClick?: () => void;
 }
@@ -19,9 +25,11 @@ interface ScheduledDepartureChipProps {
 /**
  * ScheduledDepartureChip - Badge for scheduled (non-GPS) departure rows
  *
+ * @param isGhost - True when the vehicle has departed (moving estimate)
  * @param onInfoClick - Optional callback for click events
  */
 export const ScheduledDepartureChip: FC<ScheduledDepartureChipProps> = ({
+  isGhost = false,
   onInfoClick,
 }) => {
   const [toastOpen, setToastOpen] = useState(false);
@@ -66,7 +74,9 @@ export const ScheduledDepartureChip: FC<ScheduledDepartureChipProps> = ({
           variant="filled"
           sx={{ width: '100%' }}
         >
-          Next scheduled departure from this start station. No live GPS yet.
+          {isGhost
+            ? 'Estimated position from the schedule — this vehicle has no live GPS tracking (yet).'
+            : 'Next scheduled departure from this start station. No live GPS yet.'}
         </Alert>
       </Snackbar>
     </>

@@ -15,12 +15,20 @@ import type { ConfidenceLevel } from '../utils/core/stringConstants';
 // ============================================================================
 
 /**
- * The complete schedule payload served from the CDN (`/data/schedule.json`).
- * Produced by the daily Netlify schedule pipeline and cached client-side.
+ * The complete schedule payload served from the CDN
+ * (`/data/schedule/<agencyId>.json`). Produced by the daily Netlify schedule
+ * pipeline (one blob per agency) and cached client-side.
  */
 export interface SchedulePayload {
   /** ISO timestamp of when the payload was last processed */
   version: string;
+  /**
+   * Tranzy agency_id this payload belongs to. Optional for backward
+   * compatibility with older payloads/fixtures; the pipeline always stamps it
+   * so the client can detect and self-heal a cache from a different agency
+   * (e.g. after the user switches agency in settings).
+   */
+  agencyId?: number;
   /** Stop times keyed by trip_id for O(1) lookup */
   stopTimes: Record<string, ScheduleStopTime[]>;
   /** Calendar entries from calendar.txt */
@@ -99,6 +107,11 @@ export interface TripScheduleRef {
 export interface CompactSchedulePayload {
   /** ISO timestamp of when the payload was last processed. */
   version: string;
+  /**
+   * Tranzy agency_id this payload belongs to (stamped by the pipeline).
+   * Optional for backward compatibility with older payloads/fixtures.
+   */
+  agencyId?: number;
   /** Unique relative stop-time patterns (a/d are offsets from trip start). */
   patterns: PatternStop[][];
   /** Per-trip reference: trip_id → {patternIndex, startMinutes, serviceId}. */

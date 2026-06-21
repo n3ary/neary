@@ -515,7 +515,7 @@ const VehicleCard: FC<VehicleCardProps> = memo(({ vehicle, route, trip, arrivalT
                 cursor: 'pointer',
               }}
             />
-            <ScheduledDepartureChip />
+            <ScheduledDepartureChip isGhost={vehicle.isGhost === true} />
             <VehicleDropOffChip isDropOffOnly={isDropOffOnly} />
           </Box>
         )}
