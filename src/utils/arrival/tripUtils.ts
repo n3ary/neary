@@ -4,6 +4,7 @@
  */
 
 import { estimateVehicleProgressWithStops } from './vehicleProgressUtils';
+import { calculateDistance } from '../location/distanceUtils';
 import type {
   TranzyVehicleResponse,
   TranzyStopResponse,
@@ -64,24 +65,46 @@ export function getIntermediateStopData(
 
   // Use existing vehicle progress estimation to find where vehicle actually is
   let vehicleCurrentStopIndex = 0;
-  
-  try {
-    const vehicleProgress = estimateVehicleProgressWithStops(vehicle, tripStopTimes, stops);
-    
-    if (vehicleProgress.segmentBetweenStops) {
-      // Vehicle is between two stops - find the index of the next stop
-      const nextStopSequence = vehicleProgress.segmentBetweenStops.nextStop.stop_sequence;
-      
-      // Find the index of this next stop in our trip sequence
-      const nextStopIndex = tripStopTimes.findIndex(st => st.stop_sequence === nextStopSequence);
-      if (nextStopIndex !== -1) {
-        vehicleCurrentStopIndex = nextStopIndex;
-      }
+  let resolved = false;
+
+  // FIRST: if the vehicle is AT a stop (within proximity), use the NEXT stop as
+  // the start of the remaining intermediates — mirroring getNextStationForVehicle.
+  // Without this, a vehicle stopped at a stop yields no "between stops" segment
+  // and we'd fall back to index 0 (trip start), counting EVERY stop from the
+  // start as intermediate and inflating dwell time (Issue: late-route bus at a
+  // stop showed a far-too-large ETA).
+  const STATION_PROXIMITY_THRESHOLD = 50; // meters
+  const vehiclePos = { lat: vehicle.latitude, lon: vehicle.longitude };
+  for (let i = 0; i < tripStopTimes.length; i++) {
+    const sd = stops.find(s => s.stop_id === tripStopTimes[i].stop_id);
+    if (!sd) continue;
+    if (calculateDistance(vehiclePos, { lat: sd.stop_lat, lon: sd.stop_lon }) <= STATION_PROXIMITY_THRESHOLD) {
+      vehicleCurrentStopIndex = i + 1; // remaining intermediates start after this stop
+      resolved = true;
+      break;
     }
-  } catch (error) {
-    // Fallback: assume vehicle is at beginning of trip
-    console.warn('Could not determine vehicle position, using trip start as fallback');
-    vehicleCurrentStopIndex = 0;
+  }
+
+  // SECOND: not at a stop — use segment-based progress (between two stops).
+  if (!resolved) {
+    try {
+      const vehicleProgress = estimateVehicleProgressWithStops(vehicle, tripStopTimes, stops);
+
+      if (vehicleProgress.segmentBetweenStops) {
+        // Vehicle is between two stops - find the index of the next stop
+        const nextStopSequence = vehicleProgress.segmentBetweenStops.nextStop.stop_sequence;
+
+        // Find the index of this next stop in our trip sequence
+        const nextStopIndex = tripStopTimes.findIndex(st => st.stop_sequence === nextStopSequence);
+        if (nextStopIndex !== -1) {
+          vehicleCurrentStopIndex = nextStopIndex;
+        }
+      }
+    } catch (error) {
+      // Fallback: assume vehicle is at beginning of trip
+      console.warn('Could not determine vehicle position, using trip start as fallback');
+      vehicleCurrentStopIndex = 0;
+    }
   }
 
   // Get intermediate stops between vehicle's current position and target
