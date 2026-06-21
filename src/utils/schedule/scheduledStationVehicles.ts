@@ -44,12 +44,15 @@ import type { Coordinates } from '../location/distanceUtils';
 const DEFAULT_WINDOW_MINUTES = 90;
 
 /**
- * How long (minutes) a just-departed scheduled run keeps showing as "Departed"
- * at a stop it has left — mirrors a live GPS bus lingering as "Departed" right
- * after it pulls out, so the most-recent departure is still visible at its
- * start/terminus station.
+ * Cap (minutes) on how long a just-departed scheduled run keeps showing as
+ * "Departed" at a stop it has left. The effective window is
+ * `min(routeHeadway, this cap)`, so it always represents the immediately
+ * previous run: on a high-frequency route a 10-min-old departure is two buses
+ * ago (stale), so the headway shortens it; on an infrequent route the cap keeps
+ * it from lingering for the whole trip. Mirrors a live GPS bus that fades from
+ * "Departed" as it moves away.
  */
-const DEPARTED_GHOST_WINDOW_MINUTES = 10;
+const DEPARTED_GHOST_WINDOW_CAP_MINUTES = 10;
 
 /** stop_id -> the trips serving it, with that stop's stop-time entry. */
 export type ScheduleStopIndex = Map<
@@ -363,15 +366,22 @@ export function buildScheduledStationVehicles(
         // Ghost: trip is en route (departed its start, not yet finished).
         if (nowMin > lastArr) continue; // trip already finished
 
+        const headway = getHeadway(routeId);
+
         // This stop is either AHEAD (approaching) or recently BEHIND (just
         // departed this stop — shown as "Departed", mirroring a live GPS bus
-        // that just left). Skip stops passed longer ago than the window.
+        // that just left). The "just departed" window is min(headway, cap), so
+        // it always represents the immediately previous run.
         const ahead = entry.a >= nowMin;
         const minutesUntil = ahead ? entry.a - nowMin : entry.d - nowMin; // negative when behind
         if (ahead) {
           if (minutesUntil > windowMinutes) continue;
         } else {
-          if (nowMin - entry.d > DEPARTED_GHOST_WINDOW_MINUTES) continue;
+          const departedWindow = Math.min(
+            headway ?? DEPARTED_GHOST_WINDOW_CAP_MINUTES,
+            DEPARTED_GHOST_WINDOW_CAP_MINUTES,
+          );
+          if (nowMin - entry.d > departedWindow) continue;
         }
 
         const pos = interpolateGhostPosition(stopTimes, stopsById, nowMin);
@@ -380,7 +390,6 @@ export function buildScheduledStationVehicles(
         // Suppress the ghost when the live feed already covers this run:
         // positionally (a GPS vehicle on the route is within the headway-scaled
         // distance) or on a high-frequency route that already has GPS vehicles.
-        const headway = getHeadway(routeId);
         const routeVehiclePos = positionsOf(routeId);
         if (shouldSuppressGhost(headway, routeVehiclePos.length > 0, { lat: pos.lat, lon: pos.lon }, routeVehiclePos)) {
           continue;
