@@ -36,6 +36,18 @@ export interface StationBoardParams {
   /** When set, only departures at/after this minute-of-day are kept (Today). */
   fromMinutes?: number | null;
   routes: TranzyRouteResponse[];
+  /** When set, keep only departures of this route. */
+  routeId?: number | null;
+  /** When set, keep only departures in this GTFS direction (0/1). */
+  directionId?: number | null;
+}
+
+/** GTFS direction (0/1) encoded as the 2nd token of the trip id, or null. */
+function parseDirection(tripId: string): number | null {
+  const token = tripId.split('_')[1];
+  if (token === '0') return 0;
+  if (token === '1') return 1;
+  return null;
 }
 
 /** Format minutes-since-midnight as `HH:MM` (24h, wraps past-midnight service). */
@@ -50,7 +62,7 @@ export function formatBoardTime(minutes: number): string {
  * Build the scheduled departure board for a station on a given day.
  */
 export function buildStationDepartureBoard(params: StationBoardParams): BoardDeparture[] {
-  const { scheduleData, stopId, date, fromMinutes = null, routes } = params;
+  const { scheduleData, stopId, date, fromMinutes = null, routes, routeId = null, directionId = null } = params;
   if (!scheduleData) return [];
 
   const routeMap =
@@ -69,6 +81,10 @@ export function buildStationDepartureBoard(params: StationBoardParams): BoardDep
     const serviceId = scheduleData.tripServiceMap[tripId] ?? '';
     if (!active.has(serviceId)) continue;
 
+    const tripRouteId = routeMap[tripId] ?? null;
+    if (routeId != null && tripRouteId !== routeId) continue;
+    if (directionId != null && parseDirection(tripId) !== directionId) continue;
+
     // Exclude the terminus stop: a trip that ENDS here doesn't depart onward.
     const stopTimes = scheduleData.stopTimes[tripId];
     if (!stopTimes || stopTimes.length === 0) continue;
@@ -79,11 +95,10 @@ export function buildStationDepartureBoard(params: StationBoardParams): BoardDep
     const dep = entry.d;
     if (fromMinutes != null && dep < fromMinutes) continue;
 
-    const routeId = routeMap[tripId] ?? null;
     board.push({
       tripId,
-      routeId,
-      routeShortName: routeId != null ? routesById.get(routeId)?.route_short_name ?? String(routeId) : '?',
+      routeId: tripRouteId,
+      routeShortName: tripRouteId != null ? routesById.get(tripRouteId)?.route_short_name ?? String(tripRouteId) : '?',
       headsign: headsignMap[tripId] ?? '',
       departureMinutes: dep,
     });

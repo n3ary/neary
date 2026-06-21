@@ -1,11 +1,13 @@
 /**
  * ScheduleBoardDialog - full-screen Today / Tomorrow scheduled departure board
- * for a station, opened from the "Today schedule" / "Tomorrow schedule" buttons
- * on a scheduled departure card.
+ * for a single route + direction at a station, opened from the "Today schedule"
+ * / "Tomorrow schedule" buttons on a scheduled departure card.
  *
  *  - Today    : upcoming scheduled departures from this station (>= now).
  *  - Tomorrow : all of tomorrow's scheduled departures.
  *
+ * The route is shown as a badge in the title and the destination as a subtitle,
+ * so the rows are just a compact two-column grid of departure times.
  * Schedule-only (GTFS); no live GPS. Degrades gracefully when no schedule data.
  */
 
@@ -13,9 +15,9 @@ import type { FC } from 'react';
 import { useMemo, useState, useEffect } from 'react';
 import {
   Dialog, DialogTitle, DialogContent, IconButton, Typography, Box, Avatar,
-  ToggleButtonGroup, ToggleButton, List, ListItem, Stack, Divider,
+  ToggleButtonGroup, ToggleButton,
 } from '@mui/material';
-import { Close as CloseIcon, Schedule as ScheduleIcon } from '@mui/icons-material';
+import { Close as CloseIcon } from '@mui/icons-material';
 import { useScheduleStore } from '../../../stores/scheduleStore';
 import { useTripStore } from '../../../stores/tripStore';
 import { useRouteStore } from '../../../stores/routeStore';
@@ -29,16 +31,22 @@ interface ScheduleBoardDialogProps {
   open: boolean;
   initialMode: BoardMode;
   station: { stop_id: number; stop_name: string } | null;
+  /** Route + direction this board is scoped to (from the scheduled card). */
+  routeId: number | null;
+  routeShortName: string;
+  headsign: string;
+  directionId: number | null;
   onClose: () => void;
 }
 
-export const ScheduleBoardDialog: FC<ScheduleBoardDialogProps> = ({ open, initialMode, station, onClose }) => {
+export const ScheduleBoardDialog: FC<ScheduleBoardDialogProps> = ({
+  open, initialMode, station, routeId, routeShortName, headsign, directionId, onClose,
+}) => {
   const [mode, setMode] = useState<BoardMode>(initialMode);
   const { scheduleData } = useScheduleStore();
   const { trips } = useTripStore();
   const { routes } = useRouteStore();
 
-  // Sync the toggle to whichever button opened the dialog.
   useEffect(() => {
     if (open) setMode(initialMode);
   }, [open, initialMode]);
@@ -47,35 +55,26 @@ export const ScheduleBoardDialog: FC<ScheduleBoardDialogProps> = ({ open, initia
     if (!open || !station) return [];
     const now = new Date();
     const tripRouteMap = buildTripRouteMap(trips);
+    const common = { scheduleData, tripRouteMap, stopId: station.stop_id, routes, routeId, directionId };
     if (mode === 'today') {
-      return buildStationDepartureBoard({
-        scheduleData,
-        tripRouteMap,
-        stopId: station.stop_id,
-        date: now,
-        fromMinutes: minutesSinceMidnight(now),
-        routes,
-      });
+      return buildStationDepartureBoard({ ...common, date: now, fromMinutes: minutesSinceMidnight(now) });
     }
     const tomorrow = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1, 12, 0, 0);
-    return buildStationDepartureBoard({
-      scheduleData,
-      tripRouteMap,
-      stopId: station.stop_id,
-      date: tomorrow,
-      fromMinutes: null,
-      routes,
-    });
-  }, [open, station, mode, scheduleData, trips, routes]);
+    return buildStationDepartureBoard({ ...common, date: tomorrow, fromMinutes: null });
+  }, [open, station, mode, scheduleData, trips, routes, routeId, directionId]);
 
   return (
     <Dialog open={open} onClose={onClose} fullScreen>
       <DialogTitle sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', py: 1, px: 2 }}>
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, minWidth: 0 }}>
-          <ScheduleIcon color="primary" />
+          <Avatar sx={{ bgcolor: 'primary.main', width: 40, height: 40, fontSize: '1rem', fontWeight: 'bold', flexShrink: 0 }}>
+            {routeShortName}
+          </Avatar>
           <Box sx={{ minWidth: 0 }}>
             <Typography variant="h6" component="div" noWrap>{station?.stop_name ?? 'Schedule'}</Typography>
-            <Typography variant="caption" color="text.secondary">Scheduled departures</Typography>
+            <Typography variant="caption" color="text.secondary" noWrap component="div">
+              {headsign ? `→ ${headsign}` : 'Scheduled departures'}
+            </Typography>
           </Box>
         </Box>
         <IconButton edge="end" color="inherit" onClick={onClose} aria-label="close">
@@ -105,23 +104,29 @@ export const ScheduleBoardDialog: FC<ScheduleBoardDialogProps> = ({ open, initia
               : 'Schedule data is not available.'}
           </Typography>
         ) : (
-          <List dense disablePadding>
+          <Box
+            sx={{
+              display: 'grid',
+              gridTemplateColumns: { xs: 'repeat(2, 1fr)', sm: 'repeat(3, 1fr)' },
+              gap: 1,
+            }}
+          >
             {board.map((d, i) => (
-              <ListItem key={`${d.tripId}-${i}`} sx={{ px: 0, py: 0.75 }} divider={i < board.length - 1}>
-                <Stack direction="row" alignItems="center" spacing={2} sx={{ width: '100%' }}>
-                  <Typography variant="subtitle1" sx={{ fontVariantNumeric: 'tabular-nums', fontWeight: 600, minWidth: 56 }}>
-                    {formatBoardTime(d.departureMinutes)}
-                  </Typography>
-                  <Avatar sx={{ bgcolor: 'primary.main', width: 36, height: 36, fontSize: '0.9rem', fontWeight: 'bold', flexShrink: 0 }}>
-                    {d.routeShortName}
-                  </Avatar>
-                  <Typography variant="body2" sx={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                    {d.headsign || 'Scheduled departure'}
-                  </Typography>
-                </Stack>
-              </ListItem>
+              <Box
+                key={`${d.tripId}-${i}`}
+                sx={{
+                  py: 1,
+                  textAlign: 'center',
+                  borderRadius: 1,
+                  bgcolor: 'action.hover',
+                  fontVariantNumeric: 'tabular-nums',
+                  fontWeight: 600,
+                }}
+              >
+                {formatBoardTime(d.departureMinutes)}
+              </Box>
             ))}
-          </List>
+          </Box>
         )}
       </DialogContent>
     </Dialog>

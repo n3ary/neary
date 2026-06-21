@@ -668,6 +668,10 @@ const VehicleCard: FC<VehicleCardProps> = memo(({ vehicle, route, trip, arrivalT
         open={scheduleView !== null}
         initialMode={scheduleView ?? 'today'}
         station={station}
+        routeId={route?.route_id ?? vehicle.route_id ?? null}
+        routeShortName={routeShortName}
+        headsign={trip?.trip_headsign ?? headsign}
+        directionId={trip?.direction_id ?? null}
         onClose={() => setScheduleView(null)}
       />
       
