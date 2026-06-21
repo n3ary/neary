@@ -158,6 +158,18 @@ export const GHOST_VEHICLE_MATCH = {
   HIGH_FREQUENCY_HEADWAY_MINUTES: 10,
   // Window (minutes) around "now" used to estimate the route's headway.
   HEADWAY_WINDOW_MINUTES: 60,
+  // A live GPS vehicle within this distance of a run's START stop, moving slower
+  // than START_CLAIM_SPEED_KMH, is treated as the bus that will serve (or is
+  // serving, late) a departure from that stop. It "claims" the nearest run by
+  // scheduled time, suppressing that run's future/ghost card. This is what lets
+  // a vehicle waiting at the start (before its time) or a LATE bus that just
+  // pulled in cover its scheduled run even though the on-time interpolated
+  // ghost position would be far away (so the positional rule alone would miss it).
+  START_CLAIM_PROXIMITY_METERS: 150,
+  START_CLAIM_SPEED_KMH: 5,
+  // How late (minutes) a bus can be and still claim a past (already-departed)
+  // run from the start. Bounds the low-frequency "late bus" detection.
+  LATE_CLAIM_WINDOW_MINUTES: 45,
 } as const;
 
 /**

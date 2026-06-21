@@ -256,10 +256,19 @@ const VehicleCard: FC<VehicleCardProps> = memo(({ vehicle, route, trip, arrivalT
   const isFutureScheduled = isScheduled && vehicle.isGhost !== true;
 
   // Check if current station is the end station for this vehicle's trip.
-  // Scheduled vehicles are departures (never drop-off only).
-  const isDropOffOnly = !isScheduled && vehicle.trip_id && station?.stop_id
-    ? isStationEndForTrip(station.stop_id, vehicle.trip_id, stopTimes)
-    : false;
+  // Live vehicles use the Tranzy stop-time store; scheduled vehicles use their
+  // GTFS stop list (their trip isn't in the Tranzy set). A scheduled vehicle
+  // arriving at its terminus (e.g. an inbound ghost) IS drop-off only.
+  const isDropOffOnly = (() => {
+    if (!station?.stop_id || !vehicle.trip_id) return false;
+    if (isScheduled) {
+      const sts = scheduleData?.stopTimes?.[vehicle.trip_id];
+      if (!sts || sts.length === 0) return false;
+      const last = sts.reduce((a, b) => (b.q > a.q ? b : a));
+      return last.s === station.stop_id;
+    }
+    return isStationEndForTrip(station.stop_id, vehicle.trip_id, stopTimes);
+  })();
   
   // Get all data needed for the map dialog
   const { vehicles: allVehicles } = useVehicleStore();
@@ -502,6 +511,7 @@ const VehicleCard: FC<VehicleCardProps> = memo(({ vehicle, route, trip, arrivalT
               }}
             />
             <ScheduledDepartureChip />
+            <VehicleDropOffChip isDropOffOnly={isDropOffOnly} />
           </Box>
         )}
 

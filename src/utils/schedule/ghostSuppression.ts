@@ -22,6 +22,71 @@
 import { GHOST_VEHICLE_MATCH } from '../core/constants';
 import { calculateDistance, type Coordinates } from '../location/distanceUtils';
 
+/** A scheduled run's identity for start-station claiming. */
+export interface RunStart {
+  tripId: string;
+  /** First-stop departure, minutes since midnight. */
+  startMin: number;
+}
+
+/** A live GPS vehicle reduced to what start-station claiming needs. */
+export interface GpsVehicleLite {
+  position: Coordinates;
+  /** Predicted/current speed (km/h); ~0 means stopped/waiting. */
+  speed: number;
+}
+
+/**
+ * Determine which scheduled runs starting at a given stop are "covered" by a
+ * live GPS vehicle physically waiting at that start stop.
+ *
+ * A vehicle stopped within {@link GHOST_VEHICLE_MATCH.START_CLAIM_PROXIMITY_METERS}
+ * of the start stop is the bus that will serve a departure from there. With N
+ * such vehicles, the N runs whose scheduled start is nearest to `nowMin` (within
+ * the early window and the late window) are claimed — so a bus waiting before
+ * its time covers the imminent run (no duplicate future card), and a LATE bus
+ * that just pulled in covers the most-recent already-departed run (so its ghost
+ * is removed even though the on-time interpolated ghost is far down the route).
+ *
+ * @returns the subset of `runs` (by tripId) that are covered.
+ */
+export function claimRunsAtStart(
+  runs: RunStart[],
+  startStop: Coordinates,
+  routeVehicles: GpsVehicleLite[],
+  nowMin: number,
+  windowMinutes: number,
+): Set<string> {
+  const claimed = new Set<string>();
+  if (runs.length === 0) return claimed;
+
+  let stoppedAtStart = 0;
+  for (const v of routeVehicles) {
+    if (v.speed > GHOST_VEHICLE_MATCH.START_CLAIM_SPEED_KMH) continue;
+    let d: number;
+    try {
+      d = calculateDistance(v.position, startStop);
+    } catch {
+      continue;
+    }
+    if (d <= GHOST_VEHICLE_MATCH.START_CLAIM_PROXIMITY_METERS) stoppedAtStart++;
+  }
+  if (stoppedAtStart === 0) return claimed;
+
+  const eligible = runs
+    .filter(
+      (r) =>
+        r.startMin >= nowMin - GHOST_VEHICLE_MATCH.LATE_CLAIM_WINDOW_MINUTES &&
+        r.startMin <= nowMin + windowMinutes,
+    )
+    .sort((a, b) => Math.abs(a.startMin - nowMin) - Math.abs(b.startMin - nowMin));
+
+  for (let i = 0; i < Math.min(stoppedAtStart, eligible.length); i++) {
+    claimed.add(eligible[i].tripId);
+  }
+  return claimed;
+}
+
 /**
  * Estimate a route's scheduled headway (minutes between consecutive departures)
  * near `nowMin`, from the route's start-station departure times.

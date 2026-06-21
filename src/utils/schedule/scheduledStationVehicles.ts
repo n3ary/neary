@@ -36,7 +36,7 @@ import {
 } from '../vehicle/vehicleEnhancementUtils';
 import { calculateStationDensityCenter } from '../vehicle/stationDensityUtils';
 import { minutesSinceMidnight } from './activeServiceUtils';
-import { computeHeadwayMinutes, shouldSuppressGhost } from './ghostSuppression';
+import { computeHeadwayMinutes, shouldSuppressGhost, claimRunsAtStart, type RunStart, type GpsVehicleLite } from './ghostSuppression';
 import { generateStatusMessage } from '../arrival/statusUtils';
 import type { Coordinates } from '../location/distanceUtils';
 
@@ -236,18 +236,22 @@ export function buildScheduledStationVehicles(
   const nowMin = minutesSinceMidnight(now);
 
   // Per-route live GPS coverage, for ghost suppression (Req 7, 12):
-  //  - positions of live vehicles on the route (positional match), and
-  //  - whether the route has any live vehicle (high-frequency blanket rule).
-  const routeVehiclePositions = new Map<number, Coordinates[]>();
+  //  - lite vehicle (position + speed) per route, used for positional match,
+  //    high-frequency blanket rule, and start-station claiming.
+  const routeVehicles = new Map<number, GpsVehicleLite[]>();
   for (const v of realVehicles) {
     if (v.route_id === null || v.route_id === undefined) continue;
-    const arr = routeVehiclePositions.get(v.route_id) ?? [];
-    arr.push({ lat: v.latitude, lon: v.longitude });
-    routeVehiclePositions.set(v.route_id, arr);
+    const arr = routeVehicles.get(v.route_id) ?? [];
+    arr.push({ position: { lat: v.latitude, lon: v.longitude }, speed: v.speed ?? 0 });
+    routeVehicles.set(v.route_id, arr);
   }
+  const positionsOf = (routeId: number): Coordinates[] =>
+    (routeVehicles.get(routeId) ?? []).map((v) => v.position);
 
-  // Per-route active start-station departures (one pass), for headway/frequency.
+  // Per-route active start-station departures (one pass), for headway/frequency,
+  // plus per (route, start stop) run lists for start-station claiming.
   const routeStartDepartures = new Map<number, number[]>();
+  const runsByRouteStart = new Map<string, { routeId: number; startStopId: number; runs: RunStart[] }>();
   for (const [tripId, stopTimes] of Object.entries(scheduleData.stopTimes)) {
     const routeId = routeMap[tripId];
     if (routeId === undefined) continue;
@@ -258,6 +262,31 @@ export function buildScheduledStationVehicles(
     const arr = routeStartDepartures.get(routeId) ?? [];
     arr.push(bounds.first.d);
     routeStartDepartures.set(routeId, arr);
+
+    const key = `${routeId}:${bounds.first.s}`;
+    const group =
+      runsByRouteStart.get(key) ?? { routeId, startStopId: bounds.first.s, runs: [] };
+    group.runs.push({ tripId, startMin: bounds.first.d });
+    runsByRouteStart.set(key, group);
+  }
+
+  // Runs covered by a GPS vehicle waiting at their start stop (Req: waiting bus
+  // before departure, and LATE bus that just pulled in). These are suppressed
+  // regardless of the on-time interpolated ghost position.
+  const coveredRunIds = new Set<string>();
+  for (const { routeId, startStopId, runs } of runsByRouteStart.values()) {
+    const vehiclesOnRoute = routeVehicles.get(routeId);
+    if (!vehiclesOnRoute || vehiclesOnRoute.length === 0) continue;
+    const startStop = stopsById.get(startStopId);
+    if (!startStop) continue;
+    const claimed = claimRunsAtStart(
+      runs,
+      { lat: startStop.stop_lat, lon: startStop.stop_lon },
+      vehiclesOnRoute,
+      nowMin,
+      windowMinutes,
+    );
+    claimed.forEach((id) => coveredRunIds.add(id));
   }
 
   // Memoized headway per route (computed lazily as routes are encountered).
@@ -287,8 +316,9 @@ export function buildScheduledStationVehicles(
       const serviceId = scheduleData.tripServiceMap[tripId] ?? '';
       if (!activeServiceIds.has(serviceId)) continue;
 
-      // GPS wins: never synthesize a trip that has a live vehicle.
-      if (gpsVehicleTripIds.has(tripId)) continue;
+      // GPS wins: never synthesize a trip that has a live vehicle — either by
+      // exact trip id, or because a GPS bus is waiting at / late to its start.
+      if (gpsVehicleTripIds.has(tripId) || coveredRunIds.has(tripId)) continue;
 
       const stopTimes = scheduleData.stopTimes[tripId];
       const bounds = tripBounds(stopTimes);
@@ -330,8 +360,8 @@ export function buildScheduledStationVehicles(
         // positionally (a GPS vehicle on the route is within the headway-scaled
         // distance) or on a high-frequency route that already has GPS vehicles.
         const headway = getHeadway(routeId);
-        const routeVehicles = routeVehiclePositions.get(routeId) ?? [];
-        if (shouldSuppressGhost(headway, routeVehicles.length > 0, { lat: pos.lat, lon: pos.lon }, routeVehicles)) {
+        const routeVehiclePos = positionsOf(routeId);
+        if (shouldSuppressGhost(headway, routeVehiclePos.length > 0, { lat: pos.lat, lon: pos.lon }, routeVehiclePos)) {
           continue;
         }
 
