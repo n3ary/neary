@@ -763,7 +763,7 @@ const VehicleCard: FC<VehicleCardProps> = memo(({ vehicle, route, trip, arrivalT
               {vehicle.isGhost ? (
                 <Typography variant="body2" sx={{ fontSize: '0.875rem' }}>
                   Position is estimated from the timetable, based on the last scheduled
-                  stop at {formatAbsoluteTime(new Date(vehicle.timestamp).getTime())}.
+                  stop {formatAbsoluteTime(new Date(vehicle.timestamp).getTime())}.
                 </Typography>
               ) : (
                 <Typography variant="body2" sx={{ fontSize: '0.875rem' }}>
