@@ -458,10 +458,17 @@ function synthesizeStationVehicle(candidate: Candidate, deps: SynthDeps): Statio
     trip,
     arrivalTime: {
       estimatedMinutes: candidate.minutesUntil,
-      // Reuse the canonical GPS arrival text ("In X minutes") so scheduled and
-      // live vehicles share ONE ETA format; the "Scheduled" badge marks it as
-      // schedule-derived.
-      statusMessage: generateStatusMessage('in_minutes', candidate.minutesUntil),
+      // Single source of the scheduled ETA text. Reuses the canonical GPS
+      // "In X minutes" wording (generateStatusMessage) so scheduled and live
+      // share one format, with a friendlier boundary phrase at <1 min. The
+      // "Scheduled" badge marks it as schedule-derived. (No "(est.)": the time
+      // is the exact scheduled time, not a prediction.)
+      statusMessage:
+        candidate.minutesUntil < 1
+          ? candidate.departed
+            ? 'Arriving now'
+            : 'Departing now'
+          : generateStatusMessage('in_minutes', candidate.minutesUntil),
       confidence: 'low',
       calculationMethod: 'schedule',
     },

@@ -491,11 +491,7 @@ const VehicleCard: FC<VehicleCardProps> = memo(({ vehicle, route, trip, arrivalT
           <Box display="flex" alignItems="center" gap={1} sx={{ mb: 1.5 }}>
             <Chip
               icon={<ArrivalIcon />}
-              label={
-                (vehicle.scheduledDepartureMinutes ?? arrivalTime.estimatedMinutes) < 1
-                  ? (isFutureScheduled ? 'Departing now' : 'Arriving now')
-                  : arrivalTime.statusMessage
-              }
+              label={arrivalTime.statusMessage}
               color="info"
               variant="filled"
               size="small"
