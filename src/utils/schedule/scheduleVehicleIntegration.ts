@@ -168,7 +168,7 @@ export function combineVehiclesAndGhosts(
 
 import type { VehicleMatchResult } from '../../types/schedule';
 import type { ConfidenceLevel } from '../core/stringConstants';
-import { matchVehiclesToSchedule } from './vehicleMatchingUtils';
+import { matchVehiclesToSchedule, isHighFrequencyRoute } from './vehicleMatchingUtils';
 
 /**
  * Display-facing annotation derived from a {@link VehicleMatchResult}. Carries
@@ -214,15 +214,26 @@ export interface VehicleMatchingParams {
   currentMinutes: number;
 }
 
-/** Convert a raw match result into a display annotation. */
-function toAnnotation(result: VehicleMatchResult): VehicleMatchAnnotation {
+/**
+ * Convert a raw match result into a display annotation.
+ *
+ * When `skipDuplicateFlagging` is true (a high-frequency route, issue #24) the
+ * suspect-duplicate flag and its warning indicator are forced off so no vehicle
+ * is marked as a duplicate. The matched trip id and timing delta are preserved;
+ * only the (unreliable) duplicate signal is suppressed.
+ */
+function toAnnotation(
+  result: VehicleMatchResult,
+  skipDuplicateFlagging = false,
+): VehicleMatchAnnotation {
+  const isSuspectDuplicate = skipDuplicateFlagging ? false : result.isSuspectDuplicate;
   return {
     tripId: result.tripId,
     matchConfidence: result.matchConfidence,
-    isSuspectDuplicate: result.isSuspectDuplicate,
+    isSuspectDuplicate,
     timingDeltaMinutes: result.timingDeltaMinutes,
     // The warning indicator tracks the suspect-duplicate flag (Req 8.5).
-    showWarningIndicator: result.isSuspectDuplicate,
+    showWarningIndicator: isSuspectDuplicate,
   };
 }
 
@@ -257,10 +268,21 @@ export function applyScheduleMatching(
     currentMinutes,
   );
 
+  // Issue #24: on high-frequency routes (headway below the matching tolerance)
+  // legitimate vehicles routinely fall within tolerance of multiple trips, so
+  // suspect-duplicate flagging is unreliable and noisy. Skip it entirely for
+  // such routes — show every vehicle without a warning. Low-frequency routes
+  // keep normal duplicate detection.
+  const skipDuplicateFlagging = isHighFrequencyRoute(
+    activeTrips,
+    scheduleData,
+    currentMinutes,
+  );
+
   // `matchVehiclesToSchedule` returns one result per vehicle in input order.
   return vehicles.map((vehicle, index) => ({
     vehicle,
-    match: toAnnotation(results[index]),
+    match: toAnnotation(results[index], skipDuplicateFlagging),
   }));
 }
 
