@@ -515,7 +515,15 @@ const VehicleCard: FC<VehicleCardProps> = memo(({ vehicle, route, trip, arrivalT
                 cursor: 'pointer',
               }}
             />
-            <ScheduledDepartureChip isGhost={vehicle.isGhost === true} />
+            {/*
+              The "Scheduled" pill marks a row that has not yet started — it's
+              waiting at its start station. A GHOST (already departed, shown as
+              an estimated moving vehicle) is meant to look like a real bus
+              (just without live GPS), so the pill would only add noise. Tapping
+              the ETA chip above already opens the schedule for that
+              route+headsign with the recent past departure annotated.
+            */}
+            {vehicle.isGhost !== true && <ScheduledDepartureChip />}
             <VehicleDropOffChip isDropOffOnly={isDropOffOnly} />
           </Box>
         )}
@@ -665,17 +673,48 @@ const VehicleCard: FC<VehicleCardProps> = memo(({ vehicle, route, trip, arrivalT
         stopTimes={mapStopTimes}
       />
 
-      {/* Today / Tomorrow scheduled departure board */}
-      <ScheduleBoardDialog
-        open={scheduleView !== null}
-        initialMode={scheduleView ?? 'today'}
-        station={station}
-        routeId={route?.route_id ?? vehicle.route_id ?? null}
-        routeShortName={routeShortName}
-        headsign={trip?.trip_headsign ?? headsign}
-        directionId={trip?.direction_id ?? null}
-        onClose={() => setScheduleView(null)}
-      />
+      {/* Today / Tomorrow scheduled departure board.
+        *
+        * For a GHOST card (synthesized scheduled vehicle whose run is en route
+        * with no live GPS), the user wants to see the schedule for that run's
+        * START station — the place this bus departed from — not the station
+        * they're currently at (which may be mid-route or a terminus). For all
+        * other cards we keep the current behaviour (schedule for the station
+        * the card belongs to). The ghost's trip is also PINNED as the past
+        * entry so its scheduled departure shows as "Departed X min ago" in
+        * the first cell, even when it's older than the regular 10-min window.
+        */}
+      {(() => {
+        let dialogStation = station;
+        let pinnedPastTripId: string | null = null;
+        if (
+          vehicle.isGhost === true &&
+          vehicle.trip_id &&
+          scheduleData?.stopTimes?.[vehicle.trip_id]
+        ) {
+          const sts = scheduleData.stopTimes[vehicle.trip_id];
+          let firstSt = sts[0];
+          for (const st of sts) if (st.q < firstSt.q) firstSt = st;
+          const originStop = stops.find((s) => s.stop_id === firstSt.s);
+          if (originStop) {
+            dialogStation = { stop_id: originStop.stop_id, stop_name: originStop.stop_name };
+            pinnedPastTripId = vehicle.trip_id;
+          }
+        }
+        return (
+          <ScheduleBoardDialog
+            open={scheduleView !== null}
+            initialMode={scheduleView ?? 'today'}
+            station={dialogStation}
+            routeId={route?.route_id ?? vehicle.route_id ?? null}
+            routeShortName={routeShortName}
+            headsign={trip?.trip_headsign ?? headsign}
+            directionId={trip?.direction_id ?? null}
+            pinnedPastTripId={pinnedPastTripId}
+            onClose={() => setScheduleView(null)}
+          />
+        );
+      })()}
       
       {/* Data Age Toast */}
       <Snackbar
