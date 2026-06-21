@@ -34,7 +34,6 @@ import { useScheduleStore } from '../../../stores/scheduleStore';
 import { VehicleMapDialog } from '../maps/VehicleMapDialog';
 import { VehicleDropOffChip } from '../controls/VehicleDropOffChip';
 import { ScheduledDepartureChip } from '../controls/ScheduledDepartureChip';
-import { formatMinutesUntil } from '../../../utils/schedule/nextScheduledDepartureUtils';
 import type { StationVehicle } from '../../../types/stationFilter';
 import { useFavoritesStore } from '../../../stores/favoritesStore';
 
@@ -445,7 +444,7 @@ const VehicleCard: FC<VehicleCardProps> = memo(({ vehicle, route, trip, arrivalT
           <Box display="flex" alignItems="center" gap={1} sx={{ mb: 1.5 }}>
             <Chip
               icon={<ArrivalIcon />}
-              label={formatMinutesUntil(vehicle.scheduledDepartureMinutes ?? arrivalTime.estimatedMinutes)}
+              label={formatArrivalTime(arrivalTime)}
               color="info"
               variant="filled"
               size="small"

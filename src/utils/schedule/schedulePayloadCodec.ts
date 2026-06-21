@@ -80,6 +80,7 @@ export function compactifySchedule(payload: SchedulePayload): CompactSchedulePay
       t: base,
       s: payload.tripServiceMap[tripId] ?? '',
       r: payload.tripRouteMap?.[tripId],
+      h: payload.tripHeadsignMap?.[tripId],
     };
   }
 
@@ -100,6 +101,7 @@ export function expandSchedule(compact: CompactSchedulePayload): SchedulePayload
   const stopTimes: Record<string, ScheduleStopTime[]> = {};
   const tripServiceMap: Record<string, string> = {};
   const tripRouteMap: Record<string, number> = {};
+  const tripHeadsignMap: Record<string, string> = {};
 
   for (const [tripId, ref] of Object.entries(compact.trips)) {
     const pattern = compact.patterns[ref.p];
@@ -112,6 +114,7 @@ export function expandSchedule(compact: CompactSchedulePayload): SchedulePayload
     }));
     tripServiceMap[tripId] = ref.s;
     if (ref.r !== undefined) tripRouteMap[tripId] = ref.r;
+    if (ref.h !== undefined) tripHeadsignMap[tripId] = ref.h;
   }
 
   return {
@@ -121,6 +124,7 @@ export function expandSchedule(compact: CompactSchedulePayload): SchedulePayload
     calendarExceptions: compact.calendarExceptions,
     tripServiceMap,
     tripRouteMap,
+    tripHeadsignMap,
   };
 }
 

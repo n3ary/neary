@@ -178,6 +178,7 @@ export function transformToPayload(
     : [];
   const tripServiceMap = buildTripServiceMap(csvFiles[GTFS_FILENAMES.trips]);
   const tripRouteMap = buildTripRouteMap(csvFiles[GTFS_FILENAMES.trips]);
+  const tripHeadsignMap = buildTripHeadsignMap(csvFiles[GTFS_FILENAMES.trips]);
 
   return {
     version: now.toISOString(),
@@ -186,6 +187,7 @@ export function transformToPayload(
     calendarExceptions,
     tripServiceMap,
     tripRouteMap,
+    tripHeadsignMap,
   };
 }
 
@@ -319,6 +321,27 @@ function buildTripRouteMap(csv: string): Record<string, number> {
     if (!tripId || !routeRaw) continue;
     const routeId = Number(routeRaw);
     if (Number.isFinite(routeId)) map[tripId] = routeId;
+  }
+
+  return map;
+}
+
+/**
+ * Build the `tripHeadsignMap` (trip_id → trip_headsign) from trips.txt.
+ *
+ * The GTFS headsign is the trip's direction-specific destination text. The
+ * client uses it so a scheduled departure shows its OWN destination rather than
+ * a heuristic (e.g. the last stop's name, which can collide with other routes).
+ */
+function buildTripHeadsignMap(csv: string): Record<string, string> {
+  const { rows } = parseCsv(csv);
+  const map: Record<string, string> = {};
+
+  for (const row of rows) {
+    const tripId = row['trip_id'];
+    const headsign = row['trip_headsign']?.trim();
+    if (!tripId || !headsign) continue;
+    map[tripId] = headsign;
   }
 
   return map;

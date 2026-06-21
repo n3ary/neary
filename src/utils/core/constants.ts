@@ -119,6 +119,34 @@ export const ARRIVAL_CONFIG = {
 } as const;
 
 /**
+ * Ghost vehicle matching & frequency-based suppression (Req 7, 12).
+ *
+ * A "ghost" is a scheduled departure that has begun (its scheduled departure
+ * passed) but has no live GPS vehicle. It is shown as a moving vehicle at a
+ * schedule-interpolated position UNLESS a real GPS vehicle is effectively the
+ * same run. Matching is positional: if a GPS vehicle on the same route is within
+ * `matchDistance` of the ghost's predicted position, the ghost is suppressed.
+ *
+ * The match distance scales with the route's scheduled headway near "now":
+ * low-frequency routes (long headway) tolerate a larger distance; high-frequency
+ * routes tolerate less. On high-frequency routes (headway below
+ * HIGH_FREQUENCY_HEADWAY_MINUTES) that already have ANY live GPS vehicle, ghosts
+ * are not shown at all — the live feed is dense enough that synthesized runs add
+ * only noise/duplicates.
+ */
+export const GHOST_VEHICLE_MATCH = {
+  // Default positional match distance (meters) at the ~10-min headway pivot.
+  BASE_DISTANCE_METERS: 500,
+  // Clamp bounds for the frequency-scaled match distance (meters).
+  MIN_DISTANCE_METERS: 250,
+  MAX_DISTANCE_METERS: 1500,
+  // Headway (minutes) at/below which a route is "high frequency".
+  HIGH_FREQUENCY_HEADWAY_MINUTES: 10,
+  // Window (minutes) around "now" used to estimate the route's headway.
+  HEADWAY_WINDOW_MINUTES: 60,
+} as const;
+
+/**
  * Location update configuration
  */
 export const LOCATION_CONFIG = {

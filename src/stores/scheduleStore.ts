@@ -202,7 +202,9 @@ export const useScheduleStore = create<ScheduleStore>()(
           !!cached &&
           currentState.isDataFresh() &&
           !!cached.tripRouteMap &&
-          Object.keys(cached.tripRouteMap).length > 0;
+          Object.keys(cached.tripRouteMap).length > 0 &&
+          !!cached.tripHeadsignMap &&
+          Object.keys(cached.tripHeadsignMap).length > 0;
         if (cacheUsable) {
           get().ensureActiveServicesForToday();
           return;

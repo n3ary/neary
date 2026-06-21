@@ -55,6 +55,7 @@ describe('schedulePayloadCodec', () => {
         { A: 'LV', B: 'LV', D: 'D' },
       ),
       tripRouteMap: { A: 42, B: 42, D: 7 },
+      tripHeadsignMap: { A: 'North', B: 'North', D: 'South' },
     };
     expect(expandSchedule(compactifySchedule(p))).toEqual(p);
   });

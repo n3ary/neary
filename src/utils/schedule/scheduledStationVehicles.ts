@@ -36,6 +36,9 @@ import {
 } from '../vehicle/vehicleEnhancementUtils';
 import { calculateStationDensityCenter } from '../vehicle/stationDensityUtils';
 import { minutesSinceMidnight } from './activeServiceUtils';
+import { computeHeadwayMinutes, shouldSuppressGhost } from './ghostSuppression';
+import { generateStatusMessage } from '../arrival/statusUtils';
+import type { Coordinates } from '../location/distanceUtils';
 
 /** Default look-ahead window for scheduled departures/arrivals, in minutes. */
 const DEFAULT_WINDOW_MINUTES = 90;
@@ -86,6 +89,22 @@ function tripBounds(
     if (st.q > last.q) last = st;
   }
   return { first, last };
+}
+
+/**
+ * Resolve a scheduled trip's destination headsign. Prefers the authoritative
+ * GTFS `trip_headsign` (per trip/direction); falls back to the last stop's name
+ * for older payloads that don't carry headsigns.
+ */
+function resolveHeadsign(
+  scheduleData: SchedulePayload,
+  tripId: string,
+  stopsById: Map<number, TranzyStopResponse>,
+  lastStopId: number,
+): string {
+  const fromGtfs = scheduleData.tripHeadsignMap?.[tripId];
+  if (fromGtfs) return fromGtfs;
+  return stopsById.get(lastStopId)?.stop_name ?? '';
 }
 
 /** Stable, collision-resistant negative id for a synthetic vehicle from its trip id. */
@@ -216,13 +235,50 @@ export function buildScheduledStationVehicles(
   const stationDensityCenter = calculateStationDensityCenter(stops);
   const nowMin = minutesSinceMidnight(now);
 
+  // Per-route live GPS coverage, for ghost suppression (Req 7, 12):
+  //  - positions of live vehicles on the route (positional match), and
+  //  - whether the route has any live vehicle (high-frequency blanket rule).
+  const routeVehiclePositions = new Map<number, Coordinates[]>();
+  for (const v of realVehicles) {
+    if (v.route_id === null || v.route_id === undefined) continue;
+    const arr = routeVehiclePositions.get(v.route_id) ?? [];
+    arr.push({ lat: v.latitude, lon: v.longitude });
+    routeVehiclePositions.set(v.route_id, arr);
+  }
+
+  // Per-route active start-station departures (one pass), for headway/frequency.
+  const routeStartDepartures = new Map<number, number[]>();
+  for (const [tripId, stopTimes] of Object.entries(scheduleData.stopTimes)) {
+    const routeId = routeMap[tripId];
+    if (routeId === undefined) continue;
+    const serviceId = scheduleData.tripServiceMap[tripId] ?? '';
+    if (!activeServiceIds.has(serviceId)) continue;
+    const bounds = tripBounds(stopTimes);
+    if (!bounds) continue;
+    const arr = routeStartDepartures.get(routeId) ?? [];
+    arr.push(bounds.first.d);
+    routeStartDepartures.set(routeId, arr);
+  }
+
+  // Memoized headway per route (computed lazily as routes are encountered).
+  const headwayByRoute = new Map<number, number | null>();
+  const getHeadway = (routeId: number): number | null => {
+    if (headwayByRoute.has(routeId)) return headwayByRoute.get(routeId)!;
+    const h = computeHeadwayMinutes(routeStartDepartures.get(routeId) ?? [], nowMin);
+    headwayByRoute.set(routeId, h);
+    return h;
+  };
+
   for (const stopId of stopIds) {
     const entries = index.get(stopId);
     if (!entries || entries.length === 0) continue;
 
-    // Keep only the soonest scheduled trip per route at this station to mirror
-    // the live board (one card per route) and feed the departed-dedup cleanly.
-    const perRoute = new Map<number, Candidate>();
+    // Per route+direction, keep the soonest FUTURE departure AND the soonest
+    // departed GHOST separately. The user wants both visible (a just-departed
+    // run with no GPS plus the next upcoming one), and keying by direction stops
+    // an arriving inbound run from masking the outbound departure at a station
+    // that is a start for one direction and a terminus for the other.
+    const perKey = new Map<string, { future?: Candidate; ghost?: Candidate }>();
 
     for (const { tripId, entry } of entries) {
       const routeId = routeMap[tripId];
@@ -260,7 +316,7 @@ export function buildScheduledStationVehicles(
           departed: false,
           position: { lat: startStop.stop_lat, lon: startStop.stop_lon },
           lastKnownMin: nowMin,
-          headsign: stopsById.get(bounds.last.s)?.stop_name ?? '',
+          headsign: resolveHeadsign(scheduleData, tripId, stopsById, bounds.last.s),
         };
       } else {
         // Ghost: trip is en route. Show at not-yet-passed stops only.
@@ -269,6 +325,16 @@ export function buildScheduledStationVehicles(
         if (minutesUntil < 0 || minutesUntil > windowMinutes) continue;
         const pos = interpolateGhostPosition(stopTimes, stopsById, nowMin);
         if (!pos) continue;
+
+        // Suppress the ghost when the live feed already covers this run:
+        // positionally (a GPS vehicle on the route is within the headway-scaled
+        // distance) or on a high-frequency route that already has GPS vehicles.
+        const headway = getHeadway(routeId);
+        const routeVehicles = routeVehiclePositions.get(routeId) ?? [];
+        if (shouldSuppressGhost(headway, routeVehicles.length > 0, { lat: pos.lat, lon: pos.lon }, routeVehicles)) {
+          continue;
+        }
+
         candidate = {
           tripId,
           routeId,
@@ -277,30 +343,42 @@ export function buildScheduledStationVehicles(
           departed: true,
           position: { lat: pos.lat, lon: pos.lon },
           lastKnownMin: pos.lastDepartedMin,
-          headsign: stopsById.get(bounds.last.s)?.stop_name ?? '',
+          headsign: resolveHeadsign(scheduleData, tripId, stopsById, bounds.last.s),
         };
       }
 
-      const existing = perRoute.get(routeId);
-      if (!existing || candidate.minutesUntil < existing.minutesUntil) {
-        perRoute.set(routeId, candidate);
+      // Key by route + direction so the two directions don't collapse together.
+      const dirKey = parseDirection(tripId) ?? candidate.headsign;
+      const key = `${routeId}:${dirKey}`;
+      const slot = perKey.get(key) ?? {};
+      if (candidate.departed) {
+        if (!slot.ghost || candidate.minutesUntil < slot.ghost.minutesUntil) {
+          slot.ghost = candidate;
+        }
+      } else if (!slot.future || candidate.minutesUntil < slot.future.minutesUntil) {
+        slot.future = candidate;
       }
+      perKey.set(key, slot);
     }
 
-    if (perRoute.size === 0) continue;
+    if (perKey.size === 0) continue;
 
     const stationVehicles: StationVehicle[] = [];
-    for (const candidate of perRoute.values()) {
-      stationVehicles.push(
-        synthesizeStationVehicle(candidate, {
-          routesById,
-          tranzyTrips,
-          stops,
-          stationDensityCenter,
-          realVehicles,
-          now,
-        }),
-      );
+    for (const slot of perKey.values()) {
+      // Emit the departed ghost AND the next future departure (Req: show both).
+      const candidates = [slot.ghost, slot.future].filter((c): c is Candidate => !!c);
+      for (const candidate of candidates) {
+        stationVehicles.push(
+          synthesizeStationVehicle(candidate, {
+            routesById,
+            tranzyTrips,
+            stops,
+            stationDensityCenter,
+            realVehicles,
+            now,
+          }),
+        );
+      }
     }
     result.set(stopId, stationVehicles);
   }
@@ -379,7 +457,10 @@ function synthesizeStationVehicle(candidate: Candidate, deps: SynthDeps): Statio
     trip,
     arrivalTime: {
       estimatedMinutes: candidate.minutesUntil,
-      statusMessage: candidate.departed ? 'Scheduled · en route' : 'Scheduled',
+      // Reuse the canonical GPS arrival text ("In X minutes") so scheduled and
+      // live vehicles share ONE ETA format; the "Scheduled" badge marks it as
+      // schedule-derived.
+      statusMessage: generateStatusMessage('in_minutes', candidate.minutesUntil),
       confidence: 'low',
       calculationMethod: 'schedule',
     },

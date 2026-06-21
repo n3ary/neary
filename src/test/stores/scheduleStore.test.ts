@@ -35,6 +35,7 @@ const SAMPLE_PAYLOAD: SchedulePayload = {
   calendarExceptions: [],
   tripServiceMap: { trip_1: 'Mon-Fri' },
   tripRouteMap: { trip_1: 24 },
+  tripHeadsignMap: { trip_1: 'Test Destination' },
 };
 
 function resetStore() {

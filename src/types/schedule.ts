@@ -36,6 +36,13 @@ export interface SchedulePayload {
    * not depend on the partial Tranzy `/trips` set.
    */
   tripRouteMap?: Record<string, number>;
+  /**
+   * Mapping of trip_id to its destination headsign (from GTFS trips.txt).
+   * Optional for backward compatibility; the pipeline always populates it so a
+   * scheduled departure shows its OWN direction's destination rather than a
+   * heuristic derived from the last stop name.
+   */
+  tripHeadsignMap?: Record<string, string>;
 }
 
 /**
@@ -81,6 +88,8 @@ export interface TripScheduleRef {
   s: string;
   /** route_id (from trips.txt). Optional for backward compatibility. */
   r?: number;
+  /** trip_headsign (from trips.txt). Optional for backward compatibility. */
+  h?: string;
 }
 
 /**
