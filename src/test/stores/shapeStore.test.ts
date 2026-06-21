@@ -4,6 +4,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { useShapeStore } from '../../stores/shapeStore';
 
 // Mock the services and utilities
 vi.mock('../../services/shapesService.ts', () => ({
@@ -31,9 +32,7 @@ describe('ShapeStore', () => {
     mockLocalStorage.getItem.mockReturnValue(null);
   });
 
-  it('should have the same API as the original shapeStore', async () => {
-    // Import the simplified store
-    const { useShapeStore } = await import('../../stores/shapeStore.ts');
+  it('should have the same API as the original shapeStore', () => {
     const store = useShapeStore.getState();
 
     // Verify all required methods exist
@@ -56,7 +55,6 @@ describe('ShapeStore', () => {
   });
 
   it('should handle Map serialization correctly', () => {
-    const { useShapeStore } = require('../../stores/shapeStore.ts');
     const store = useShapeStore.getState();
 
     // Create test shape data
@@ -80,8 +78,6 @@ describe('ShapeStore', () => {
   });
 
   it('should load Map data from storage correctly', () => {
-    const { useShapeStore } = require('../../stores/shapeStore.ts');
-    
     // Mock stored data
     const testShape = {
       id: 'test-shape',
@@ -108,8 +104,6 @@ describe('ShapeStore', () => {
   });
 
   it('should maintain backward compatibility with existing API', () => {
-    const { useShapeStore } = require('../../stores/shapeStore.ts');
-    
     // Clear any existing state
     const store = useShapeStore.getState();
     store.clearShapes();
