@@ -474,7 +474,20 @@ export function buildScheduledStationVehicles(
       perKey.set(key, slot);
     }
 
-    if (perKey.size === 0) continue;
+    // When no candidates at all (service ended, all ghosts expired) but this
+    // stop IS a start station for some route, try tomorrow's first departure so
+    // the station still surfaces with a "Tomorrow HH:MM" card.
+    if (perKey.size === 0) {
+      // Check if this stop is a start station for any active route.
+      const tomorrowVehicles = synthesizeTomorrowOnlyCards(
+        stopId, scheduleData, routeMap, stopsById, routesById, tranzyTrips,
+        realVehicles, stops, stationDensityCenter, nowMin, now,
+      );
+      if (tomorrowVehicles.length > 0) {
+        result.set(stopId, tomorrowVehicles);
+      }
+      continue;
+    }
 
     const stationVehicles: StationVehicle[] = [];
     for (const [key, slot] of perKey.entries()) {
@@ -562,6 +575,87 @@ export function buildScheduledStationVehicles(
   }
 
   return result;
+}
+
+/**
+ * Standalone "tomorrow" card synthesizer for a start station with zero today
+ * candidates. Iterates active routes at this stop, checks if the stop is the
+ * FIRST stop for any trip tomorrow, and yields one synthetic future card per
+ * (route, direction) with "Tomorrow HH:MM".
+ */
+function synthesizeTomorrowOnlyCards(
+  stopId: number,
+  scheduleData: SchedulePayload,
+  routeMap: Record<string, number>,
+  stopsById: Map<number, TranzyStopResponse>,
+  routesById: Map<number, TranzyRouteResponse>,
+  tranzyTrips: TranzyTripResponse[],
+  realVehicles: EnhancedVehicleData[],
+  stops: TranzyStopResponse[],
+  stationDensityCenter: { lat: number; lon: number },
+  nowMin: number,
+  now: Date,
+): StationVehicle[] {
+  const tomorrow = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1, 0, 0, 0);
+  const tomorrowActive = resolveActiveServicesForDate(
+    scheduleData.calendar,
+    scheduleData.calendarExceptions,
+    tomorrow,
+  );
+
+  // Find earliest tomorrow departure per (route, direction) starting at this stop.
+  const earliest = new Map<string, { tripId: string; startMin: number; routeId: number; headsign: string }>();
+  for (const [tripId, sts] of Object.entries(scheduleData.stopTimes)) {
+    const routeId = routeMap[tripId];
+    if (routeId === undefined) continue;
+    const svcId = scheduleData.tripServiceMap[tripId] ?? '';
+    if (!tomorrowActive.has(svcId)) continue;
+    const bounds = tripBounds(sts);
+    if (!bounds || bounds.first.s !== stopId) continue;
+    const dir = parseDirection(tripId) ?? 'x';
+    const key = `${routeId}:${dir}`;
+    const existing = earliest.get(key);
+    if (!existing || bounds.first.d < existing.startMin) {
+      earliest.set(key, {
+        tripId,
+        startMin: bounds.first.d,
+        routeId,
+        headsign: resolveHeadsign(scheduleData, tripId, stopsById, bounds.last.s),
+      });
+    }
+  }
+
+  if (earliest.size === 0) return [];
+
+  const startStop = stopsById.get(stopId);
+  if (!startStop) return [];
+
+  const vehicles: StationVehicle[] = [];
+  for (const entry of earliest.values()) {
+    const candidate: Candidate = {
+      tripId: entry.tripId,
+      routeId: entry.routeId,
+      serviceId: scheduleData.tripServiceMap[entry.tripId] ?? '',
+      minutesUntil: (24 * 60 - nowMin) + entry.startMin,
+      kind: 'future',
+      departed: false,
+      position: { lat: startStop.stop_lat, lon: startStop.stop_lon },
+      lastKnownMin: nowMin,
+      headsign: entry.headsign,
+      tomorrowDepartureMin: entry.startMin,
+    };
+    vehicles.push(
+      synthesizeStationVehicle(candidate, {
+        routesById,
+        tranzyTrips,
+        stops,
+        stationDensityCenter,
+        realVehicles,
+        now,
+      }),
+    );
+  }
+  return vehicles;
 }
 
 interface SynthDeps {

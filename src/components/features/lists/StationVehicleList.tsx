@@ -352,6 +352,11 @@ const VehicleCard: FC<VehicleCardProps> = memo(({ vehicle, route, trip, arrivalT
   // accessibility) for schedule-view buttons.
   const isFutureScheduled = isScheduled && vehicle.isGhost !== true;
 
+  // A "tomorrow" scheduled vehicle: its status message starts with "Tomorrow"
+  // (synthesized when no more today departures exist for that route at a start
+  // station). These should open the schedule in "tomorrow" mode, not "today".
+  const isTomorrowVehicle = isFutureScheduled && arrivalTime?.statusMessage?.startsWith('Tomorrow');
+
   // Whether the current station is the trip's terminus — passengers can't
   // board, so the row is shown demoted with a "Drop off only" chip and is
   // also pushed to the bottom of the list by the sort/grouping. Same util
@@ -531,11 +536,6 @@ const VehicleCard: FC<VehicleCardProps> = memo(({ vehicle, route, trip, arrivalT
         >
           {isFutureScheduled ? (
             <>
-              {/*
-                One button opens the Today schedule overlay which already
-                exposes a Today / Tomorrow toggle inside the dialog, so the
-                second card-level "Tomorrow schedule" button was redundant.
-              */}
               <Button
                 size="small"
                 variant="outlined"
@@ -548,10 +548,10 @@ const VehicleCard: FC<VehicleCardProps> = memo(({ vehicle, route, trip, arrivalT
                     }}
                   />
                 }
-                onClick={() => setScheduleView('today')}
+                onClick={() => setScheduleView(isTomorrowVehicle ? 'tomorrow' : 'today')}
                 sx={{ fontSize: { xs: '0.7rem', sm: '0.75rem' }, textTransform: 'none', py: 0.25 }}
               >
-                Today
+                {isTomorrowVehicle ? 'Tomorrow' : 'Today'}
               </Button>
             </>
           ) : (
@@ -615,7 +615,7 @@ const VehicleCard: FC<VehicleCardProps> = memo(({ vehicle, route, trip, arrivalT
               color="info"
               variant="filled"
               size="small"
-              onClick={() => setScheduleView('today')}
+              onClick={() => setScheduleView(isTomorrowVehicle ? 'tomorrow' : 'today')}
               sx={{
                 fontWeight: 'medium',
                 fontSize: { xs: '0.7rem', sm: '0.75rem' },
