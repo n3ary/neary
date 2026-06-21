@@ -167,8 +167,9 @@ export const GHOST_VEHICLE_MATCH = {
   // ghost position would be far away (so the positional rule alone would miss it).
   START_CLAIM_PROXIMITY_METERS: 150,
   START_CLAIM_SPEED_KMH: 5,
-  // How late (minutes) a bus can be and still claim a past (already-departed)
-  // run from the start. Bounds the low-frequency "late bus" detection.
+  // Reserved for the moving "late bus" reassignment: once a bus that was waiting
+  // at the start leaves the stop BEFORE its claimed scheduled time, it is a late
+  // earlier run and should cover that run's ghost. Bounds how late that can be.
   LATE_CLAIM_WINDOW_MINUTES: 45,
 } as const;
 

@@ -41,12 +41,12 @@ export interface GpsVehicleLite {
  * live GPS vehicle physically waiting at that start stop.
  *
  * A vehicle stopped within {@link GHOST_VEHICLE_MATCH.START_CLAIM_PROXIMITY_METERS}
- * of the start stop is the bus that will serve a departure from there. With N
- * such vehicles, the N runs whose scheduled start is nearest to `nowMin` (within
- * the early window and the late window) are claimed — so a bus waiting before
- * its time covers the imminent run (no duplicate future card), and a LATE bus
- * that just pulled in covers the most-recent already-departed run (so its ghost
- * is removed even though the on-time interpolated ghost is far down the route).
+ * of the start stop is presumed to be the bus that will serve the NEXT departure
+ * from there. With N such stopped vehicles, the N SOONEST FUTURE runs are claimed
+ * (so a bus waiting before its time shows no duplicate future card). It never
+ * claims an already-departed run: a stationary bus is always treated as the next
+ * departure. Reclassifying it as a LATE earlier run only happens once it leaves
+ * the start (handled elsewhere), per the rule "stationary => next scheduled".
  *
  * @returns the subset of `runs` (by tripId) that are covered.
  */
@@ -73,13 +73,10 @@ export function claimRunsAtStart(
   }
   if (stoppedAtStart === 0) return claimed;
 
+  // Only the SOONEST upcoming departures — never a past run.
   const eligible = runs
-    .filter(
-      (r) =>
-        r.startMin >= nowMin - GHOST_VEHICLE_MATCH.LATE_CLAIM_WINDOW_MINUTES &&
-        r.startMin <= nowMin + windowMinutes,
-    )
-    .sort((a, b) => Math.abs(a.startMin - nowMin) - Math.abs(b.startMin - nowMin));
+    .filter((r) => r.startMin >= nowMin && r.startMin <= nowMin + windowMinutes)
+    .sort((a, b) => a.startMin - b.startMin);
 
   for (let i = 0; i < Math.min(stoppedAtStart, eligible.length); i++) {
     claimed.add(eligible[i].tripId);
