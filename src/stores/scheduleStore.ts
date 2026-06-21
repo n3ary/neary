@@ -193,10 +193,17 @@ export const useScheduleStore = create<ScheduleStore>()(
           return;
         }
 
-        // Use cached data without refetching when it is still fresh (Req 3.3).
-        // Still ensure active services reflect the current date so that fresh
-        // cached data is usable immediately, including after a midnight crossing.
-        if (currentState.scheduleData && currentState.isDataFresh()) {
+        // Use cached data without refetching when it is still fresh (Req 3.3)
+        // AND it has the current schema (a tripRouteMap). Older cached payloads
+        // (pre route-embedding) lack it; force a refetch so format upgrades
+        // self-heal instead of waiting out the 24h TTL.
+        const cached = currentState.scheduleData;
+        const cacheUsable =
+          !!cached &&
+          currentState.isDataFresh() &&
+          !!cached.tripRouteMap &&
+          Object.keys(cached.tripRouteMap).length > 0;
+        if (cacheUsable) {
           get().ensureActiveServicesForToday();
           return;
         }

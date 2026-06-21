@@ -62,6 +62,7 @@ function payloadWithVersion(version: string): SchedulePayload {
     calendar: [],
     calendarExceptions: [],
     tripServiceMap: { trip_1: 'svc' },
+    tripRouteMap: { trip_1: 1 },
   };
 }
 
