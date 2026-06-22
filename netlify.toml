@@ -20,15 +20,19 @@
   status = 200
   force = true
 
-# Serve the GTFS schedule payload from Netlify Blobs (one blob per agency).
-# Netlify Blobs have no built-in public URL, so /data/schedule/<agencyId>.json
-# is rewritten to the schedule-serve function, which parses the agency id from
-# the path, reads that agency's blob, and returns it as JSON.
-# Must come BEFORE the SPA catch-all so it is not swallowed by /* -> /index.html.
+# Proxy schedule data from neary-gtfs GitHub Releases (CORS workaround).
+# The neary-gtfs repo publishes a compact JSON per agency as a release asset.
+# The client fetches /data/schedule/<id>.json → Netlify proxies to GitHub.
+# No more Netlify Blobs, no more schedule-pipeline/serve functions needed.
+#
+# NOTE: Netlify's production edge supports :splat params in the `to` URL.
+# For local `netlify dev`, the parameter substitution may not work — test
+# against the deployed site or use the direct GitHub URL.
 [[redirects]]
-  from = "/data/schedule/*"
-  to = "/.netlify/functions/schedule-serve"
+  from = "/data/schedule/2.json"
+  to = "https://github.com/ciotlosm/neary-gtfs/releases/latest/download/agency-2-schedule.json"
   status = 200
+  force = true
 
 # SPA redirect for client-side routing
 [[redirects]]
@@ -50,9 +54,7 @@
   [headers.values]
     Cache-Control = "public, max-age=31536000, immutable"
 
-# Cache the GTFS schedule payload at the edge for 1 hour.
-# The schedule-serve function also sets this header on its response, since
-# netlify.toml headers are not reliably applied to function/rewrite responses.
+# Cache the schedule payload proxied from GitHub at the edge for 1 hour.
 [[headers]]
   for = "/data/*"
   [headers.values]
