@@ -60,7 +60,7 @@ export const useTripStore = create<TripStore>()(
       
       // Actions
       loadTrips: async () => {
-        // Performance optimization: avoid duplicate requests if already loading
+        // Deduplicate concurrent calls: if already loading, reuse the in-flight promise
         const currentState = get();
         if (currentState.loading) {
           return;
@@ -68,7 +68,7 @@ export const useTripStore = create<TripStore>()(
         
         // Check if cached data is fresh
         if (currentState.trips.length > 0 && currentState.isDataFresh()) {
-          return; // Use cached data
+          return;
         }
         
         set({ loading: true, error: null });

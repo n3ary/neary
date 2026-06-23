@@ -52,21 +52,21 @@ const refreshMethod = createRefreshMethod(
   () => import('../services/shapesService.ts'),
   'getAllShapes',
   {
-    // Only specify non-default options
+    // Shapes are a large payload (~14 MB uncompressed). Reduce retries to avoid
+    // hammering the API on slow connections, and use a longer delay between
+    // attempts so the network has time to recover.
+    useRetry: true,
+    retryConfig: { maxAttempts: 2, baseDelay: 3000, maxDelay: 10000, backoffMultiplier: 2 },
     processData: async (rawShapes: any) => {
       try {
-        // Import processing utilities dynamically
         const { processAllShapes, validateShapeData } = await import('../utils/shapes/shapeProcessingUtils.ts');
-        
-        // Validate and process shapes
         const validatedShapes = validateShapeData(rawShapes);
         const processedShapes = processAllShapes(validatedShapes);
-        
-        console.log(`✅ Shapes processing completed: ${processedShapes.size} shapes processed`);
+        console.log(`[ShapeStore] Processed ${processedShapes.size} shapes`);
         return processedShapes;
       } catch (error) {
-        console.error('❌ Error processing shapes:', error);
-        throw error; // Re-throw to let the refresh method handle it
+        console.error('[ShapeStore] Error processing shapes:', error);
+        throw error;
       }
     }
   }

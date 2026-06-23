@@ -109,15 +109,7 @@ export const useVehicleStore = create<VehicleStore>()(
         }
         
         try {
-          // Get the original API data from enhanced vehicles
-          const originalVehicles = currentState.vehicles.map(vehicle => ({
-            ...vehicle,
-            // Restore original API coordinates for re-enhancement
-            latitude: vehicle.apiLatitude,
-            longitude: vehicle.apiLongitude
-          }));
-          
-          // Get cached data from stores instead of making API calls
+          // Get cached data from stores
           const { useTripStore } = await import('./tripStore');
           const { useStationStore } = await import('./stationStore');
           const { useShapeStore } = await import('./shapeStore');
@@ -128,66 +120,59 @@ export const useVehicleStore = create<VehicleStore>()(
           const shapeStore = useShapeStore.getState();
           const stopTimeStore = useStopTimeStore.getState();
           
-          // Use cached data if available, otherwise skip prediction update
           if (tripStore.trips.length === 0 || stationStore.stops.length === 0) {
-            console.log('[VehicleStore] Skipping prediction update - missing cached trip/station data');
             return;
           }
           
-          // Build route shapes from cached data
+          // Build lookup structures ONCE (reuse across vehicles)
+          const stopTimesByTrip = new Map<string, any[]>();
+          for (const st of stopTimeStore.stopTimes) {
+            if (!stopTimesByTrip.has(st.trip_id)) stopTimesByTrip.set(st.trip_id, []);
+            stopTimesByTrip.get(st.trip_id)!.push(st);
+          }
+          
+          const tripByTripId = new Map(tripStore.trips.map(t => [t.trip_id, t]));
+          
+          // Build route shapes only for vehicles that have a matching trip+shape
           let routeShapes: Map<string, any> | undefined;
           if (shapeStore.shapes.size > 0) {
             routeShapes = new Map();
-            
-            // Create mapping from trip_id to route shape
-            for (const vehicle of originalVehicles) {
-              if (vehicle.trip_id) {
-                const trip = tripStore.trips.find(t => t.trip_id === vehicle.trip_id);
-                if (trip && trip.shape_id) {
+            for (const vehicle of currentState.vehicles) {
+              if (vehicle.trip_id && !routeShapes.has(vehicle.trip_id)) {
+                const trip = tripByTripId.get(vehicle.trip_id);
+                if (trip?.shape_id) {
                   const shape = shapeStore.shapes.get(trip.shape_id);
-                  if (shape) {
-                    // Use the existing RouteShape directly
-                    routeShapes.set(vehicle.trip_id, shape);
-                  }
+                  if (shape) routeShapes.set(vehicle.trip_id, shape);
                 }
               }
             }
           }
-          
-          // Build stop times by trip from cached data
-          const stopTimesByTrip = new Map();
-          if (stopTimeStore.stopTimes.length > 0) {
-            for (const stopTime of stopTimeStore.stopTimes) {
-              if (!stopTimesByTrip.has(stopTime.trip_id)) {
-                stopTimesByTrip.set(stopTime.trip_id, []);
-              }
-              stopTimesByTrip.get(stopTime.trip_id).push(stopTime);
-            }
-          }
-          
-          // Use cached stops
+
           const stops = stationStore.stops;
           
-          // Re-enhance with current timestamp using cached data
+          // Re-enhance with current timestamp
           const { enhanceVehicles } = await import('../utils/vehicle/vehicleEnhancementUtils');
+          const originalVehicles = currentState.vehicles.map(v => ({
+            ...v,
+            latitude: v.apiLatitude,
+            longitude: v.apiLongitude,
+          }));
+          
           const updatedVehicles = enhanceVehicles(originalVehicles, {
             routeShapes,
             stopTimesByTrip,
             stops
           });
           
-          // Update store with new predictions and update lastUpdated for component subscriptions
           set({ 
             vehicles: updatedVehicles,
             error: null,
-            lastUpdated: Date.now() // Components subscribe to this for prediction updates
-            // NOTE: lastApiFetch is NOT updated - this is not an API call
+            lastUpdated: Date.now()
           });
           
           console.log(`[VehicleStore] Updated predictions for ${updatedVehicles.length} vehicles using cached data at ${new Date().toLocaleTimeString()}`);
         } catch (error) {
           console.warn('Failed to update predictions:', error);
-          // Don't set error state for prediction updates - they're non-critical
         }
       },
       

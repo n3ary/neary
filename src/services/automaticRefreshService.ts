@@ -17,6 +17,7 @@ class AutomaticRefreshService {
   private networkStatusUnsubscribe: (() => void) | null = null;
   private isAppInForeground = true;
   private hasInitializedStartup = false;
+  private isPredicting = false;
   private config: AutoRefreshConfig;
   private cleanupVisibilityHandlers: (() => void) | null = null;
 
@@ -133,28 +134,25 @@ class AutomaticRefreshService {
   }
 
   /**
-   * Start automatic prediction update timer
-   * Updates vehicle predictions every 30 seconds using existing API data
+   * Start automatic prediction update timer.
+   * Uses setInterval but guards against overlapping runs.
    */
   private startPredictionUpdateTimer(): void {
     if (this.predictionUpdateTimer) {
-      console.log('[Prediction Timer] Prediction timer already running, skipping start');
       return; // Timer already running
     }
 
-    console.log(`[Prediction Timer] Starting prediction timer with ${this.config.predictionUpdateInterval}ms interval`);
     this.predictionUpdateTimer = setInterval(async () => {
-      // Only update predictions if app is in foreground
-      if (!this.isAppInForeground) {
-        return;
-      }
-
+      if (!this.isAppInForeground) return;
+      if (this.isPredicting) return; // Skip if previous run hasn't finished
+      
+      this.isPredicting = true;
       try {
-        console.log('[Prediction Timer] Starting prediction update...');
-        // Update predictions without fetching new API data
         await this.updatePredictionsOnly();
       } catch (error) {
         console.warn('Automatic prediction update failed:', error);
+      } finally {
+        this.isPredicting = false;
       }
     }, this.config.predictionUpdateInterval);
   }
