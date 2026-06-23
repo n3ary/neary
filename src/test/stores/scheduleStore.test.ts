@@ -105,7 +105,7 @@ describe('ScheduleStore', () => {
       await useScheduleStore.getState().loadSchedule();
 
       const state = useScheduleStore.getState();
-      expect(fetchMock).toHaveBeenCalledWith('/data/schedule/2.json', { cache: 'no-cache' });
+      expect(fetchMock).toHaveBeenCalledWith('https://raw.githubusercontent.com/ciotlosm/neary-gtfs/releases/agency-2-schedule.json', { cache: 'no-cache' });
       expect(state.scheduleData).toEqual(SAMPLE_PAYLOAD);
       expect(state.dataVersion).toBe(SAMPLE_PAYLOAD.version);
       expect(state.lastUpdated).not.toBeNull();

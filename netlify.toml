@@ -20,20 +20,6 @@
   status = 200
   force = true
 
-# Proxy schedule data from neary-gtfs GitHub Releases (CORS workaround).
-# The neary-gtfs repo publishes a compact JSON per agency as a release asset.
-# The client fetches /data/schedule/<id>.json → Netlify proxies to GitHub.
-# No more Netlify Blobs, no more schedule-pipeline/serve functions needed.
-#
-# NOTE: Netlify's production edge supports :splat params in the `to` URL.
-# For local `netlify dev`, the parameter substitution may not work — test
-# against the deployed site or use the direct GitHub URL.
-[[redirects]]
-  from = "/data/schedule/2.json"
-  to = "https://github.com/ciotlosm/neary-gtfs/releases/latest/download/agency-2-schedule.json"
-  status = 200
-  force = true
-
 # SPA redirect for client-side routing
 [[redirects]]
   from = "/*"
@@ -53,9 +39,3 @@
   for = "/assets/*"
   [headers.values]
     Cache-Control = "public, max-age=31536000, immutable"
-
-# Cache the schedule payload proxied from GitHub at the edge for 1 hour.
-[[headers]]
-  for = "/data/*"
-  [headers.values]
-    Cache-Control = "public, max-age=3600"

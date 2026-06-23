@@ -159,7 +159,7 @@ describe('ScheduleStore property tests', () => {
 
             // Stale cache => refetch occurs.
             expect(fetchMock).toHaveBeenCalledTimes(1);
-            expect(fetchMock).toHaveBeenCalledWith('/data/schedule/2.json', { cache: 'no-cache' });
+            expect(fetchMock).toHaveBeenCalledWith('https://raw.githubusercontent.com/ciotlosm/neary-gtfs/releases/agency-2-schedule.json', { cache: 'no-cache' });
 
             // On fetch, the freshly fetched payload's version replaces the cached
             // version — the implemented half of Req 3.6.

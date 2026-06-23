@@ -45,9 +45,10 @@ export function hasScheduleForAgency(agencyId: number | null | undefined): boole
 }
 
 /**
- * URL the client fetches for an agency's compact schedule JSON. Proxied by
- * Netlify to the neary-gtfs GitHub Release asset (solves CORS).
+ * URL the client fetches for an agency's compact schedule JSON. Served directly
+ * from the neary-gtfs repo's `releases` branch via raw.githubusercontent.com.
+ * Returns 200 with `access-control-allow-origin: *` — no proxy needed.
  */
 export function scheduleUrlForAgency(agencyId: number): string {
-  return `/data/schedule/${agencyId}.json`;
+  return `https://raw.githubusercontent.com/ciotlosm/neary-gtfs/releases/agency-${agencyId}-schedule.json`;
 }
