@@ -1,71 +1,54 @@
 /**
  * Compression Utilities for localStorage
- * Uses browser-native compression APIs to reduce storage size
+ *
+ * Uses browser-native gzip (CompressionStream/DecompressionStream) with binary
+ * string encoding (Latin1) instead of base64. Each compressed byte is stored as
+ * one character — no 33% base64 inflation. localStorage uses UTF-16 internally,
+ * so 1 byte of gzip = 1 char = 2 bytes on disk (vs base64: 1 byte = 1.33 chars
+ * = 2.67 bytes on disk). This saves ~25% localStorage quota.
+ *
+ * Format: `gz:<binary string of gzip bytes>`
+ * Prefix `gz:` signals compressed data (vs plain JSON).
  */
 
 import { readStreamChunks, combineChunks } from './streamUtils.ts';
 
+/** Minimum payload size to attempt compression (below this, overhead isn't worth it). */
+const MIN_COMPRESS_SIZE = 1024;
+
 /**
- * Compress data using gzip compression
- * Uses the browser's native CompressionStream API (available in modern browsers)
- * Only compresses if the result is actually smaller
+ * Compress a JSON string using gzip and encode as a binary string for localStorage.
+ * Returns the original string if compression doesn't reduce size or isn't available.
  */
 export async function compressData(data: string): Promise<string> {
   try {
-    // Don't compress very small data (less than 1KB) - overhead isn't worth it
-    // But always attempt compression for larger data
-    const shouldAttemptCompression = data.length >= 1024;
+    if (data.length < MIN_COMPRESS_SIZE) return data;
+    if (typeof CompressionStream === 'undefined') return data;
 
-    // Check if CompressionStream is available
-    if (typeof CompressionStream === 'undefined') {
-      console.warn('CompressionStream not available, storing uncompressed');
-      return data;
-    }
+    const input = new TextEncoder().encode(data);
 
-    // Skip compression for very small data
-    if (!shouldAttemptCompression) {
-      return data;
-    }
+    const cs = new CompressionStream('gzip');
+    const writer = cs.writable.getWriter();
+    const reader = cs.readable.getReader();
 
-    // Convert string to Uint8Array
-    const encoder = new TextEncoder();
-    const input = encoder.encode(data);
-
-    // Create compression stream
-    const compressionStream = new CompressionStream('gzip');
-    const writer = compressionStream.writable.getWriter();
-    const reader = compressionStream.readable.getReader();
-
-    // Write data to compression stream
     writer.write(input);
     writer.close();
 
-    // Read compressed data
     const chunks = await readStreamChunks(reader);
+    const compressed = combineChunks(chunks);
 
-    // Combine chunks and convert to base64 for storage
-    const combined = combineChunks(chunks);
+    // Encode as binary string (Latin1): one char per byte, zero overhead.
+    let binaryStr = '';
+    const CHUNK = 8192;
+    for (let i = 0; i < compressed.length; i += CHUNK) {
+      const slice = compressed.subarray(i, i + CHUNK);
+      binaryStr += String.fromCharCode.apply(null, slice as unknown as number[]);
+    }
 
-    // Convert to base64 string for localStorage
-    // Use chunked approach to avoid stack overflow with large arrays
-    let binaryString = '';
-    const chunkSize = 8192; // Process in 8KB chunks to avoid stack overflow
-    
-    for (let i = 0; i < combined.length; i += chunkSize) {
-      const chunk = combined.slice(i, i + chunkSize);
-      binaryString += String.fromCharCode(...chunk);
-    }
-    
-    const base64 = btoa(binaryString);
-    const compressed = `gzip:${base64}`;
-    
-    // Only return compressed version if it's actually smaller
-    if (compressed.length < data.length) {
-      return compressed;
-    } else {
-      return data; // Return original if compression doesn't help
-    }
-    
+    const stored = `gz:${binaryStr}`;
+
+    // Only use compressed version if it's actually smaller
+    return stored.length < data.length ? stored : data;
   } catch (error) {
     console.warn('Compression failed, storing uncompressed:', error);
     return data;
@@ -73,51 +56,36 @@ export async function compressData(data: string): Promise<string> {
 }
 
 /**
- * Decompress data that was compressed with compressData
+ * Decompress data that was compressed with {@link compressData}.
+ * Returns the string as-is if it's not compressed.
  */
 export async function decompressData(compressedData: string): Promise<string> {
   try {
-    // Check if data is compressed
-    if (!compressedData.startsWith('gzip:')) {
-      // Not compressed, return as-is
+    if (!compressedData.startsWith('gz:')) {
       return compressedData;
     }
-
-    // Check if DecompressionStream is available
     if (typeof DecompressionStream === 'undefined') {
-      console.warn('DecompressionStream not available, cannot decompress');
-      throw new Error('Decompression not supported');
+      throw new Error('DecompressionStream not supported');
     }
 
-    // Extract base64 data
-    const base64Data = compressedData.slice(5); // Remove 'gzip:' prefix
-    
-    // Convert base64 to Uint8Array
-    const binaryString = atob(base64Data);
-    const compressed = new Uint8Array(binaryString.length);
-    for (let i = 0; i < binaryString.length; i++) {
-      compressed[i] = binaryString.charCodeAt(i);
+    // Decode binary string back to bytes
+    const binaryStr = compressedData.slice(3); // remove 'gz:'
+    const bytes = new Uint8Array(binaryStr.length);
+    for (let i = 0; i < binaryStr.length; i++) {
+      bytes[i] = binaryStr.charCodeAt(i);
     }
 
-    // Create decompression stream
-    const decompressionStream = new DecompressionStream('gzip');
-    const writer = decompressionStream.writable.getWriter();
-    const reader = decompressionStream.readable.getReader();
+    const ds = new DecompressionStream('gzip');
+    const writer = ds.writable.getWriter();
+    const reader = ds.readable.getReader();
 
-    // Write compressed data to decompression stream
-    writer.write(compressed);
+    writer.write(bytes);
     writer.close();
 
-    // Read decompressed data
     const chunks = await readStreamChunks(reader);
-
-    // Combine chunks and convert back to string
     const combined = combineChunks(chunks);
 
-    // Convert back to string
-    const decoder = new TextDecoder();
-    return decoder.decode(combined);
-    
+    return new TextDecoder().decode(combined);
   } catch (error) {
     console.warn('Decompression failed:', error);
     throw error;
@@ -125,24 +93,18 @@ export async function decompressData(compressedData: string): Promise<string> {
 }
 
 /**
- * Get compression ratio for debugging
+ * Get compression ratio for debugging.
  */
 export function getCompressionRatio(original: string, compressed: string): number {
-  if (!compressed.startsWith('gzip:')) {
-    return 1; // No compression
-  }
-  
-  const originalSize = new TextEncoder().encode(original).length;
-  const compressedSize = new TextEncoder().encode(compressed).length;
-  
-  return originalSize / compressedSize;
+  if (!compressed.startsWith('gz:')) return 1;
+  return original.length / compressed.length;
 }
 
 /**
- * Format size for human-readable display
+ * Format byte count for human-readable display.
  */
 export function formatSize(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`;
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
-  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+  return `${(bytes / (1024 * 1024)).toFixed(2)} MB`;
 }

@@ -1,7 +1,7 @@
 // SettingsView - Core view component for settings
-// Simplified to focus on theme and reconfiguration
 
 import type { FC } from 'react';
+import { useState, useMemo } from 'react';
 import { 
   Box, 
   Typography, 
@@ -19,13 +19,41 @@ import { AppVersionPanel } from '../status/AppVersionPanel';
 
 interface SettingsViewProps {
   onNavigateToSetup?: () => void;
+  onClose?: () => void;
 }
 
-export const SettingsView: FC<SettingsViewProps> = ({ onNavigateToSetup }) => {
+/** Calculate total localStorage usage in bytes (UTF-16: 2 bytes per char). */
+function getLocalStorageUsage(): { totalBytes: number; label: string } {
+  let total = 0;
+  for (let i = 0; i < localStorage.length; i++) {
+    const key = localStorage.key(i) ?? '';
+    const val = localStorage.getItem(key) ?? '';
+    total += (key.length + val.length) * 2; // UTF-16
+  }
+  if (total < 1024) return { totalBytes: total, label: `${total} B` };
+  if (total < 1024 * 1024) return { totalBytes: total, label: `${(total / 1024).toFixed(1)} KB` };
+  return { totalBytes: total, label: `${(total / 1024 / 1024).toFixed(2)} MB` };
+}
+
+export const SettingsView: FC<SettingsViewProps> = ({ onNavigateToSetup, onClose }) => {
   const { theme } = useConfigStore();
   const showDropOffOnly = useConfigStore((s) => s.showDropOffOnly);
   const setShowDropOffOnly = useConfigStore((s) => s.setShowDropOffOnly);
+  const [storageCleared, setStorageCleared] = useState(false);
   
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const storageUsage = useMemo(() => getLocalStorageUsage(), [storageCleared]);
+
+  const handleClearStorage = () => {
+    const apiKey = useConfigStore.getState().apiKey;
+    const agencyId = useConfigStore.getState().agency_id;
+    const themeVal = useConfigStore.getState().theme;
+    localStorage.clear();
+    // Restore essential config so the user doesn't have to re-authenticate
+    useConfigStore.setState({ apiKey, agency_id: agencyId, theme: themeVal });
+    setStorageCleared((v) => !v); // trigger re-render
+  };
+
   const handleReconfigure = () => {
     if (onNavigateToSetup) {
       onNavigateToSetup();
@@ -99,6 +127,34 @@ export const SettingsView: FC<SettingsViewProps> = ({ onNavigateToSetup }) => {
       <Card variant="outlined" sx={{ mt: 2 }}>
         <CardContent>
           <AppVersionPanel />
+        </CardContent>
+      </Card>
+
+      <Card variant="outlined" sx={{ mt: 2 }}>
+        <CardContent>
+          <Typography variant="subtitle2" sx={{ mb: 1 }}>
+            Storage
+          </Typography>
+          <Box sx={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', mb: 1.5 }}>
+            <Typography variant="body2" color="text.secondary">
+              localStorage used
+            </Typography>
+            <Typography variant="body2" sx={{ fontVariantNumeric: 'tabular-nums', fontFamily: 'monospace' }}>
+              {storageUsage.label}
+            </Typography>
+          </Box>
+          <Button
+            variant="outlined"
+            color="error"
+            size="small"
+            fullWidth
+            onClick={handleClearStorage}
+          >
+            Clear storage
+          </Button>
+          <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 0.5 }}>
+            Clears cached data (shapes, vehicles, schedule). API key and agency are preserved. App will refetch on next load.
+          </Typography>
         </CardContent>
       </Card>
 
