@@ -8,11 +8,13 @@ import { HeaderControls } from './HeaderControls';
 interface HeaderProps {
   title?: string;
   onSettingsClick?: () => void;
+  isSettingsOpen?: boolean;
 }
 
 export const Header: FC<HeaderProps> = ({ 
   title = 'Bus Tracker',
-  onSettingsClick
+  onSettingsClick,
+  isSettingsOpen = false,
 }) => {
   return (
     <AppBar position="static">
@@ -38,7 +40,7 @@ export const Header: FC<HeaderProps> = ({
         </Typography>
         
         {/* Reusable header controls */}
-        <HeaderControls onSettingsClick={onSettingsClick} />
+        <HeaderControls onSettingsClick={onSettingsClick} isSettingsOpen={isSettingsOpen} />
       </Toolbar>
     </AppBar>
   );

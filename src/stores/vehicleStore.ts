@@ -3,9 +3,10 @@
 // Enhancement happens at service layer, store handles data management
 
 import { create } from 'zustand';
-import { persist } from 'zustand/middleware';
+import { persist, createJSONStorage } from 'zustand/middleware';
 import type { EnhancedVehicleData } from '../utils/vehicle/vehicleEnhancementUtils';
 import { API_CACHE_DURATION, API_DATA_STALENESS_THRESHOLDS } from '../utils/core/constants';
+import { createCompressedStorage } from '../utils/core/compressedStorage';
 import { createRefreshMethod, createFreshnessChecker } from '../utils/core/storeUtils';
 
 interface VehicleStore {
@@ -205,6 +206,7 @@ export const useVehicleStore = create<VehicleStore>()(
     }),
     {
       name: 'vehicle-store',
+      storage: createJSONStorage(() => createCompressedStorage('[VehicleStore]')),
       partialize: (state) => ({
         vehicles: state.vehicles,
         lastUpdated: state.lastUpdated,

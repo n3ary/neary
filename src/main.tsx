@@ -165,7 +165,7 @@ function App() {
       case 1:
         return <RouteView onNavigateToSettings={() => setCurrentView(2)} />;
       case 2:
-        return <SettingsView onNavigateToSetup={() => setCurrentView(-1)} />;
+        return <SettingsView onNavigateToSetup={() => setCurrentView(-1)} onClose={() => setCurrentView(0)} />;
       default:
         return <StationView />;
     }
@@ -175,7 +175,8 @@ function App() {
     <ThemeProvider>
       <AppLayout 
         title={getViewTitle()}
-        onNavigateToSettings={() => setCurrentView(2)}
+        onNavigateToSettings={() => setCurrentView(currentView === 2 ? 0 : 2)}
+        isSettingsOpen={currentView === 2}
       >
         {renderContent()}
         {/* Hide navigation when in setup view */}

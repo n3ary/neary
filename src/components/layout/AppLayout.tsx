@@ -9,9 +9,10 @@ interface AppLayoutProps {
   children: ReactNode;
   title?: string;
   onNavigateToSettings?: () => void;
+  isSettingsOpen?: boolean;
 }
 
-export const AppLayout: FC<AppLayoutProps> = ({ children, title, onNavigateToSettings }) => {
+export const AppLayout: FC<AppLayoutProps> = ({ children, title, onNavigateToSettings, isSettingsOpen }) => {
   const handleSettingsClick = () => {
     onNavigateToSettings?.();
   };
@@ -21,6 +22,7 @@ export const AppLayout: FC<AppLayoutProps> = ({ children, title, onNavigateToSet
       <Header 
         title={title}
         onSettingsClick={handleSettingsClick}
+        isSettingsOpen={isSettingsOpen}
       />
       
       <Container 

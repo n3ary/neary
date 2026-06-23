@@ -3,10 +3,11 @@
 // Enhanced with refresh functionality and local storage persistence
 
 import { create } from 'zustand';
-import { persist } from 'zustand/middleware';
+import { persist, createJSONStorage } from 'zustand/middleware';
 import type { TranzyStopTimeResponse } from '../types/rawTranzyApi';
 import { API_CACHE_DURATION } from '../utils/core/constants';
 import { createRefreshMethod, createFreshnessChecker } from '../utils/core/storeUtils';
+import { createCompressedStorage } from '../utils/core/compressedStorage';
 
 interface StopTimeStore {
   // Raw API data - no transformations
@@ -114,7 +115,7 @@ export const useStopTimeStore = create<StopTimeStore>()(
     }),
     {
       name: 'stop-time-store',
-      // Simple storage for stop time data
+      storage: createJSONStorage(() => createCompressedStorage('[StopTimeStore]')),
       partialize: (state) => ({
         stopTimes: state.stopTimes,
         lastUpdated: state.lastUpdated,

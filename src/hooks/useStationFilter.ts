@@ -173,8 +173,11 @@ export function useStationFilter(): StationFilterResult {
         return;
       }
 
-      // Wait for trips to be loaded before filtering to avoid fallback calculations
-      if (trips.length === 0 && !tripError) {
+      // Wait for trips to be loaded before filtering to avoid fallback calculations.
+      // BUT: if we have stops (from persistence), proceed anyway — trips are nice-to-have
+      // for headsign data, not a hard gate. This prevents blocking the first paint while
+      // the trip API call takes 5-7 seconds.
+      if (stops.length === 0) {
         setFilteredStations([]);
         setProcessing(false);
         return;
