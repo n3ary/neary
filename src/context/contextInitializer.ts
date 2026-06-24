@@ -17,28 +17,19 @@ let unsubscribe: (() => void) | null = null;
 
 /**
  * Get current configuration from config store
- * Returns null if configuration is incomplete
+ * Returns null if configuration is incomplete (needs at least agency_id)
  */
 const getCurrentConfig = (): ApiConfig | null => {
   const state = useConfigStore.getState();
   
-  // Check if we have the minimum required configuration
-  if (!state.apiKey || !state.agency_id) {
-    return null;
-  }
-  
-  // Validate configuration values
-  if (typeof state.apiKey !== 'string' || state.apiKey.trim() === '') {
-    return null;
-  }
-  
-  if (typeof state.agency_id !== 'number' || state.agency_id <= 0) {
+  // Only agency_id is required; apiKey is optional (schedule-only mode)
+  if (!state.agency_id || typeof state.agency_id !== 'number' || state.agency_id <= 0) {
     return null;
   }
   
   return {
-    apiKey: state.apiKey,
-    agencyId: state.agency_id // Normalize field name
+    apiKey: state.apiKey || '',
+    agencyId: state.agency_id
   };
 };
 

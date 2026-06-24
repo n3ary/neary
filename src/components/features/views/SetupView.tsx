@@ -1,280 +1,243 @@
-// SetupView - Unified two-phase setup flow for API key validation and agency selection
-// Phase 1: API key entry and validation
-// Phase 2: Agency selection (enabled after Phase 1 completes)
-// Requirements: 1.1, 1.2, 1.3, 1.4, 1.5, 2.1-2.6, 3.1-3.6, 5.2-5.4
+// SetupView - Agency-first setup flow
+// Step 1: Select transit agency (no API key needed — agencies loaded from static source)
+// Step 2: Optionally add API key for live vehicle tracking
+//
+// Without an API key the app works in schedule-only mode (routes, stops, shapes,
+// schedule all come from the static neary-gtfs releases branch). Adding a key
+// enables live GPS vehicle tracking via the Tranzy API.
 
 import { useState, useEffect } from 'react';
 import type { FC } from 'react';
-import { 
-  Box, 
-  Typography, 
-  TextField, 
-  Button, 
+import {
+  Box,
+  Typography,
+  TextField,
+  Button,
   Alert,
   CircularProgress,
   Card,
   CardContent,
   MenuItem,
-  Divider
+  Collapse,
 } from '@mui/material';
 import { useConfigStore } from '../../../stores/configStore';
 import { useAgencyStore } from '../../../stores/agencyStore';
 
 interface SetupViewProps {
-  initialApiKey?: string;      // Pre-fill for reconfiguration
-  initialAgencyId?: number;    // Pre-select agency for reconfiguration
-  onComplete: () => void;      // Callback after successful setup
+  initialApiKey?: string;
+  initialAgencyId?: number;
+  onComplete: () => void;
 }
 
-export const SetupView: FC<SetupViewProps> = ({ 
-  initialApiKey, 
+export const SetupView: FC<SetupViewProps> = ({
+  initialApiKey,
   initialAgencyId,
-  onComplete 
+  onComplete,
 }) => {
-  const { validateApiKey, error: configError, clearError: clearConfigError } = useConfigStore();
-  const { agencies } = useAgencyStore();
-  
-  // Mask initial API key if provided (show last 4 chars)
-  const getMaskedKey = (key: string): string => {
-    if (key.length <= 4) return '****';
-    return '*'.repeat(key.length - 4) + key.slice(-4);
-  };
-  
-  // Phase 1 state
-  const [apiKey, setApiKey] = useState(
-    initialApiKey ? getMaskedKey(initialApiKey) : ''
-  );
-  const [isKeyModified, setIsKeyModified] = useState(false);
-  const [originalMaskedKey] = useState(
-    initialApiKey ? getMaskedKey(initialApiKey) : ''
-  );
-  const [keyValidated, setKeyValidated] = useState(false);
-  const [phase1Loading, setPhase1Loading] = useState(false);
-  const [phase1Error, setPhase1Error] = useState<string | null>(null);
-  
-  // Phase 2 state
+  const { agencies, loadAgencies, loading: agenciesLoading } = useAgencyStore();
+
+  // Agency selection state
   const [selectedAgencyId, setSelectedAgencyId] = useState<number | ''>(
     initialAgencyId || ''
   );
-  const [phase2Loading, setPhase2Loading] = useState(false);
-  const [phase2Error, setPhase2Error] = useState<string | null>(null);
-  
-  // Load cached agencies on mount if available
+
+  // API key state (optional)
+  const [showApiKey, setShowApiKey] = useState(!!initialApiKey);
+  const [apiKey, setApiKey] = useState(initialApiKey || '');
+  const [keyLoading, setKeyLoading] = useState(false);
+  const [keyError, setKeyError] = useState<string | null>(null);
+  const [keyValid, setKeyValid] = useState(!!initialApiKey);
+
+  // Load agencies on mount from static source (no API key needed)
   useEffect(() => {
-    if (agencies.length > 0 && !keyValidated) {
-      setKeyValidated(true);
+    if (agencies.length === 0) {
+      loadAgencies();
     }
-  }, [agencies, keyValidated]);
-  
-  // Clear errors when component unmounts
-  useEffect(() => {
-    return () => {
-      clearConfigError();
-    };
-  }, [clearConfigError]);
-  
-  const handleApiKeyChange = (value: string) => {
-    setApiKey(value);
-    setIsKeyModified(value !== originalMaskedKey);
-    // Clear Phase 1 error when user types
-    if (phase1Error) {
-      setPhase1Error(null);
-    }
-    if (configError) {
-      clearConfigError();
-    }
-  };
-  
-  const handleValidateKey = async () => {
-    const trimmedKey = apiKey.trim();
-    
-    if (!trimmedKey) {
-      return;
-    }
-    
-    setPhase1Loading(true);
-    setPhase1Error(null);
-    
-    try {
-      // If key hasn't been modified and we have an original key, use it
-      const keyToValidate = (!isKeyModified && initialApiKey) ? initialApiKey : trimmedKey;
-      
-      await validateApiKey(keyToValidate);
-      
-      // On success, enable Phase 2
-      setKeyValidated(true);
-      setPhase1Loading(false);
-    } catch (err) {
-      // Get the latest error from the store
-      const currentError = useConfigStore.getState().error;
-      setPhase1Error(currentError || 'Failed to validate API key');
-      setPhase1Loading(false);
-    }
-  };
-  
-  const handleApiKeyPress = (e: React.KeyboardEvent) => {
-    if (e.key === 'Enter' && apiKey.trim() && !phase1Loading) {
-      handleValidateKey();
-    }
-  };
-  
+  }, [agencies.length, loadAgencies]);
+
   const handleAgencyChange = (value: number | '') => {
     setSelectedAgencyId(value);
-    // Clear Phase 2 error when user selects agency
-    if (phase2Error) {
-      setPhase2Error(null);
-    }
   };
-  
-  const handleContinue = async () => {
-    if (selectedAgencyId === '') {
-      return;
-    }
-    
-    setPhase2Loading(true);
-    setPhase2Error(null);
-    
+
+  const handleValidateKey = async () => {
+    const trimmed = apiKey.trim();
+    if (!trimmed) return;
+
+    setKeyLoading(true);
+    setKeyError(null);
+
     try {
-      const { validateAndSave } = useConfigStore.getState();
-      const keyToUse = (!isKeyModified && initialApiKey) ? initialApiKey : apiKey.trim();
-      
-      await validateAndSave(keyToUse, selectedAgencyId as number);
-      
-      // On success, call completion callback
-      setPhase2Loading(false);
-      onComplete();
+      const { agencyService } = await import('../../../services/agencyService');
+      await agencyService.validateApiKey(trimmed);
+      setKeyValid(true);
+      setKeyLoading(false);
     } catch (err) {
-      // Get the latest error from the store
-      const currentError = useConfigStore.getState().error;
-      setPhase2Error(currentError || 'Failed to validate agency');
-      setPhase2Loading(false);
+      setKeyError(err instanceof Error ? err.message : 'Invalid API key');
+      setKeyValid(false);
+      setKeyLoading(false);
     }
   };
-  
-  // Enable Validate button when input is non-empty
-  const isValidateEnabled = apiKey.trim().length > 0 && !phase1Loading;
-  
-  // Enable Continue button when agency is selected
-  const isContinueEnabled = selectedAgencyId !== '' && !phase2Loading;
-  
-  // Phase 2 is disabled until Phase 1 completes
-  const isPhase2Disabled = !keyValidated;
-  
+
+  const handleContinue = async () => {
+    if (selectedAgencyId === '') return;
+
+    const trimmedKey = apiKey.trim();
+    const { setAgency, setApiKey: saveApiKey } = useConfigStore.getState();
+
+    // If user provided an API key, validate key+agency combo
+    if (trimmedKey && keyValid) {
+      try {
+        const { validateAndSave } = useConfigStore.getState();
+        await validateAndSave(trimmedKey, selectedAgencyId as number);
+      } catch {
+        // validateAndSave handles its own error state
+        return;
+      }
+    } else {
+      // No API key — schedule-only mode. Just set the agency.
+      if (trimmedKey && !keyValid) {
+        // Key entered but not validated — skip it
+        saveApiKey('');
+      }
+      setAgency(selectedAgencyId as number);
+    }
+
+    onComplete();
+  };
+
+  const isAgencySelected = selectedAgencyId !== '';
+  const canContinue = isAgencySelected && (!apiKey.trim() || keyValid);
+
   return (
-    <Box sx={{ 
-      p: 2, 
-      display: 'flex', 
-      flexDirection: 'column', 
-      alignItems: 'center',
-      justifyContent: 'center',
-      minHeight: '100vh'
-    }}>
-      <Card sx={{ maxWidth: 500, width: '100%', minHeight: 400 }}>
+    <Box
+      sx={{
+        p: 2,
+        display: 'flex',
+        flexDirection: 'column',
+        alignItems: 'center',
+        justifyContent: 'center',
+        minHeight: '100vh',
+      }}
+    >
+      <Card sx={{ maxWidth: 500, width: '100%' }}>
         <CardContent sx={{ p: 3 }}>
           <Typography variant="h5" gutterBottom>
-            {initialApiKey ? 'Reconfigure Setup' : 'Welcome to Neary'}
+            {initialAgencyId ? 'Reconfigure' : 'Welcome to Neary'}
           </Typography>
-          
+
           <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
-            {initialApiKey 
-              ? 'Update your API key and agency configuration.'
-              : 'Enter your Tranzy API key and select your transit agency to get started.'
-            }
+            Select your transit agency to see schedules, routes, and stations.
           </Typography>
-          
-          {/* Phase 1: API Key Validation */}
-          <Box sx={{ mb: 3 }}>
-            <Typography variant="h6" gutterBottom>
-              Phase 1: API Key
-            </Typography>
-            
-            {phase1Error && (
-              <Alert 
-                severity="error" 
-                sx={{ mb: 2 }}
-                onClose={() => setPhase1Error(null)}
-              >
-                {phase1Error}
-              </Alert>
-            )}
-            
-            <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-              <TextField
-                label="API Key"
-                type="password"
-                value={apiKey}
-                onChange={(e) => handleApiKeyChange(e.target.value)}
-                onKeyDown={handleApiKeyPress}
-                fullWidth
-                disabled={phase1Loading}
-                autoFocus
-                placeholder="Enter your Tranzy API key"
-                helperText="Your API key will be validated with the Tranzy API"
-              />
-              
-              <Button 
-                variant="contained" 
-                onClick={handleValidateKey}
-                disabled={!isValidateEnabled}
-                fullWidth
-                size="large"
-                startIcon={phase1Loading ? <CircularProgress size={16} /> : undefined}
-              >
-                {phase1Loading ? 'Validating...' : 'Validate'}
-              </Button>
+
+          {/* Step 1: Agency selection */}
+          <Typography variant="subtitle2" sx={{ mb: 1 }}>
+            Transit agency
+          </Typography>
+
+          {agenciesLoading ? (
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2 }}>
+              <CircularProgress size={16} />
+              <Typography variant="body2" color="text.secondary">
+                Loading agencies...
+              </Typography>
             </Box>
-          </Box>
-          
-          <Divider sx={{ my: 3 }} />
-          
-          {/* Phase 2: Agency Selection */}
-          <Box>
-            <Typography variant="h6" gutterBottom>
-              Phase 2: Agency Selection
-            </Typography>
-            
-            {phase2Error && (
-              <Alert 
-                severity="error" 
-                sx={{ mb: 2 }}
-                onClose={() => setPhase2Error(null)}
-              >
-                {phase2Error}
-              </Alert>
-            )}
-            
-            <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-              <TextField
-                select
-                label="Transit Agency"
-                value={selectedAgencyId}
-                onChange={(e) => handleAgencyChange(e.target.value === '' ? '' : Number(e.target.value))}
-                fullWidth
-                disabled={isPhase2Disabled || phase2Loading}
-                helperText={isPhase2Disabled ? 'Complete Phase 1 to enable agency selection' : 'Select your transit agency'}
-              >
-                <MenuItem value="">
-                  <em>Select an agency</em>
+          ) : (
+            <TextField
+              select
+              label="Select your city"
+              value={selectedAgencyId}
+              onChange={(e) =>
+                handleAgencyChange(e.target.value === '' ? '' : Number(e.target.value))
+              }
+              fullWidth
+              sx={{ mb: 2 }}
+            >
+              <MenuItem value="">
+                <em>Choose an agency</em>
+              </MenuItem>
+              {agencies.map((agency) => (
+                <MenuItem key={agency.agency_id} value={agency.agency_id}>
+                  {agency.agency_name}
                 </MenuItem>
-                {agencies.map((agency) => (
-                  <MenuItem key={agency.agency_id} value={agency.agency_id}>
-                    {agency.agency_name}
-                  </MenuItem>
-                ))}
-              </TextField>
-              
-              <Button 
-                variant="contained" 
-                onClick={handleContinue}
-                disabled={!isContinueEnabled || isPhase2Disabled}
-                fullWidth
-                size="large"
-                startIcon={phase2Loading ? <CircularProgress size={16} /> : undefined}
-              >
-                {phase2Loading ? 'Saving...' : 'Continue'}
-              </Button>
+              ))}
+            </TextField>
+          )}
+
+          {/* Step 2: Optional API key */}
+          {!showApiKey && isAgencySelected && (
+            <Button
+              variant="text"
+              size="small"
+              onClick={() => setShowApiKey(true)}
+              sx={{ mb: 2, textTransform: 'none' }}
+            >
+              + Add API key for live vehicle tracking
+            </Button>
+          )}
+
+          <Collapse in={showApiKey}>
+            <Box sx={{ mb: 2 }}>
+              <Typography variant="subtitle2" sx={{ mb: 1 }}>
+                Tranzy API key (optional)
+              </Typography>
+              <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 1 }}>
+                Enables live GPS vehicle positions. Without it, the app shows
+                schedules and routes only.
+              </Typography>
+
+              {keyError && (
+                <Alert severity="error" sx={{ mb: 1 }} onClose={() => setKeyError(null)}>
+                  {keyError}
+                </Alert>
+              )}
+
+              <Box sx={{ display: 'flex', gap: 1 }}>
+                <TextField
+                  label="API Key"
+                  type="password"
+                  value={apiKey}
+                  onChange={(e) => {
+                    setApiKey(e.target.value);
+                    setKeyValid(false);
+                    setKeyError(null);
+                  }}
+                  fullWidth
+                  size="small"
+                  disabled={keyLoading}
+                  color={keyValid ? 'success' : undefined}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') handleValidateKey();
+                  }}
+                />
+                <Button
+                  variant="outlined"
+                  onClick={handleValidateKey}
+                  disabled={!apiKey.trim() || keyLoading || keyValid}
+                  sx={{ minWidth: 90 }}
+                >
+                  {keyLoading ? <CircularProgress size={16} /> : keyValid ? '✓' : 'Validate'}
+                </Button>
+              </Box>
             </Box>
-          </Box>
+          </Collapse>
+
+          {/* Continue button */}
+          <Button
+            variant="contained"
+            fullWidth
+            size="large"
+            onClick={handleContinue}
+            disabled={!canContinue}
+            sx={{ mt: 1 }}
+          >
+            {apiKey.trim() && keyValid ? 'Continue' : 'Continue (schedule only)'}
+          </Button>
+
+          {isAgencySelected && !apiKey.trim() && (
+            <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 1, textAlign: 'center' }}>
+              You can add an API key later in Settings
+            </Typography>
+          )}
         </CardContent>
       </Card>
     </Box>
