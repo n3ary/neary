@@ -28,7 +28,7 @@
     Pragma = "no-cache"
     Expires = "0"
 
-# SPA redirect for client-side routing
+# SPA redirect for client-side routing (no force — static files take precedence)
 [[redirects]]
   from = "/*"
   to = "/index.html"
