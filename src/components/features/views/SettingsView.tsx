@@ -1,7 +1,7 @@
 // SettingsView - Core view component for settings
 
 import type { FC } from 'react';
-import { useState, useMemo } from 'react';
+import { useState, useEffect } from 'react';
 import { 
   Box, 
   Typography, 
@@ -41,16 +41,27 @@ export const SettingsView: FC<SettingsViewProps> = ({ onNavigateToSetup, onClose
   const setShowDropOffOnly = useConfigStore((s) => s.setShowDropOffOnly);
   const [storageCleared, setStorageCleared] = useState(false);
   
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  const storageUsage = useMemo(() => getLocalStorageUsage(), [storageCleared]);
+  // Recompute storage usage periodically (stores write back asynchronously after clear)
+  const [storageUsage, setStorageUsage] = useState(() => getLocalStorageUsage());
+  useEffect(() => {
+    setStorageUsage(getLocalStorageUsage());
+    const id = setInterval(() => setStorageUsage(getLocalStorageUsage()), 2000);
+    return () => clearInterval(id);
+  }, [storageCleared]);
 
-  const handleClearStorage = () => {
+  const handleClearStorage = async () => {
     const apiKey = useConfigStore.getState().apiKey;
     const agencyId = useConfigStore.getState().agency_id;
     const themeVal = useConfigStore.getState().theme;
     localStorage.clear();
     // Restore essential config so the user doesn't have to re-authenticate
     useConfigStore.setState({ apiKey, agency_id: agencyId, theme: themeVal });
+    // Invalidate static data manifest cache so next refresh re-downloads
+    const { staticDataService } = await import('../../../services/staticDataService');
+    staticDataService.invalidateCache();
+    // Clear in-memory store state so refresh doesn't skip (stale lastApiFetch)
+    const { useConfigStore: config } = await import('../../../stores/configStore');
+    await config.getState().clearAgencyData();
     setStorageCleared((v) => !v); // trigger re-render
   };
 

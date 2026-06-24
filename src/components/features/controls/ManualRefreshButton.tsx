@@ -12,7 +12,7 @@ import { useConfigStore } from '../../../stores/configStore';
 import { useStatusStore } from '../../../stores/statusStore';
 import { useVehicleStore } from '../../../stores/vehicleStore';
 import { formatCompactRelativeTime } from '../../../utils/time/timestampFormatUtils';
-import { API_FETCH_FRESHNESS_THRESHOLDS, MANUAL_REFRESH_DEBOUNCE_MS } from '../../../utils/core/constants';
+import { API_FETCH_FRESHNESS_THRESHOLDS, MANUAL_REFRESH_DEBOUNCE_MS, GPS_DATA_AGE_THRESHOLDS } from '../../../utils/core/constants';
 
 interface ManualRefreshButtonProps {
   className?: string;
@@ -130,8 +130,24 @@ export const ManualRefreshButton: FC<ManualRefreshButtonProps> = ({
     const vehicleAge = beforeFetch ? Date.now() - beforeFetch : Infinity;
     const outsideDebounce = vehicleAge >= MANUAL_REFRESH_DEBOUNCE_MS;
 
-    if (outsideDebounce) {
-      console.log('[Manual Refresh] User tap -> force fetch');
+    // Also force fetch when GPS data is stale (newest timestamp > 3 min old)
+    // even if within debounce — the user is explicitly asking for fresh data.
+    let gpsStale = false;
+    if (!outsideDebounce && before.vehicles.length > 0) {
+      let newestGps = 0;
+      for (const v of before.vehicles) {
+        if (v.id <= 0) continue;
+        const ts = Date.parse(v.timestamp);
+        if (Number.isFinite(ts) && ts > newestGps) newestGps = ts;
+      }
+      gpsStale = newestGps > 0 && (Date.now() - newestGps) > GPS_DATA_AGE_THRESHOLDS.HEALTHY;
+    }
+
+    // Also force if stores are empty (e.g. after Clear Storage)
+    const storesEmpty = before.vehicles.length === 0 && beforeFetch === 0;
+
+    if (outsideDebounce || gpsStale || storesEmpty) {
+      console.log(`[Manual Refresh] User tap -> force fetch (${outsideDebounce ? 'debounce expired' : gpsStale ? 'GPS stale' : 'stores empty'})`);
       try {
         await automaticRefreshService.triggerManualRefresh(true);
 
