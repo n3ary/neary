@@ -56,7 +56,11 @@ class AutomaticRefreshService {
 
     // Start timers if in foreground
     if (this.isAppInForeground) {
-      this.startVehicleRefreshTimer();
+      // Only start vehicle timer if API key is configured
+      const { useConfigStore } = await import('../stores/configStore');
+      if (useConfigStore.getState().apiKey) {
+        this.startVehicleRefreshTimer();
+      }
       this.startPredictionUpdateTimer();
     }
   }
@@ -97,6 +101,12 @@ class AutomaticRefreshService {
     this.vehicleRefreshTimer = setInterval(async () => {
       // Only refresh if app is in foreground and network is available
       if (!this.isAppInForeground) {
+        return;
+      }
+
+      // Skip vehicle refresh if no API key (schedule-only mode)
+      const { useConfigStore } = await import('../stores/configStore');
+      if (!useConfigStore.getState().apiKey) {
         return;
       }
 

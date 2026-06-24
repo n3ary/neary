@@ -106,6 +106,16 @@ class ManualRefreshService {
       try {
         const storeState = store.getState();
         
+        // Skip vehicle refresh if no API key configured (schedule-only mode)
+        if (name === 'vehicles') {
+          const { useConfigStore } = await import('../stores/configStore');
+          const apiKey = useConfigStore.getState().apiKey;
+          if (!apiKey) {
+            result.skippedStores.push(name);
+            continue;
+          }
+        }
+
         // Check if data is fresh - skip refresh if so. A forced tap bypasses the
         // debounce for VEHICLE data only (static 24h data is never worth forcing).
         const forceThisStore = options.force === true && name === 'vehicles';

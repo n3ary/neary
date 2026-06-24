@@ -78,12 +78,12 @@ export const useTripStore = create<TripStore>()(
           const { tripService } = await import('../services/tripService');
           const trips = await tripService.getTrips();
           
-          set({ 
-            trips, 
-            loading: false, 
-            error: null, 
-            lastUpdated: Date.now() 
-          });
+          // Don't overwrite existing data with empty result (hash-match signal)
+          if (trips.length === 0 && currentState.trips.length > 0) {
+            set({ loading: false, error: null, lastUpdated: Date.now(), lastApiFetch: Date.now() });
+          } else {
+            set({ trips, loading: false, error: null, lastUpdated: Date.now() });
+          }
         } catch (error) {
           set({ 
             loading: false, 

@@ -45,30 +45,29 @@ let contextState: AppContextState = {
 
 /**
  * Initialize the app context with API configuration
- * Should be called once at application startup
+ * Should be called once at application startup.
+ * apiKey is optional — without it, only static data is available.
  */
 export const initializeAppContext = (config: ApiConfig): void => {
   try {
-    // Validate configuration
-    if (!config.apiKey || typeof config.apiKey !== 'string' || config.apiKey.trim() === '') {
-      throw new InvalidConfigurationError('apiKey must be a non-empty string');
-    }
-    
     if (!config.agencyId || typeof config.agencyId !== 'number' || config.agencyId <= 0) {
       throw new InvalidConfigurationError('agencyId must be a positive number');
     }
 
-    // Initialize context state
+    // apiKey is optional (schedule-only mode when absent)
+    const apiKey = (config.apiKey && typeof config.apiKey === 'string' && config.apiKey.trim() !== '')
+      ? config.apiKey.trim()
+      : '';
+
     contextState = {
       apiConfig: {
-        apiKey: config.apiKey.trim(),
+        apiKey,
         agencyId: config.agencyId
       },
       isInitialized: true,
       lastUpdated: Date.now()
     };
   } catch (error) {
-    // Reset state on initialization failure
     contextState = {
       apiConfig: null,
       isInitialized: false,
@@ -84,27 +83,22 @@ export const initializeAppContext = (config: ApiConfig): void => {
 
 /**
  * Update the app context with new API configuration
- * Handles configuration changes during runtime
+ * Handles configuration changes during runtime.
+ * apiKey is optional.
  */
 export const updateAppContext = (config: ApiConfig): void => {
   try {
-    // Validate configuration
-    if (!config.apiKey || typeof config.apiKey !== 'string' || config.apiKey.trim() === '') {
-      throw new InvalidConfigurationError('apiKey must be a non-empty string');
-    }
-    
     if (!config.agencyId || typeof config.agencyId !== 'number' || config.agencyId <= 0) {
       throw new InvalidConfigurationError('agencyId must be a positive number');
     }
 
-    // Update context state
-    contextState.apiConfig = {
-      apiKey: config.apiKey.trim(),
-      agencyId: config.agencyId
-    };
+    const apiKey = (config.apiKey && typeof config.apiKey === 'string' && config.apiKey.trim() !== '')
+      ? config.apiKey.trim()
+      : '';
+
+    contextState.apiConfig = { apiKey, agencyId: config.agencyId };
     contextState.lastUpdated = Date.now();
     
-    // Mark as initialized if not already
     if (!contextState.isInitialized) {
       contextState.isInitialized = true;
     }

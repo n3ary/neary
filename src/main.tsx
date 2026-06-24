@@ -80,15 +80,12 @@ function App() {
   // Calculate initial view based on configuration state
   // -1 = API key setup, 0 = stations, 1 = routes, 2 = settings
   const [currentView, setCurrentView] = useState(() => {
-    const { apiKey, agency_id } = useConfigStore.getState();
+    const { agency_id } = useConfigStore.getState();
     
-    // No API key → Setup view
-    if (!apiKey) return -1;
-    
-    // Has API key but no agency → Setup view (not Settings)
+    // No agency selected → Setup view
     if (!agency_id) return -1;
     
-    // Fully configured → Stations
+    // Agency selected → Stations (API key is optional for schedule-only mode)
     return 0;
   });
   

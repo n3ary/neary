@@ -32,9 +32,38 @@ interface StopTimeStore {
   // Performance helper: check if data is fresh
   isDataFresh: (maxAgeMs?: number) => boolean;
   
+  // O(1) lookup by trip_id (lazy-built index)
+  getStopTimesForTrip: (tripId: string) => TranzyStopTimeResponse[];
+  
   // Local storage integration
   persistToStorage: () => void;
   loadFromStorage: () => void;
+}
+
+// Lazy-built trip_id → stopTimes index for O(1) lookups
+let stopTimeIndex: Map<string, TranzyStopTimeResponse[]> | null = null;
+let indexBuiltFrom: TranzyStopTimeResponse[] | null = null;
+
+function getOrBuildIndex(stopTimes: TranzyStopTimeResponse[]): Map<string, TranzyStopTimeResponse[]> {
+  // Rebuild index only when the underlying data changes
+  if (stopTimeIndex && indexBuiltFrom === stopTimes) return stopTimeIndex;
+  
+  const idx = new Map<string, TranzyStopTimeResponse[]>();
+  for (const st of stopTimes) {
+    let arr = idx.get(st.trip_id);
+    if (!arr) {
+      arr = [];
+      idx.set(st.trip_id, arr);
+    }
+    arr.push(st);
+  }
+  // Pre-sort each trip's stops by sequence
+  for (const arr of idx.values()) {
+    arr.sort((a, b) => a.stop_sequence - b.stop_sequence);
+  }
+  stopTimeIndex = idx;
+  indexBuiltFrom = stopTimes;
+  return idx;
 }
 
 // Create shared utilities for this store
@@ -76,12 +105,12 @@ export const useStopTimeStore = create<StopTimeStore>()(
           const { tripService } = await import('../services/tripService');
           const stopTimes = await tripService.getStopTimes();
           
-          set({ 
-            stopTimes, 
-            loading: false, 
-            error: null, 
-            lastUpdated: Date.now() 
-          });
+          // Don't overwrite existing data with empty result (hash-match signal)
+          if (stopTimes.length === 0 && currentState.stopTimes.length > 0) {
+            set({ loading: false, error: null, lastUpdated: Date.now(), lastApiFetch: Date.now() });
+          } else {
+            set({ stopTimes, loading: false, error: null, lastUpdated: Date.now() });
+          }
         } catch (error) {
           set({ 
             loading: false, 
@@ -94,12 +123,24 @@ export const useStopTimeStore = create<StopTimeStore>()(
         await refreshMethod(get, set);
       },
       
-      clearStopTimes: () => set({ stopTimes: [], error: null, lastUpdated: null, lastApiFetch: null }),
+      clearStopTimes: () => {
+        stopTimeIndex = null;
+        indexBuiltFrom = null;
+        set({ stopTimes: [], error: null, lastUpdated: null, lastApiFetch: null });
+      },
       clearError: () => set({ error: null }),
       
       // Performance helper: check if data is fresh (default 24 hours for general data)
       isDataFresh: (maxAgeMs = API_CACHE_DURATION.STATIC_DATA) => {
         return freshnessChecker(get, maxAgeMs);
+      },
+
+      // O(1) lookup by trip_id using lazy-built index
+      getStopTimesForTrip: (tripId: string) => {
+        const { stopTimes } = get();
+        if (stopTimes.length === 0) return [];
+        const idx = getOrBuildIndex(stopTimes);
+        return idx.get(tripId) || [];
       },
       
       // Local storage integration methods

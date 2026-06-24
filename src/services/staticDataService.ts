@@ -1,27 +1,41 @@
 /**
- * Static Data Service
+ * Static Data Service — single orchestrator for all static transit data.
  *
- * Fetches transit static data (routes, stops, trips, stop_times, shapes) from
- * the neary-gtfs releases branch on GitHub. This avoids hitting the Tranzy API
- * for data that only changes once per day, saving API quota and eliminating the
- * need for end-users to have a Tranzy API key for static data.
+ * Fetches routes, stops, trips, stop_times, shapes from the neary-gtfs releases
+ * branch on GitHub. One manifest check, parallel endpoint downloads, hash-based
+ * skip when unchanged.
  *
- * Hash-based freshness: before downloading a full payload, we fetch the hash
- * manifest and compare against the locally stored hash. If unchanged, we skip
- * the download entirely.
+ * Runs:
+ * - On first app start (no cached data)
+ * - Once per day (24h freshness)
+ * - After localStorage clear
+ *
+ * Individual stores persist data in localStorage. This service only fetches when
+ * the remote hash differs from what we last downloaded.
  */
 
+import type { TranzyRouteResponse, TranzyStopResponse, TranzyTripResponse, TranzyStopTimeResponse, TranzyShapeResponse } from '../types/rawTranzyApi';
 import type { StaticEndpoint } from '../utils/schedule/agencyFeeds';
 import { staticDataUrl, hashManifestUrl } from '../utils/schedule/agencyFeeds';
 
-const LOG_PREFIX = '[StaticDataService]';
+const LOG_PREFIX = '[StaticData]';
 
-/** Locally stored hashes, keyed by "<agencyId>/<endpoint>". */
+// ============================================================================
+// Local storage keys
+// ============================================================================
+
 const HASH_STORAGE_KEY = 'static-data-hashes';
-/** Locally stored timestamps for freshness display. */
 const TIMESTAMPS_STORAGE_KEY = 'static-data-timestamps';
+const LAST_SYNC_KEY = 'static-data-last-sync';
 
-interface EndpointTimestamps {
+/** How often to check for updates (24 hours). */
+const SYNC_INTERVAL_MS = 24 * 60 * 60 * 1000;
+
+// ============================================================================
+// Storage helpers
+// ============================================================================
+
+export interface EndpointTimestamps {
   lastChecked: number | null;
   lastChanged: number | null;
 }
@@ -30,9 +44,7 @@ function getStoredHashes(): Record<string, string> {
   try {
     const raw = localStorage.getItem(HASH_STORAGE_KEY);
     return raw ? JSON.parse(raw) : {};
-  } catch {
-    return {};
-  }
+  } catch { return {}; }
 }
 
 function setStoredHash(key: string, hash: string): void {
@@ -40,142 +52,220 @@ function setStoredHash(key: string, hash: string): void {
     const hashes = getStoredHashes();
     hashes[key] = hash;
     localStorage.setItem(HASH_STORAGE_KEY, JSON.stringify(hashes));
-  } catch {
-    // localStorage full or unavailable — non-fatal
-  }
+  } catch { /* non-fatal */ }
 }
 
 function getStoredTimestamps(): Record<string, EndpointTimestamps> {
   try {
     const raw = localStorage.getItem(TIMESTAMPS_STORAGE_KEY);
     return raw ? JSON.parse(raw) : {};
-  } catch {
-    return {};
-  }
+  } catch { return {}; }
 }
 
-function updateTimestamp(key: string, changed: boolean): void {
+function updateTimestamp(key: string, changed: boolean, serverSyncedAt: string | null): void {
   try {
     const all = getStoredTimestamps();
     const now = Date.now();
     const existing = all[key] || { lastChecked: null, lastChanged: null };
-    all[key] = {
-      lastChecked: now,
-      lastChanged: changed ? now : existing.lastChanged,
-    };
+    const serverTime = serverSyncedAt ? Date.parse(serverSyncedAt) : null;
+    
+    let lastChanged = existing.lastChanged;
+    if (changed) {
+      // Data was freshly downloaded — use server time if available, otherwise now
+      lastChanged = (serverTime && Number.isFinite(serverTime)) ? serverTime : now;
+    } else if (!lastChanged && serverTime && Number.isFinite(serverTime)) {
+      // Hash matched but we never recorded a lastChanged — backfill from server
+      lastChanged = serverTime;
+    }
+
+    all[key] = { lastChecked: now, lastChanged };
     localStorage.setItem(TIMESTAMPS_STORAGE_KEY, JSON.stringify(all));
-  } catch {
-    // non-fatal
-  }
+  } catch { /* non-fatal */ }
 }
 
-/**
- * Fetch the remote hash manifest from the releases branch.
- * Returns a map of "<agencyId>/<endpoint>" → sha256 hash.
- */
-async function fetchRemoteHashes(): Promise<Record<string, string>> {
+function getLastSyncTime(): number {
   try {
-    const res = await fetch(hashManifestUrl(), {
-      signal: AbortSignal.timeout(10000),
-    });
-    if (!res.ok) return {};
-    return await res.json();
-  } catch {
-    return {};
-  }
+    return Number(localStorage.getItem(LAST_SYNC_KEY)) || 0;
+  } catch { return 0; }
 }
 
-export interface StaticDataResult<T> {
-  data: T;
-  hash: string;
-  fromCache: boolean;
+function setLastSyncTime(): void {
+  try {
+    localStorage.setItem(LAST_SYNC_KEY, String(Date.now()));
+  } catch { /* non-fatal */ }
 }
 
-/**
- * Fetch a static data endpoint for an agency.
- *
- * 1. Checks remote hash manifest against locally stored hash.
- * 2. If hash unchanged → returns null (caller should use cached data).
- * 3. If hash changed or no local hash → downloads the full payload.
- *
- * @returns The data + new hash, or null if data hasn't changed.
- */
-async function fetchEndpoint<T>(
+// ============================================================================
+// Manifest fetch (cached per session to avoid redundant network calls)
+// ============================================================================
+
+let cachedManifest: { syncedAt: string | null; hashes: Record<string, string> } | null = null;
+let manifestFetchPromise: Promise<{ syncedAt: string | null; hashes: Record<string, string> }> | null = null;
+
+async function fetchManifest(): Promise<{ syncedAt: string | null; hashes: Record<string, string> }> {
+  // Return cached manifest if already fetched this session
+  if (cachedManifest) return cachedManifest;
+
+  // Deduplicate concurrent calls
+  if (manifestFetchPromise) return manifestFetchPromise;
+
+  manifestFetchPromise = (async () => {
+    try {
+      const res = await fetch(hashManifestUrl(), { signal: AbortSignal.timeout(10000) });
+      if (!res.ok) return { syncedAt: null, hashes: {} };
+      const data = await res.json();
+      if (data && typeof data === 'object' && 'hashes' in data) {
+        cachedManifest = { syncedAt: data.syncedAt || null, hashes: data.hashes };
+      } else {
+        cachedManifest = { syncedAt: null, hashes: data };
+      }
+      return cachedManifest!;
+    } catch {
+      return { syncedAt: null, hashes: {} };
+    } finally {
+      manifestFetchPromise = null;
+    }
+  })();
+
+  return manifestFetchPromise;
+}
+
+// ============================================================================
+// Single endpoint fetch
+// ============================================================================
+
+async function fetchSingleEndpoint<T>(
   agencyId: number,
   endpoint: StaticEndpoint,
-  remoteHashes: Record<string, string>,
-): Promise<StaticDataResult<T> | null> {
+  hashes: Record<string, string>,
+  syncedAt: string | null,
+): Promise<{ endpoint: StaticEndpoint; data: T | null; changed: boolean }> {
   const hashKey = `${agencyId}/${endpoint}`;
-  const remoteHash = remoteHashes[hashKey];
+  const remoteHash = hashes[hashKey];
   const localHash = getStoredHashes()[hashKey];
 
-  // If we have a remote hash and it matches local → skip download
   if (remoteHash && remoteHash === localHash) {
-    console.log(`${LOG_PREFIX} ${endpoint}: unchanged (hash match)`);
-    updateTimestamp(hashKey, false);
-    return null;
+    updateTimestamp(hashKey, false, syncedAt);
+    return { endpoint, data: null, changed: false };
   }
 
-  // Download the full payload
   const url = staticDataUrl(agencyId, endpoint);
-  console.log(`${LOG_PREFIX} ${endpoint}: downloading from ${url}`);
-
-  const res = await fetch(url, {
-    signal: AbortSignal.timeout(60000), // 60s for shapes
-  });
-
-  if (!res.ok) {
-    throw new Error(`${endpoint}: HTTP ${res.status}`);
-  }
+  const res = await fetch(url, { signal: AbortSignal.timeout(60000) });
+  if (!res.ok) throw new Error(`${endpoint}: HTTP ${res.status}`);
 
   const data = await res.json() as T;
-
-  // Store the hash for next time
-  const newHash = remoteHash || hashKey; // Use remote hash if available
+  const newHash = remoteHash || hashKey;
   setStoredHash(hashKey, newHash);
-  updateTimestamp(hashKey, true);
+  updateTimestamp(hashKey, true, syncedAt);
 
-  return { data, hash: newHash, fromCache: false };
+  return { endpoint, data, changed: true };
 }
+
+// ============================================================================
+// Sync result interface
+// ============================================================================
+
+export interface SyncResult {
+  routes: TranzyRouteResponse[] | null;
+  stops: TranzyStopResponse[] | null;
+  trips: TranzyTripResponse[] | null;
+  stop_times: TranzyStopTimeResponse[] | null;
+  shapes: TranzyShapeResponse[] | null;
+  /** Endpoints that were actually downloaded (not hash-matched). */
+  changed: StaticEndpoint[];
+  /** Endpoints that were skipped (hash matched). */
+  unchanged: StaticEndpoint[];
+  /** Endpoints that failed. */
+  failed: StaticEndpoint[];
+}
+
+// ============================================================================
+// Progress callback
+// ============================================================================
+
+export type SyncProgressCallback = (status: {
+  endpoint: StaticEndpoint;
+  state: 'checking' | 'downloading' | 'done' | 'unchanged' | 'failed';
+}) => void;
+
+// ============================================================================
+// Public API
+// ============================================================================
 
 export const staticDataService = {
   /**
-   * Fetch the hash manifest (lightweight — just a small JSON).
-   * Call this first to determine which endpoints need updating.
+   * Whether a sync is needed (first run, stale, or storage cleared).
    */
-  fetchRemoteHashes,
-
-  /**
-   * Check if a specific endpoint has changed since last fetch.
-   */
-  hasChanged(agencyId: number, endpoint: StaticEndpoint, remoteHashes: Record<string, string>): boolean {
-    const hashKey = `${agencyId}/${endpoint}`;
-    const remoteHash = remoteHashes[hashKey];
-    const localHash = getStoredHashes()[hashKey];
-    // Changed if: no local hash, no remote hash (can't verify), or mismatch
-    if (!remoteHash) return true; // Can't verify — assume changed
-    return remoteHash !== localHash;
+  needsSync(agencyId: number): boolean {
+    const lastSync = getLastSyncTime();
+    if (!lastSync) return true;
+    if (Date.now() - lastSync > SYNC_INTERVAL_MS) return true;
+    const hashes = getStoredHashes();
+    const endpoints: StaticEndpoint[] = ['routes', 'stops', 'trips', 'stop_times', 'shapes'];
+    return endpoints.some(ep => !hashes[`${agencyId}/${ep}`]);
   },
 
   /**
-   * Fetch a static endpoint, skipping download if hash hasn't changed.
+   * Fetch a single endpoint (used by individual services).
+   * Shares the cached manifest — only one network call for the manifest per session.
    */
-  fetchEndpoint,
+  async fetchEndpoint<T>(agencyId: number, endpoint: StaticEndpoint): Promise<T | null> {
+    const { syncedAt, hashes } = await fetchManifest();
+    const result = await fetchSingleEndpoint<T>(agencyId, endpoint, hashes, syncedAt);
+    return result.data;
+  },
 
   /**
-   * Update the stored hash for an endpoint (call after successfully caching data).
+   * Sync all static data for an agency in parallel.
    */
-  markFresh(agencyId: number, endpoint: StaticEndpoint, remoteHashes: Record<string, string>): void {
-    const hashKey = `${agencyId}/${endpoint}`;
-    const remoteHash = remoteHashes[hashKey];
-    if (remoteHash) {
-      setStoredHash(hashKey, remoteHash);
+  async syncAll(agencyId: number, onProgress?: SyncProgressCallback): Promise<SyncResult> {
+    console.log(`${LOG_PREFIX} Starting sync for agency ${agencyId}...`);
+
+    const { syncedAt, hashes } = await fetchManifest();
+    const endpoints: StaticEndpoint[] = ['routes', 'stops', 'trips', 'stop_times', 'shapes'];
+
+    const result: SyncResult = {
+      routes: null, stops: null, trips: null, stop_times: null, shapes: null,
+      changed: [], unchanged: [], failed: [],
+    };
+
+    // Fetch all endpoints in parallel
+    const promises = endpoints.map(async (ep) => {
+      onProgress?.({ endpoint: ep, state: 'checking' });
+      try {
+        const r = await fetchSingleEndpoint(agencyId, ep, hashes, syncedAt);
+        if (r.changed) {
+          onProgress?.({ endpoint: ep, state: 'done' });
+          result.changed.push(ep);
+        } else {
+          onProgress?.({ endpoint: ep, state: 'unchanged' });
+          result.unchanged.push(ep);
+        }
+        return { ep, data: r.data };
+      } catch (err) {
+        console.warn(`${LOG_PREFIX} Failed to fetch ${ep}:`, err);
+        onProgress?.({ endpoint: ep, state: 'failed' });
+        result.failed.push(ep);
+        return { ep, data: null };
+      }
+    });
+
+    const results = await Promise.all(promises);
+
+    for (const { ep, data } of results) {
+      if (data !== null) {
+        (result as any)[ep] = data;
+      }
     }
+
+    setLastSyncTime();
+    console.log(`${LOG_PREFIX} Sync complete: ${result.changed.length} changed, ${result.unchanged.length} unchanged, ${result.failed.length} failed`);
+
+    return result;
   },
 
   /**
    * Get freshness timestamps for all tracked endpoints.
-   * Used by the Settings UI to show last-checked / last-changed.
    */
   getTimestamps(): Record<string, EndpointTimestamps> {
     return getStoredTimestamps();
@@ -187,5 +277,18 @@ export const staticDataService = {
   getEndpointTimestamps(agencyId: number, endpoint: StaticEndpoint): EndpointTimestamps {
     const key = `${agencyId}/${endpoint}`;
     return getStoredTimestamps()[key] || { lastChecked: null, lastChanged: null };
+  },
+
+  /**
+   * Fetch manifest only (for callers that need hash checking without full sync).
+   */
+  fetchManifest,
+
+  /**
+   * Invalidate the cached manifest (call after storage clear or agency change).
+   */
+  invalidateCache(): void {
+    cachedManifest = null;
+    manifestFetchPromise = null;
   },
 };

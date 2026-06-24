@@ -19,6 +19,9 @@ vi.mock('../../stores/routeStore');
 vi.mock('../../stores/shapeStore');
 vi.mock('../../stores/stopTimeStore');
 vi.mock('../../stores/tripStore');
+vi.mock('../../stores/configStore', () => ({
+  useConfigStore: { getState: () => ({ apiKey: 'test-key', agency_id: 2 }) }
+}));
 
 describe('ManualRefreshService', () => {
   beforeEach(() => {

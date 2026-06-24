@@ -28,7 +28,6 @@ export const StationView: FC<StationViewProps> = ({ onNavigateToSettings }) => {
   const vehicles = useVehicleStore(state => state.vehicles);
   const vehicleLoading = useVehicleStore(state => state.loading);
   const vehicleLastUpdated = useVehicleStore(state => state.lastApiFetch);
-  const apiKey = useConfigStore(state => state.apiKey);
   const agency_id = useConfigStore(state => state.agency_id);
   
   const { 
@@ -43,7 +42,7 @@ export const StationView: FC<StationViewProps> = ({ onNavigateToSettings }) => {
   // Note: Data loading is handled by automaticRefreshService on app startup
   // No need to trigger loading here - it creates duplicate requests
 
-  if (!apiKey || !agency_id) {
+  if (!agency_id) {
     return (
       <Alert 
         severity="info" 
@@ -60,18 +59,18 @@ export const StationView: FC<StationViewProps> = ({ onNavigateToSettings }) => {
           )
         }
       >
-        Please configure your API key and agency in settings
+        Please select a transit agency in settings
       </Alert>
     );
   }
 
   // Show first-time loading state when cache is empty and data is loading
-  // Requirement 7.6: Display loading states when cache is empty on first load
-  // Show loading if we're missing ANY critical data (stops or vehicles)
-  // OR if any store is actively loading
-  if (stops.length === 0 || vehicles.length === 0) {
-    // If we have no stops or vehicles, show loading state
-    // Don't show empty state until we've actually tried to load data
+  // In schedule-only mode (no API key), don't wait for vehicles
+  const apiKey = useConfigStore(state => state.apiKey);
+  const needsVehicles = !!apiKey;
+  const isWaitingForData = stops.length === 0 || (needsVehicles && vehicles.length === 0);
+  
+  if (isWaitingForData) {
     return (
       <FirstTimeLoadingState 
         message="Loading nearby stations..."

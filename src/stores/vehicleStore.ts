@@ -63,6 +63,12 @@ export const useVehicleStore = create<VehicleStore>()(
           return;
         }
         
+        // Skip if no API key configured (schedule-only mode)
+        const { useConfigStore } = await import('./configStore');
+        if (!useConfigStore.getState().apiKey) {
+          return;
+        }
+
         // Check if cached data is fresh using API fetch timestamp
         if (currentState.vehicles.length > 0 && currentState.isDataFresh()) {
           return; // Use cached data

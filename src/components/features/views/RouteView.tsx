@@ -26,7 +26,7 @@ interface RouteViewProps {
 
 export const RouteView: FC<RouteViewProps> = ({ onNavigateToSettings }) => {
   const { routes, loading, error } = useRouteStore();
-  const { apiKey, agency_id } = useConfigStore();
+  const { agency_id } = useConfigStore();
   
   // Local state for filter management
   const [filterState, setFilterState] = useState<RouteFilterState>(DEFAULT_FILTER_STATE);
@@ -44,7 +44,7 @@ export const RouteView: FC<RouteViewProps> = ({ onNavigateToSettings }) => {
     setFilterState(newFilterState);
   };
 
-  if (!apiKey || !agency_id) {
+  if (!agency_id) {
     return (
       <Alert 
         severity="info" 
@@ -61,7 +61,7 @@ export const RouteView: FC<RouteViewProps> = ({ onNavigateToSettings }) => {
           )
         }
       >
-        Please configure your API key and agency in settings
+        Please select a transit agency in settings
       </Alert>
     );
   }
