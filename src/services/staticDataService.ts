@@ -18,6 +18,13 @@ const LOG_PREFIX = '[StaticDataService]';
 
 /** Locally stored hashes, keyed by "<agencyId>/<endpoint>". */
 const HASH_STORAGE_KEY = 'static-data-hashes';
+/** Locally stored timestamps for freshness display. */
+const TIMESTAMPS_STORAGE_KEY = 'static-data-timestamps';
+
+interface EndpointTimestamps {
+  lastChecked: number | null;
+  lastChanged: number | null;
+}
 
 function getStoredHashes(): Record<string, string> {
   try {
@@ -35,6 +42,30 @@ function setStoredHash(key: string, hash: string): void {
     localStorage.setItem(HASH_STORAGE_KEY, JSON.stringify(hashes));
   } catch {
     // localStorage full or unavailable — non-fatal
+  }
+}
+
+function getStoredTimestamps(): Record<string, EndpointTimestamps> {
+  try {
+    const raw = localStorage.getItem(TIMESTAMPS_STORAGE_KEY);
+    return raw ? JSON.parse(raw) : {};
+  } catch {
+    return {};
+  }
+}
+
+function updateTimestamp(key: string, changed: boolean): void {
+  try {
+    const all = getStoredTimestamps();
+    const now = Date.now();
+    const existing = all[key] || { lastChecked: null, lastChanged: null };
+    all[key] = {
+      lastChecked: now,
+      lastChanged: changed ? now : existing.lastChanged,
+    };
+    localStorage.setItem(TIMESTAMPS_STORAGE_KEY, JSON.stringify(all));
+  } catch {
+    // non-fatal
   }
 }
 
@@ -81,6 +112,7 @@ async function fetchEndpoint<T>(
   // If we have a remote hash and it matches local → skip download
   if (remoteHash && remoteHash === localHash) {
     console.log(`${LOG_PREFIX} ${endpoint}: unchanged (hash match)`);
+    updateTimestamp(hashKey, false);
     return null;
   }
 
@@ -101,6 +133,7 @@ async function fetchEndpoint<T>(
   // Store the hash for next time
   const newHash = remoteHash || hashKey; // Use remote hash if available
   setStoredHash(hashKey, newHash);
+  updateTimestamp(hashKey, true);
 
   return { data, hash: newHash, fromCache: false };
 }
@@ -138,5 +171,21 @@ export const staticDataService = {
     if (remoteHash) {
       setStoredHash(hashKey, remoteHash);
     }
+  },
+
+  /**
+   * Get freshness timestamps for all tracked endpoints.
+   * Used by the Settings UI to show last-checked / last-changed.
+   */
+  getTimestamps(): Record<string, EndpointTimestamps> {
+    return getStoredTimestamps();
+  },
+
+  /**
+   * Get timestamps for a specific endpoint.
+   */
+  getEndpointTimestamps(agencyId: number, endpoint: StaticEndpoint): EndpointTimestamps {
+    const key = `${agencyId}/${endpoint}`;
+    return getStoredTimestamps()[key] || { lastChecked: null, lastChanged: null };
   },
 };
