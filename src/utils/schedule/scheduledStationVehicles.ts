@@ -404,7 +404,9 @@ export function buildScheduledStationVehicles(
         const ahead = entry.a >= nowMin;
         const minutesUntil = ahead ? entry.a - nowMin : entry.d - nowMin; // negative when behind
         if (ahead) {
-          if (minutesUntil > windowMinutes) continue;
+          // No window cap for approaching ghosts — show the next scheduled
+          // vehicle regardless of how far away it is. The rider needs to know
+          // when the next bus is coming even if it's 2 hours out.
         } else {
           const departedWindow = Math.min(
             headway ?? DEPARTED_GHOST_WINDOW_CAP_MINUTES,

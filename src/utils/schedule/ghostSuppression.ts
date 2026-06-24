@@ -182,14 +182,12 @@ export function shouldSuppressGhost(
   ghostPosition: Coordinates,
   routeVehiclePositions: Coordinates[],
 ): boolean {
-  // High-frequency route with live coverage: never show ghosts.
-  if (routeHasGps && isHighFrequency(headwayMinutes)) return true;
-
-  // Otherwise suppress only when a live vehicle is positionally on top of it.
+  // Positional match: suppress only when a live GPS vehicle is physically
+  // close to this specific ghost's position. The high-frequency blanket rule
+  // (suppress ALL ghosts when any GPS exists) is disabled — it was too
+  // aggressive and hid legitimate schedule info on busy routes.
   if (routeVehiclePositions.length === 0) return false;
-  return isGhostCoveredByGps(
-    ghostPosition,
-    routeVehiclePositions,
-    ghostMatchDistanceMeters(headwayMinutes),
-  );
+
+  const matchDistance = ghostMatchDistanceMeters(headwayMinutes);
+  return isGhostCoveredByGps(ghostPosition, routeVehiclePositions, matchDistance);
 }
