@@ -73,12 +73,12 @@ export const useStationStore = create<StationStore>()(
           const { stationService } = await import('../services/stationService');
           const stops = await stationService.getStops();
           
-          set({ 
-            stops, 
-            loading: false, 
-            error: null, 
-            lastUpdated: Date.now() 
-          });
+          // Don't overwrite existing data with empty result (hash-match signal)
+          if (stops.length === 0 && currentState.stops.length > 0) {
+            set({ loading: false, error: null, lastUpdated: Date.now(), lastApiFetch: Date.now() });
+          } else {
+            set({ stops, loading: false, error: null, lastUpdated: Date.now() });
+          }
         } catch (error) {
           set({ 
             loading: false, 

@@ -70,12 +70,12 @@ export const useRouteStore = create<RouteStore>()(
           const { routeService } = await import('../services/routeService');
           const routes = await routeService.getRoutes();
           
-          set({ 
-            routes, 
-            loading: false, 
-            error: null, 
-            lastUpdated: Date.now() 
-          });
+          // Don't overwrite existing data with empty result (hash-match signal)
+          if (routes.length === 0 && currentState.routes.length > 0) {
+            set({ loading: false, error: null, lastUpdated: Date.now(), lastApiFetch: Date.now() });
+          } else {
+            set({ routes, loading: false, error: null, lastUpdated: Date.now() });
+          }
         } catch (error) {
           set({ 
             loading: false, 

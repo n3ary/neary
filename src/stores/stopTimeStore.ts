@@ -105,12 +105,12 @@ export const useStopTimeStore = create<StopTimeStore>()(
           const { tripService } = await import('../services/tripService');
           const stopTimes = await tripService.getStopTimes();
           
-          set({ 
-            stopTimes, 
-            loading: false, 
-            error: null, 
-            lastUpdated: Date.now() 
-          });
+          // Don't overwrite existing data with empty result (hash-match signal)
+          if (stopTimes.length === 0 && currentState.stopTimes.length > 0) {
+            set({ loading: false, error: null, lastUpdated: Date.now(), lastApiFetch: Date.now() });
+          } else {
+            set({ stopTimes, loading: false, error: null, lastUpdated: Date.now() });
+          }
         } catch (error) {
           set({ 
             loading: false, 
