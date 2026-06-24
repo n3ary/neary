@@ -12,17 +12,41 @@ import type {
 } from '../../types/arrivalTime.ts';
 
 /**
- * Get sorted stop times for a vehicle's trip
+ * Lazy-built trip_id index for O(1) lookups.
+ * Re-uses the same index as long as the input array reference hasn't changed.
+ */
+let _tripIndex: Map<string, TranzyStopTimeResponse[]> | null = null;
+let _tripIndexSource: TranzyStopTimeResponse[] | null = null;
+
+function getTripIndex(stopTimes: TranzyStopTimeResponse[]): Map<string, TranzyStopTimeResponse[]> {
+  if (_tripIndex && _tripIndexSource === stopTimes) return _tripIndex;
+  
+  const idx = new Map<string, TranzyStopTimeResponse[]>();
+  for (const st of stopTimes) {
+    let arr = idx.get(st.trip_id);
+    if (!arr) { arr = []; idx.set(st.trip_id, arr); }
+    arr.push(st);
+  }
+  for (const arr of idx.values()) {
+    arr.sort((a, b) => a.stop_sequence - b.stop_sequence);
+  }
+  _tripIndex = idx;
+  _tripIndexSource = stopTimes;
+  return idx;
+}
+
+/**
+ * Get sorted stop times for a vehicle's trip.
+ * Uses a lazy-built index for O(1) lookups (the index is built once per
+ * stopTimes array reference and reused across all calls in the same render cycle).
  */
 export function getTripStopSequence(
   vehicle: TranzyVehicleResponse,
   stopTimes: TranzyStopTimeResponse[]
 ): TranzyStopTimeResponse[] {
   if (!vehicle.trip_id) return [];
-  
-  return stopTimes
-    .filter(st => st.trip_id === vehicle.trip_id)
-    .sort((a, b) => a.stop_sequence - b.stop_sequence);
+  const idx = getTripIndex(stopTimes);
+  return idx.get(vehicle.trip_id) || [];
 }
 
 /**
@@ -39,9 +63,76 @@ export function findStopInSequence(
 }
 
 /**
- * Get intermediate stop data between vehicle and target stop
- * Uses existing vehicle progress estimation to determine actual position
+ * Compute stop statuses for a trip in a single pass.
+ *
+ * Determines the vehicle's current position once, then assigns:
+ * - "passed" to stops before the vehicle
+ * - "current" to the next stop the vehicle is approaching
+ * - "upcoming" to stops after that
+ *
+ * O(N) where N = stops in the trip (vs the previous O(N²) approach).
  */
+export function computeTripStopStatuses(
+  vehicle: TranzyVehicleResponse,
+  stopTimes: TranzyStopTimeResponse[],
+  stops: TranzyStopResponse[],
+): { name: string; stopId: number; sequence: number; status: 'passed' | 'current' | 'upcoming' }[] {
+  const tripStopTimes = getTripStopSequence(vehicle, stopTimes);
+  if (tripStopTimes.length === 0) return [];
+
+  // Determine vehicle's "next stop" sequence number in one shot
+  let nextStopSequence = tripStopTimes[0].stop_sequence; // default: start of trip
+
+  // Try proximity check first (is vehicle AT a stop?)
+  const PROXIMITY_M = 50;
+  const vehiclePos = { lat: vehicle.latitude, lon: vehicle.longitude };
+  let resolved = false;
+
+  for (let i = 0; i < tripStopTimes.length; i++) {
+    const sd = stops.find(s => s.stop_id === tripStopTimes[i].stop_id);
+    if (!sd) continue;
+    const dist = calculateDistance(vehiclePos, { lat: sd.stop_lat, lon: sd.stop_lon });
+    if (dist <= PROXIMITY_M) {
+      // Vehicle is at this stop — next stop is the one after
+      nextStopSequence = (i + 1 < tripStopTimes.length)
+        ? tripStopTimes[i + 1].stop_sequence
+        : tripStopTimes[i].stop_sequence + 1; // past last stop
+      resolved = true;
+      break;
+    }
+  }
+
+  // Fallback: segment-based estimation
+  if (!resolved) {
+    try {
+      const progress = estimateVehicleProgressWithStops(vehicle, tripStopTimes, stops);
+      if (progress.segmentBetweenStops) {
+        nextStopSequence = progress.segmentBetweenStops.nextStop.stop_sequence;
+      }
+    } catch {
+      // Keep default (start of trip)
+    }
+  }
+
+  // Single pass: assign statuses based on sequence comparison
+  return tripStopTimes.map((st) => {
+    const stopData = stops.find(s => s.stop_id === st.stop_id);
+    let status: 'passed' | 'current' | 'upcoming';
+    if (st.stop_sequence < nextStopSequence) {
+      status = 'passed';
+    } else if (st.stop_sequence === nextStopSequence) {
+      status = 'current';
+    } else {
+      status = 'upcoming';
+    }
+    return {
+      name: stopData?.stop_name || `Stop ${st.stop_id}`,
+      stopId: st.stop_id,
+      sequence: st.stop_sequence,
+      status,
+    };
+  });
+}
 export function getIntermediateStopData(
   vehicle: TranzyVehicleResponse,
   targetStop: TranzyStopResponse,

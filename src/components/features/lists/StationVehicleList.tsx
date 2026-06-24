@@ -29,8 +29,7 @@ import {
 } from '../../../utils/station/dropOffOnlyUtils';
 import { getNextTomorrowDeparture } from '../../../utils/schedule/stationScheduleBoard';
 import { VEHICLE_DISPLAY } from '../../../utils/core/constants';
-import { getTripStopSequence } from '../../../utils/arrival/tripUtils';
-import { determineTargetStopRelation } from '../../../utils/arrival/arrivalUtils';
+import { getTripStopSequence, computeTripStopStatuses } from '../../../utils/arrival/tripUtils';
 import { useTripStore } from '../../../stores/tripStore';
 import { useStopTimeStore } from '../../../stores/stopTimeStore';
 import { useStationStore } from '../../../stores/stationStore';
@@ -375,8 +374,19 @@ const VehicleCard: FC<VehicleCardProps> = memo(({ vehicle, route, trip, arrivalT
   // Get actual stops for this vehicle's trip. Live vehicles use the Tranzy
   // stop-time store; scheduled vehicles use the GTFS schedule payload (their
   // trip is not in the partial Tranzy set).
-  const tripStops = isScheduled
-    ? (scheduleData?.stopTimes?.[vehicle.trip_id ?? ''] ?? [])
+  //
+  // Stop count: always computed (cheap — just array length).
+  // Stop statuses (passed/current/upcoming): deferred until user expands.
+  const tripStopCount = isScheduled
+    ? (scheduleData?.stopTimes?.[vehicle.trip_id ?? ''] ?? []).length
+    : getTripStopSequence(vehicle, stopTimes).length;
+
+  // Full stop list with statuses — only computed when stops section is expanded
+  const tripStops = useMemo(() => {
+    if (!stopsExpanded) return [];
+
+    if (isScheduled) {
+      return (scheduleData?.stopTimes?.[vehicle.trip_id ?? ''] ?? [])
         .slice()
         .sort((a, b) => a.q - b.q)
         .map((st) => ({
@@ -384,38 +394,12 @@ const VehicleCard: FC<VehicleCardProps> = memo(({ vehicle, route, trip, arrivalT
           stopId: st.s,
           sequence: st.q,
           status: 'upcoming' as const,
-        }))
-    : getTripStopSequenceStops();
+        }));
+    }
 
-  // Live-vehicle stop status computation (extracted so the scheduled branch
-  // above stays simple).
-  function getTripStopSequenceStops() {
-    const tripStopTimes = getTripStopSequence(vehicle, stopTimes);
-    return tripStopTimes.map((stopTime) => {
-      const stopData = stops.find(stop => stop.stop_id === stopTime.stop_id);
-      const stopRelation = determineTargetStopRelation(vehicle, stopData || { stop_id: stopTime.stop_id } as any, trips, stopTimes, stops);
-      let status: 'passed' | 'current' | 'upcoming';
-      if (stopRelation === 'passed') {
-        status = 'passed';
-      } else if (stopRelation === 'not_in_trip') {
-        status = 'upcoming';
-      } else {
-        const upcomingStops = tripStopTimes.filter(st => {
-          const tempStopData = stops.find(s => s.stop_id === st.stop_id);
-          if (!tempStopData) return false;
-          const relation = determineTargetStopRelation(vehicle, tempStopData, trips, stopTimes, stops);
-          return relation === 'upcoming';
-        });
-        status = upcomingStops[0]?.stop_id === stopTime.stop_id ? 'current' : 'upcoming';
-      }
-      return {
-        name: stopData?.stop_name || `Stop ${stopTime.stop_id}`,
-        stopId: stopTime.stop_id,
-        sequence: stopTime.stop_sequence,
-        status
-      };
-    });
-  }
+    // Live vehicle: single-pass O(N) computation
+    return computeTripStopStatuses(vehicle, stopTimes, stops);
+  }, [stopsExpanded, isScheduled, vehicle, stopTimes, stops, scheduleData]);
 
   const routeShortName = route?.route_short_name || vehicle.route_id?.toString() || '?';
   const headsign = trip?.trip_headsign || 'Unknown Destination';
@@ -699,7 +683,7 @@ const VehicleCard: FC<VehicleCardProps> = memo(({ vehicle, route, trip, arrivalT
                 <ExpandMoreIcon />
               </IconButton>
               <Typography variant="body2" sx={{ fontWeight: 500 }}>
-                Stops ({tripStops.length})
+                Stops ({tripStopCount})
               </Typography>
             </Box>
             
