@@ -19,6 +19,8 @@
   to = "https://api.tranzy.ai/:splat"
   status = 200
   force = true
+  [redirects.headers]
+    Cache-Control = "no-store, no-cache, must-revalidate"
 
 # SPA redirect for client-side routing
 [[redirects]]
