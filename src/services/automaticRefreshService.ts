@@ -2,6 +2,7 @@
 // Requirements: 7.1, 7.2, 7.3, 7.4, 7.5
 
 import { useStatusStore } from '../stores/statusStore';
+import { useStationCacheStore } from '../stores/stationCacheStore';
 import { manualRefreshService } from './manualRefreshService';
 import { AUTO_REFRESH_CYCLE, PREDICTION_UPDATE_CYCLE } from '../utils/core/constants';
 
@@ -15,6 +16,7 @@ class AutomaticRefreshService {
   private vehicleRefreshTimer: NodeJS.Timeout | null = null;
   private predictionUpdateTimer: NodeJS.Timeout | null = null;
   private networkStatusUnsubscribe: (() => void) | null = null;
+  private vehicleLoadUnsubscribe: (() => void) | null = null;
   private isAppInForeground = true;
   private hasInitializedStartup = false;
   private isPredicting = false;
@@ -63,6 +65,9 @@ class AutomaticRefreshService {
       }
       this.startPredictionUpdateTimer();
     }
+
+    // Setup immediate prediction trigger after vehicle loads
+    this.setupImmediatePredictionTrigger();
   }
 
   /**
@@ -179,12 +184,31 @@ class AutomaticRefreshService {
   }
 
   /**
-   * Update vehicle predictions using existing cached data
-   * This recalculates predictions with current timestamp without API calls
+   * Get route IDs from the station cache for scoping predictions.
+   * Returns all unique route IDs from the most recent valid cache entry.
+   */
+  private getRouteIdsFromCache(): number[] {
+    const cache = useStationCacheStore.getState().cache;
+    
+    for (const [, entry] of cache) {
+      if (Date.now() - entry.timestamp < 5 * 60 * 1000) {
+        const routeIds = entry.stations.flatMap(s => s.routeIds);
+        const unique = [...new Set(routeIds)];
+        if (unique.length > 0) {
+          console.log(`[AutoRefresh] Route scope from cache: ${unique.length} routes`);
+        }
+        return unique;
+      }
+    }
+    return [];
+  }
+
+  /**
+   * Update vehicle predictions using existing cached data.
+   * Scopes enhancement to only vehicles matching the user's station routes.
    */
   private async updatePredictionsOnly(): Promise<void> {
     try {
-      // Import vehicle store dynamically to avoid circular dependencies
       const { useVehicleStore } = await import('../stores/vehicleStore');
       const vehicleStore = useVehicleStore.getState();
       
@@ -193,12 +217,66 @@ class AutomaticRefreshService {
         return;
       }
 
-      // Trigger prediction recalculation in the store
-      // This will use existing API data but recalculate predictions with current time
-      await vehicleStore.updatePredictions();
+      const routeIds = this.getRouteIdsFromCache();
+      await vehicleStore.updatePredictions(routeIds);
       
     } catch (error) {
       console.warn('Failed to update predictions:', error);
+    }
+  }
+
+  /**
+   * Setup subscription to vehicle store to trigger immediate prediction
+   * after vehicle fetch completes.
+   */
+  private setupImmediatePredictionTrigger(): void {
+    import('../stores/vehicleStore').then(({ useVehicleStore }) => {
+      this.vehicleLoadUnsubscribe = useVehicleStore.subscribe(
+        (state, prevState) => {
+          // Detect: was loading, now loaded with vehicles
+          if (prevState.loading && !state.loading && state.vehicles.length > 0) {
+            this.triggerImmediatePrediction();
+          }
+        }
+      );
+    });
+  }
+
+  /**
+   * Trigger one immediate prediction cycle and restart the regular timer.
+   * Retries briefly if station cache isn't populated yet (React hook lag).
+   */
+  private async triggerImmediatePrediction(): Promise<void> {
+    // Reset the prediction timer so the next tick is 15s from now
+    this.stopPredictionUpdateTimer();
+
+    if (!this.isPredicting) {
+      this.isPredicting = true;
+      try {
+        // Station cache may not be populated yet (React renders after store update).
+        // Retry up to 3 times with 500ms delay to let the station filter hook run.
+        let routeIds = this.getRouteIdsFromCache();
+        let retries = 0;
+        while (routeIds.length === 0 && retries < 3) {
+          await new Promise(r => setTimeout(r, 500));
+          routeIds = this.getRouteIdsFromCache();
+          retries++;
+        }
+
+        if (routeIds.length > 0) {
+          const { useVehicleStore } = await import('../stores/vehicleStore');
+          await useVehicleStore.getState().updatePredictions(routeIds);
+        }
+      } catch (error) {
+        console.warn('Immediate prediction cycle failed:', error);
+      } finally {
+        this.isPredicting = false;
+      }
+    }
+
+    // Restart the regular 15s timer from this point
+    if (this.isAppInForeground) {
+      this.startPredictionUpdateTimer();
     }
   }
 
@@ -364,7 +442,14 @@ class AutomaticRefreshService {
    * no-op, so we recompute positions/ETAs instead to keep the tap rewarding.
    */
   async triggerPredictionUpdate(): Promise<void> {
-    await this.updatePredictionsOnly();
+    if (!this.isPredicting) {
+      this.isPredicting = true;
+      try {
+        await this.updatePredictionsOnly();
+      } finally {
+        this.isPredicting = false;
+      }
+    }
   }
 
   /**
@@ -420,6 +505,12 @@ class AutomaticRefreshService {
     if (this.networkStatusUnsubscribe) {
       this.networkStatusUnsubscribe();
       this.networkStatusUnsubscribe = null;
+    }
+
+    // Cleanup vehicle load subscription
+    if (this.vehicleLoadUnsubscribe) {
+      this.vehicleLoadUnsubscribe();
+      this.vehicleLoadUnsubscribe = null;
     }
 
     // Cleanup visibility handlers

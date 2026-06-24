@@ -433,9 +433,31 @@ const VehicleCard: FC<VehicleCardProps> = memo(({ vehicle, route, trip, arrivalT
       variant="vehicle"
       sx={{ 
         borderRadius: 2,
-        boxShadow: 1
+        boxShadow: 1,
+        position: 'relative'
       }}
     >
+      {/* Pending enhancement indicator — pulsing dot until first prediction cycle */}
+      {!vehicle.predictionMetadata && !isScheduled && (
+        <Box
+          sx={{
+            position: 'absolute',
+            top: 8,
+            right: 8,
+            width: 8,
+            height: 8,
+            borderRadius: '50%',
+            bgcolor: 'info.main',
+            opacity: 0.6,
+            zIndex: 1,
+            animation: 'pulse-enhancement 1.5s ease-in-out infinite',
+            '@keyframes pulse-enhancement': {
+              '0%, 100%': { opacity: 0.6, transform: 'scale(1)' },
+              '50%': { opacity: 0.3, transform: 'scale(1.2)' },
+            },
+          }}
+        />
+      )}
       <CardContent sx={{ 
         p: { xs: 1.5, sm: 2 }, 
         '&:last-child': { pb: { xs: 1.5, sm: 2 } } 

@@ -26,7 +26,7 @@ interface VehicleStore {
   // Actions
   loadVehicles: () => Promise<void>;
   refreshData: () => Promise<void>;
-  updatePredictions: () => Promise<void>;
+  updatePredictions: (routeIds: number[]) => Promise<void>;
   clearVehicles: () => void;
   clearError: () => void;
   
@@ -100,17 +100,22 @@ export const useVehicleStore = create<VehicleStore>()(
         await refreshMethod(get, set);
       },
       
-      updatePredictions: async () => {
+      updatePredictions: async (routeIds: number[]) => {
         const currentState = get();
         
-        // Only update if we have vehicles and they're not too old
+        // Only update if we have vehicles
         if (currentState.vehicles.length === 0) {
+          return;
+        }
+
+        // No-op if no routes in scope
+        if (routeIds.length === 0) {
           return;
         }
         
         // Don't update predictions if data is too stale (over 5 minutes)
         const maxStaleTime = API_DATA_STALENESS_THRESHOLDS.VEHICLES;
-        if (currentState.lastUpdated && (Date.now() - currentState.lastUpdated) > maxStaleTime) {
+        if (currentState.lastApiFetch && (Date.now() - currentState.lastApiFetch) > maxStaleTime) {
           return;
         }
         
@@ -129,6 +134,16 @@ export const useVehicleStore = create<VehicleStore>()(
           if (tripStore.trips.length === 0 || stationStore.stops.length === 0) {
             return;
           }
+
+          // Filter to only route-scoped vehicles
+          const routeIdSet = new Set(routeIds);
+          const scopedVehicles = currentState.vehicles.filter(
+            v => v.route_id != null && routeIdSet.has(Number(v.route_id))
+          );
+
+          if (scopedVehicles.length === 0) {
+            return;
+          }
           
           // Build lookup structures ONCE (reuse across vehicles)
           const stopTimesByTrip = new Map<string, any[]>();
@@ -139,11 +154,11 @@ export const useVehicleStore = create<VehicleStore>()(
           
           const tripByTripId = new Map(tripStore.trips.map(t => [t.trip_id, t]));
           
-          // Build route shapes only for vehicles that have a matching trip+shape
+          // Build route shapes only for scoped vehicles that have a matching trip+shape
           let routeShapes: Map<string, any> | undefined;
           if (shapeStore.shapes.size > 0) {
             routeShapes = new Map();
-            for (const vehicle of currentState.vehicles) {
+            for (const vehicle of scopedVehicles) {
               if (vehicle.trip_id && !routeShapes.has(vehicle.trip_id)) {
                 const trip = tripByTripId.get(vehicle.trip_id);
                 if (trip?.shape_id) {
@@ -156,27 +171,31 @@ export const useVehicleStore = create<VehicleStore>()(
 
           const stops = stationStore.stops;
           
-          // Re-enhance with current timestamp
+          // Re-enhance scoped vehicles with current timestamp
           const { enhanceVehicles } = await import('../utils/vehicle/vehicleEnhancementUtils');
-          const originalVehicles = currentState.vehicles.map(v => ({
+          const originalVehicles = scopedVehicles.map(v => ({
             ...v,
             latitude: v.apiLatitude,
             longitude: v.apiLongitude,
           }));
           
-          const updatedVehicles = enhanceVehicles(originalVehicles, {
+          const enhanced = enhanceVehicles(originalVehicles, {
             routeShapes,
             stopTimesByTrip,
             stops
           });
           
+          // Merge: replace enhanced vehicles in the full array, leave others untouched
+          const enhancedById = new Map(enhanced.map(v => [v.id, v]));
+          const merged = currentState.vehicles.map(v => enhancedById.get(v.id) ?? v);
+
           set({ 
-            vehicles: updatedVehicles,
+            vehicles: merged,
             error: null,
             lastUpdated: Date.now()
           });
           
-          console.log(`[VehicleStore] Updated predictions for ${updatedVehicles.length} vehicles using cached data at ${new Date().toLocaleTimeString()}`);
+          console.log(`[VehicleStore] Updated predictions for ${enhanced.length}/${currentState.vehicles.length} route-scoped vehicles at ${new Date().toLocaleTimeString()}`);
         } catch (error) {
           console.warn('Failed to update predictions:', error);
         }
