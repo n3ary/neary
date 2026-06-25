@@ -11,9 +11,10 @@
     Avatar, Box, Button, BottomNavigation, Card, CardContent, Chip,
     Collapsible, Dialog, DialogContent, DialogTitle,
     IconButton, List, ListItem, ListItemText,
-    ProgressBar, Spinner, Stack, StatusBar, Switch, Tabs,
-    TextField, ToggleGroup, Tooltip, Typography,
+    ProgressBar, RouteBadge, Spinner, Stack, StationCard, StatusBar,
+    Switch, Tabs, TextField, ToggleGroup, Tooltip, Typography, VehicleCard,
   } from '$lib/ui';
+  import type { Route, Station, Vehicle } from '$lib/domain/types';
   import { statusBus } from '$lib/stores/statusBus.svelte';
   import {
     Bus, Calendar, ChevronDown, EyeOff, Heart, Home, Locate, MapPin,
@@ -44,6 +45,58 @@
     // Mirror the theme picker (top-right) so they stay in sync
     theme = mode;
   });
+
+  // --- Composite-primitives demo data ----------------------------------------
+  // A handful of routes with realistic CTP Cluj palette so the badges look like
+  // they would in the real app.
+  const route24: Route = { id: 24, shortName: '24', color: '#1e88e5' };
+  const route35: Route = { id: 35, shortName: '35', color: '#43a047' };
+  const route9:  Route = { id: 9,  shortName: '9',  color: '#fdd835' }; // yellow → black text
+  const routeM:  Route = { id: 100, shortName: 'M5', color: '#e53935' };
+
+  const demoStation: Station = {
+    id: 4012,
+    name: 'Piața Mihai Viteazul',
+    distance: 120,
+    lat: 46.7712,
+    lon: 23.6236,
+  };
+
+  // One of each vehicle kind to show the full visual taxonomy.
+  const demoVehicles: Vehicle[] = [
+    {
+      kind: 'live',
+      id: 'v-live-1',
+      route: route24,
+      gps: { lat: 46.7700, lon: 23.6240, observedAt: Date.now() - 8_000 },
+      eta: 3,
+      headsign: 'Mănăștur',
+    },
+    {
+      kind: 'live-matched',
+      id: 'v-matched-1',
+      route: route35,
+      gps: { lat: 46.7693, lon: 23.6219, observedAt: Date.now() - 12_000 },
+      schedule: { tripId: 't-35-103', scheduledDeparture: 14 * 60 + 27, headsign: 'Aeroport' },
+      eta: 8,
+    },
+    {
+      kind: 'ghost',
+      id: 'v-ghost-1',
+      route: route9,
+      schedule: { tripId: 't-9-44', scheduledDeparture: 14 * 60 + 32, headsign: 'Gara Cluj' },
+    },
+    {
+      kind: 'scheduled',
+      id: 'v-sched-1',
+      route: routeM,
+      schedule: { tripId: 't-M5-72', scheduledDeparture: 14 * 60 + 45, headsign: 'Centru' },
+    },
+  ];
+
+  let stationExpanded = $state(true);
+  let selectedRouteId = $state<number | null>(null);
+  const favorites = new Set<number>([35]);
 
   // Push one demo entry on mount so the StatusBar is non-empty on first paint
   onMount(() => {
@@ -362,6 +415,60 @@
         ]}
       />
       <Typography variant="caption">Active: {tabsValue}</Typography>
+
+  <!-- ============================== Composite primitives ============================== -->
+  <section class="space-y-4">
+    <Typography variant="h4">Composite primitives</Typography>
+
+    <Stack spacing={1}>
+      <Typography variant="body2">RouteBadge — sizes, markers, favorite, selected</Typography>
+      <Stack direction="row" spacing={1} align="center" wrap>
+        <RouteBadge route={route24} size="small" />
+        <RouteBadge route={route24} size="medium" />
+        <RouteBadge route={route24} size="large" />
+      </Stack>
+      <Stack direction="row" spacing={1} align="center" wrap>
+        <RouteBadge route={route24} isStart />
+        <RouteBadge route={route24} isEnd />
+        <RouteBadge route={route24} isStart isEnd aria-label="Turnaround route 24" />
+        <RouteBadge route={route9} isFavorite />
+        <RouteBadge route={route35} selected onclick={() => statusBus.push({ id: 'rb-click', kind: 'info', message: 'Route 35 clicked' })} />
+        <RouteBadge route={routeM} />
+      </Stack>
+    </Stack>
+
+    <Stack spacing={1}>
+      <Typography variant="body2">VehicleCard — one of each kind</Typography>
+      <Stack spacing={0.5}>
+        {#each demoVehicles as v (v.id)}
+          <VehicleCard vehicle={v} />
+        {/each}
+      </Stack>
+      <Typography variant="caption">
+        Solid border = live or live-matched. Dashed = ghost (GPS missing).
+        Dotted + 60% opacity = scheduled-only. Right-side badge encodes the kind.
+      </Typography>
+    </Stack>
+
+    <Stack spacing={1}>
+      <Typography variant="body2">StationCard — full unified shell</Typography>
+      <StationCard
+        station={demoStation}
+        routes={[route24, route35, route9, routeM]}
+        vehicles={demoVehicles}
+        expanded={stationExpanded}
+        ontoggle={() => (stationExpanded = !stationExpanded)}
+        dropOffOnly={false}
+        selectedRouteId={selectedRouteId}
+        onRouteClick={(id: number) => (selectedRouteId = selectedRouteId === id ? null : id)}
+        favoriteRouteIds={favorites}
+      />
+      <Typography variant="caption">
+        Click a route badge to filter the expand region; click again to clear.
+        Heart pip marks favorites (route 35 here). Expand toggle rotates 180°.
+      </Typography>
+    </Stack>
+  </section>
     </Stack>
 
     <Stack spacing={1}>
