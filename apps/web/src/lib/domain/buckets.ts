@@ -48,13 +48,17 @@ export const BUCKET_LABEL: Record<ArrivalBucket, string> = {
   'off-route': 'Off route',
 };
 
-// Thresholds — see v1 references in the spec.
-export const PROXIMITY_AT_STATION_M = 50;       // v1: STATION_PROXIMITY_METERS
-export const OFF_ROUTE_DISTANCE_M = 200;        // v1: off-route cutoff
-export const ARRIVING_THRESHOLD_MIN = 2;
-export const RECENT_DEPARTURE_WINDOW_MIN = 5;
-export const DEPARTING_SPEED_KMH = 5;
-export const SCHEDULED_DWELL_GAP_MIN = 1;
+// Thresholds — sourced from DEFAULT_CONFIG (lib/domain/config.ts) so a
+// single object controls every magic number in the app. Re-exported as
+// individual consts to keep existing imports stable.
+import { DEFAULT_CONFIG } from './config';
+
+export const PROXIMITY_AT_STATION_M = DEFAULT_CONFIG.proximityAtStationM;
+export const OFF_ROUTE_DISTANCE_M = DEFAULT_CONFIG.offRouteDistanceM;
+export const ARRIVING_THRESHOLD_MIN = DEFAULT_CONFIG.arrivingThresholdMin;
+export const RECENT_DEPARTURE_WINDOW_MIN = DEFAULT_CONFIG.recentDepartureWindowMin;
+export const DEPARTING_SPEED_KMH = DEFAULT_CONFIG.departingSpeedKmh;
+export const SCHEDULED_DWELL_GAP_MIN = DEFAULT_CONFIG.minDwellGapMin;
 
 export interface BucketInputs {
   /** Signed: positive = future, negative = past. */

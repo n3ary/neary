@@ -13,6 +13,7 @@
   import { connectionStore } from '$lib/stores/connectionStore.svelte';
   import { feedsStore } from '$lib/stores/feedsStore.svelte';
   import { locationStore } from '$lib/stores/locationStore.svelte';
+  import { refreshBus } from '$lib/stores/refreshBus.svelte';
   import { statusBus } from '$lib/stores/statusBus.svelte';
   import { userPrefs } from '$lib/stores/userPrefs.svelte';
   import { getGtfsRepo } from '$lib/data/gtfs/repo';
@@ -142,6 +143,7 @@
   navItems={NAV_ITEMS}
   {activeNav}
   onnav={(to) => goto(to)}
+  onrefresh={() => refreshBus.fire()}
 >
   {@render children()}
 </AppLayout>

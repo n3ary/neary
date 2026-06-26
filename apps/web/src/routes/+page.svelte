@@ -17,10 +17,11 @@
   } from '$lib/ui';
   import { getGtfsRepo } from '$lib/data/gtfs/repo';
   import type { StopWithDistance } from '$lib/data/gtfs/types';
-  import { assembleStationBoard, dedupRoutes } from '$lib/domain/stationBoard';
+  import { assembleStationBoard } from '$lib/domain/stationBoard';
   import type { Vehicle } from '$lib/domain/types';
   import { feedsStore } from '$lib/stores/feedsStore.svelte';
   import { locationStore } from '$lib/stores/locationStore.svelte';
+  import { refreshBus } from '$lib/stores/refreshBus.svelte';
   import { userPrefs } from '$lib/stores/userPrefs.svelte';
 
   // Demo fallback location when GPS is unavailable / not yet granted:
@@ -60,6 +61,9 @@
     // the page can race the bind and briefly flash a 'not bound' error.
     const fid = feedsStore.boundFeedId;
     if (!fid) return;
+    // Subscribe to manual-refresh ticks so the header refresh button
+    // re-fires this effect.
+    refreshBus.tick;
     const lat = queryLat;
     const lon = queryLon;
     (async () => {
@@ -162,7 +166,6 @@
         {@const board = assembleStationBoard(vehicles, userPrefs, nowMs)}
         <StationCard
           station={{ id: stop.id, name: stop.name, distance: stop.distance, lat: stop.lat, lon: stop.lon }}
-          routes={dedupRoutes(vehicles)}
           rows={board}
           expanded={expandedStopId === stop.id}
           ontoggle={() => (expandedStopId = expandedStopId === stop.id ? null : stop.id)}

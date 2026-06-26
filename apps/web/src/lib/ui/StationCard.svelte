@@ -34,12 +34,10 @@
 
   type Props = {
     station: Station;
-    /** Routes serving this station, used for the badge row. */
-    routes: Route[];
     /** Bucketed vehicle rows for this station — already filtered + sorted
      *  by the domain layer. StationCard groups them into sections by
      *  bucket; the domain decides what's in / out, the card decides how
-     *  the groups look. */
+     *  the groups look. Routes serving the station are derived from these. */
     rows: BoardRow[];
     expanded: boolean;
     ontoggle: () => void;
@@ -55,7 +53,6 @@
 
   let {
     station,
-    routes,
     rows,
     expanded,
     ontoggle,
@@ -70,6 +67,25 @@
     if (typeof m !== 'number') return '';
     return m < 1000 ? `${Math.round(m)} m` : `${(m / 1000).toFixed(1)} km`;
   }
+
+  // Dedup routes from the rows and tally upcoming-vehicle counts per route
+  // in a single pass. Numeric short-names sort numerically; alpha after.
+  // Lives here (not in the page) so every StationCard consumer gets the
+  // same badge-row contract for free.
+  const routesWithCounts = $derived.by(() => {
+    const map = new Map<number, { route: Route; count: number }>();
+    for (const r of rows) {
+      const entry = map.get(r.vehicle.route.id);
+      if (entry) entry.count += 1;
+      else map.set(r.vehicle.route.id, { route: r.vehicle.route, count: 1 });
+    }
+    return Array.from(map.values()).sort((a, b) => {
+      const an = Number(a.route.shortName);
+      const bn = Number(b.route.shortName);
+      if (Number.isFinite(an) && Number.isFinite(bn) && an !== bn) return an - bn;
+      return a.route.shortName.localeCompare(b.route.shortName);
+    });
+  });
 
   // Apply the selected-route filter, then group by bucket while preserving
   // the domain-sorted order. Empty buckets are dropped so the UI shows
@@ -122,16 +138,19 @@
             {/if}
           </Stack>
 
-          {#if routes.length > 0}
+          {#if routesWithCounts.length > 0}
             <Stack direction="row" spacing={0.5} align="center" wrap class="mt-1">
-              {#each routes as route (route.id)}
-                <RouteBadge
-                  {route}
-                  size="medium"
-                  selected={selectedRouteId === route.id}
-                  isFavorite={favoriteRouteIds?.has(route.id)}
-                  onclick={onRouteClick ? () => onRouteClick(route.id) : undefined}
-                />
+              {#each routesWithCounts as { route, count } (route.id)}
+                <span class="inline-flex items-center gap-0.5">
+                  <RouteBadge
+                    {route}
+                    size="medium"
+                    selected={selectedRouteId === route.id}
+                    isFavorite={favoriteRouteIds?.has(route.id)}
+                    onclick={onRouteClick ? () => onRouteClick(route.id) : undefined}
+                  />
+                  <span class="text-[10px] font-semibold text-[color:var(--color-fg-muted)] tabular-nums">{count}</span>
+                </span>
               {/each}
             </Stack>
           {/if}

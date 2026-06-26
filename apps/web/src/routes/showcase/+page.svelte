@@ -385,7 +385,6 @@
       <Typography variant="body2">StationCard</Typography>
       <StationCard
         station={demoStation}
-        routes={[route24, route35, route9, routeM]}
         rows={demoVehicles.map((v, i) => ({
           vehicle: v,
           bucket: (['arriving', 'at-station', 'incoming', 'incoming', 'incoming'] as const)[i] ?? 'incoming',

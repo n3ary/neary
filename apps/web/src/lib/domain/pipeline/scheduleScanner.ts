@@ -24,6 +24,7 @@ import type {
   VehicleType,
 } from '../types';
 import { vehicleTypeFromGtfs } from '../types';
+import { DEFAULT_CONFIG } from '../config';
 import { timeToMinutes } from './timeUtils';
 
 /** Raw row shape from the joined SQL query the worker runs. */
@@ -59,7 +60,7 @@ export interface ScheduleScannerInputs {
   checkedSources?: LiveSource[];
 }
 
-const PREDICTED_DEPARTURE_GRACE_MIN = 5;
+const PREDICTED_DEPARTURE_GRACE_MIN = DEFAULT_CONFIG.predictedDepartureGraceMin;
 
 export function scanSchedule(inputs: ScheduleScannerInputs): Vehicle[] {
   const {
