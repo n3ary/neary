@@ -34,23 +34,48 @@
     })();
   });
 
-  // Favorites float to the top so the user sees what they've picked
-  // without scrolling. Within each section, sort numeric-first.
-  const sortedRoutes = $derived.by<Route[]>(() => {
-    if (!allRoutes) return [];
-    return [...allRoutes].sort((a, b) => {
-      const af = favoritesStore.has(a.id);
-      const bf = favoritesStore.has(b.id);
-      if (af !== bf) return af ? -1 : 1;
+  // Split into two lists so the UI can render favorited routes in
+  // their own card on top — clear visual separation between "what I
+  // care about" and "everything else". Within each section, sort
+  // numeric-first then alpha.
+  function sortRoutes(list: Route[]): Route[] {
+    return [...list].sort((a, b) => {
       const an = Number(a.shortName);
       const bn = Number(b.shortName);
       if (Number.isFinite(an) && Number.isFinite(bn) && an !== bn) return an - bn;
       return a.shortName.localeCompare(b.shortName);
     });
-  });
-
-  const favCount = $derived(favoritesStore.routeIds.size);
+  }
+  const favRoutes = $derived(
+    allRoutes ? sortRoutes(allRoutes.filter((r) => favoritesStore.has(r.id))) : [],
+  );
+  const otherRoutes = $derived(
+    allRoutes ? sortRoutes(allRoutes.filter((r) => !favoritesStore.has(r.id))) : [],
+  );
 </script>
+
+<!-- One row-renderer shared by both cards so the layout stays identical
+     between favorited and other routes. KISS / DRY. -->
+{#snippet routeRow(route: Route)}
+  {@const isFav = favoritesStore.has(route.id)}
+  <Stack direction="row" spacing={1} align="center" class="px-1 py-1 rounded-md hover:bg-[color:var(--color-border)]/30">
+    <RouteBadge {route} size="medium" isFavorite={isFav} />
+    <Typography variant="body2" class="flex-1 truncate text-[color:var(--color-fg-muted)]">
+      Route {route.shortName}
+    </Typography>
+    <IconButton
+      aria-label={`${isFav ? 'Unfavorite' : 'Favorite'} route ${route.shortName}`}
+      aria-pressed={isFav}
+      onclick={() => favoritesStore.toggle(route.id)}
+    >
+      <Heart
+        size={18}
+        fill={isFav ? 'currentColor' : 'none'}
+        class={isFav ? 'text-[color:var(--color-danger)]' : 'text-[color:var(--color-fg-muted)]'}
+      />
+    </IconButton>
+  </Stack>
+{/snippet}
 
 <div class="mx-auto max-w-3xl px-4 py-6">
   {#if userPrefs.feedId == null}
@@ -72,39 +97,48 @@
       </CardContent>
     </Card>
   {:else}
-    <Card>
-      <CardContent>
-        <Stack spacing={2}>
-          <Stack spacing={0.5}>
-            <Typography variant="h5">Favorites</Typography>
-            <Typography variant="caption" class="text-[color:var(--color-fg-muted)]">
-              {favCount} of {allRoutes.length} routes starred. Tap the heart to toggle.
-            </Typography>
-          </Stack>
-          <Stack spacing={0.5}>
-            {#each sortedRoutes as route (route.id)}
-              {@const isFav = favoritesStore.has(route.id)}
-              <Stack direction="row" spacing={1} align="center" class="px-1 py-1 rounded-md hover:bg-[color:var(--color-border)]/30">
-                <RouteBadge {route} size="medium" isFavorite={isFav} />
-                <Typography variant="body2" class="flex-1 truncate text-[color:var(--color-fg-muted)]">
-                  Route {route.shortName}
+    <Stack spacing={2}>
+      {#if favRoutes.length > 0}
+        <Card>
+          <CardContent>
+            <Stack spacing={1}>
+              <Stack spacing={0.5}>
+                <Typography variant="h5">Your favorites</Typography>
+                <Typography variant="caption" class="text-[color:var(--color-fg-muted)]">
+                  {favRoutes.length} starred. Tap the heart to remove.
                 </Typography>
-                <IconButton
-                  aria-label={`${isFav ? 'Unfavorite' : 'Favorite'} route ${route.shortName}`}
-                  aria-pressed={isFav}
-                  onclick={() => favoritesStore.toggle(route.id)}
-                >
-                  <Heart
-                    size={18}
-                    fill={isFav ? 'currentColor' : 'none'}
-                    class={isFav ? 'text-[color:var(--color-danger)]' : 'text-[color:var(--color-fg-muted)]'}
-                  />
-                </IconButton>
               </Stack>
-            {/each}
+              <Stack spacing={0.5}>
+                {#each favRoutes as route (route.id)}
+                  {@render routeRow(route)}
+                {/each}
+              </Stack>
+            </Stack>
+          </CardContent>
+        </Card>
+      {/if}
+
+      <Card>
+        <CardContent>
+          <Stack spacing={1}>
+            <Stack spacing={0.5}>
+              <Typography variant="h5">
+                {favRoutes.length > 0 ? 'All other routes' : 'All routes'}
+              </Typography>
+              <Typography variant="caption" class="text-[color:var(--color-fg-muted)]">
+                {favRoutes.length > 0
+                  ? `${otherRoutes.length} more to choose from. Tap the heart to favorite.`
+                  : `${otherRoutes.length} routes available. Tap the heart to favorite.`}
+              </Typography>
+            </Stack>
+            <Stack spacing={0.5}>
+              {#each otherRoutes as route (route.id)}
+                {@render routeRow(route)}
+              {/each}
+            </Stack>
           </Stack>
-        </Stack>
-      </CardContent>
-    </Card>
+        </CardContent>
+      </Card>
+    </Stack>
   {/if}
 </div>
