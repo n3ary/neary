@@ -85,43 +85,48 @@ Non-goals: Android-first, desktop-first, multi-agency simultaneously.
    enhancement + prediction in the live worker. UI thread does layout and
    events only.
 
-3. **Vehicle taxonomy is data.** Discriminated union: `live | live-matched |
-   ghost | scheduled`. One component per kind, used identically in list /
-   schedule / map. Ghost dedup logic lives in the reconciler, not in JSX.
+3. **Vehicle taxonomy is data.** Discriminated union: `scheduled | predicted
+   | live | reconciled | corroborated`. One component per kind, used
+   identically in list / schedule / map. Schedule-only-trip detection lives
+   in the reconciler, not in JSX.
 
    Each entry also carries a **multi-source confidence annotation** so the
    reconciler can encode "which live feeds confirm this":
 
    ```ts
-   type LiveSource = 'rt' | 'tranzy';
+   type LiveSource = 'gtfs-rt' | 'tranzy';
    type Confidence = 'high' | 'medium' | 'low';
 
    type Vehicle =
-     | { kind: 'live';         id; route; gps; eta?;
-                               sources: LiveSource[];   // ≥1
-                               confidence: Confidence }
-     | { kind: 'live-matched'; id; route; gps; schedule; eta?;
-                               sources: LiveSource[];   // ≥1
-                               confidence: Confidence }
-     | { kind: 'ghost';        id; route; schedule;
+     | { kind: 'scheduled';    id; route; schedule }
+     | { kind: 'predicted';    id; route; schedule;
                                checkedSources: LiveSource[]; // sources we polled
                                lastSeenGps?: GpsFix }
-     | { kind: 'scheduled';    id; route; schedule };
+     | { kind: 'live';         id; route; gps; eta?;
+                               liveSources: LiveSource[];     // ≥1
+                               confidence: Confidence }
+     | { kind: 'reconciled';   id; route; gps; schedule; eta?;
+                               liveSources: LiveSource[];     // exactly 1
+                               confidence: 'medium' }
+     | { kind: 'corroborated'; id; route; gps; schedule; eta?;
+                               liveSources: LiveSource[];     // ≥2
+                               confidence: 'high' };
    ```
 
-   - `sources.length === 2` → both RT and Tranzy see it → `confidence: high`.
-   - `sources.length === 1 && sources[0] === 'rt'` → RT only → `confidence: medium`.
-   - `sources.length === 1 && sources[0] === 'tranzy'` and we also have RT
-     polling → Tranzy says yes but RT lags / filters → `confidence: low`.
-   - `ghost.checkedSources` records which sources were polled and found
-     nothing — `['rt', 'tranzy']` is a confirmed ghost; `['rt']` (no Tranzy
-     key) is a probable ghost (could be RT lag).
+   - `corroborated` = both live sources agree on this trip.
+   - `reconciled` = one live source matched to a scheduled trip.
+   - `live` = live GPS with no schedule match.
+   - `predicted` = scheduled trip should be running now but no live source
+     reports it; `checkedSources` records which sources were polled and
+     found nothing. `['gtfs-rt','tranzy']` is a confirmed schedule-only
+     vehicle; `['gtfs-rt']` (no Tranzy key) is probable.
+   - `scheduled` = trip in schedule but not yet active.
 
-   The UI kind drives the visual (`live` solid, `ghost` dashed, etc.); the
-   `sources` / `confidence` drive small badges and tooltips (e.g. "2 of 2
-   sources agree"). See plan §4 and the
-   [live-data analysis](live-data-analysis.md) for the empirical basis of
-   this design.
+   The UI kind drives the visual; `confidence` and `liveSources` drive small
+   badges. Full model, station-view buckets, map-view rendering, prediction
+   engine and reconciler in [vehicles-and-views.md](vehicles-and-views.md).
+   See also [live-data analysis](live-data-analysis.md) for the empirical
+   basis of the multi-source design.
 
 ---
 
@@ -168,16 +173,23 @@ level, not per-screen.
 
 ### Vehicle visual taxonomy (consistent in list + schedule + map)
 
-| Kind | Color | Border | Badge |
-|---|---|---|---|
-| `live` | route color (solid) | none | — |
-| `live-matched` | route color (solid) | none | small calendar pip |
-| `ghost` | route color | **dashed** | eye-off |
-| `scheduled` | route color (50% opacity) | **dotted** | calendar |
+| Kind            | Color                 | Border          | Badge                  |
+| --------------- | --------------------- | --------------- | ---------------------- |
+| `corroborated`  | route color           | 2 px + white outline | check-circle pip  |
+| `reconciled`    | route color           | 2 px            | calendar pip           |
+| `live`          | route color           | 1 px            | —                      |
+| `predicted`     | route color           | **dashed**      | dashed-clock           |
+| `scheduled`     | route color, 50 % opacity | **dotted**  | calendar               |
+
+Detail and bucket-vs-kind interaction in
+[vehicles-and-views.md §2-§4](vehicles-and-views.md).
 
 ### Map layer order (Leaflet panes, top→bottom)
 
-`selected-vehicle > vehicles > user-location > stations > route-shapes > tiles`
+`selected-overlay > corroborated > reconciled > live > predicted > user-location > stations > route-shapes > tiles`
+
+(Refined from "selected-vehicle > vehicles > …" — see
+[vehicles-and-views.md §4](vehicles-and-views.md).)
 
 ---
 
@@ -197,7 +209,8 @@ These move to `apps/web/src/lib/domain/` as pure TS, unit-tested:
 ## 6. Settings split
 
 **User Preferences (default Settings tab):** theme, distance unit, language,
-drop-off indicators toggle, ghost vehicles toggle, default landing view, home
+drop-off indicators toggle, schedule-only vehicles toggle, default landing
+view, home
 / work addresses (later — fuels Planner), manage favorites.
 
 **Advanced (separate route):** agency selector, optional API key, storage
@@ -302,23 +315,34 @@ Commits: `4078a3f` · `d4aa4f9`
 
 ### Phase 4 — Domain + Stations (schedule-only) · TBD (next)
 - Port prediction / reconciler / estimators from `apps/legacy/src/utils/`
-  to `apps/web/src/lib/domain/` as pure TS, unit-tested with Vitest.
-- New repo method: `getStationsNearAsVehicles(lat, lon, radius, now)` —
-  joins stops + active services + upcoming trip starts into
-  `{ station, vehicles: Vehicle[] }[]` ready to render.
-- Real Stations view subscribed to `locationStore.position`,
-  rendering `StationCard`s.
+  to `apps/web/src/lib/domain/` as pure TS, unit-tested with Vitest. Algorithm
+  validation and changes from v1 in
+  [vehicles-and-views.md §5-§6](vehicles-and-views.md).
+- New repo method: `getStationArrivals(stopId, now, windowMinutes)` — joins
+  stops + active services + upcoming trip starts and returns
+  `Vehicle[]` per [vehicles-and-views.md §3](vehicles-and-views.md).
+- Real Stations view subscribed to `locationStore.position`, rendering
+  `StationCard`s.
+- Rename `userPrefs.showGhostVehicles` → `showScheduleOnlyVehicles`
+  (one-time read migration).
 
 ### Phase 5 — Live data · TBD
-- Live worker polls Tranzy when API key present
-- Reconciler produces `live` / `live-matched` / `ghost`
-- Live status dot reflects health
-- API key toggle in Advanced settings
+- Live worker polls GTFS-RT (no key) and Tranzy (if key set); responses
+  tagged with `source: LiveSource`.
+- Reconciler produces `live` / `reconciled` / `corroborated`; also promotes
+  active scheduled trips with no live match to `predicted`.
+- Live status dot reflects health.
+- API key toggle in Advanced settings.
 
 ### Phase 6 — Favorites, Schedule, Map · TBD
-- Favorites view (route-context card shell)
-- Schedule drill-down (today/tomorrow board)
-- Map drill-down (Leaflet with corrected pane order)
+- Favorites view: saved routes AND saved stations (route-context card shell).
+- Schedule drill-down: `/schedule/route/[routeId]` and
+  `/schedule/route/[routeId]?stop=[stopId]` (same `<ArrivalsBoard>` filtered
+  differently — station view IS the schedule view).
+- Map drill-down: `/map/route/[routeId]?selected=[vehicleId]` renders the
+  shape + every `Vehicle` on the route + the selected ring. Marker variant
+  per `vehicle.kind`. Leaflet panes per §4.
+- `/map/vehicle/[vehicleId]` redirects to the route map with `selected` set.
 
 ### Phase 7 — Settings + Advanced · TBD
 - User Preferences view (mostly already shipped in Phase 3)
