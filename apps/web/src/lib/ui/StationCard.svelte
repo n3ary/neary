@@ -68,22 +68,19 @@
     return m < 1000 ? `${Math.round(m)} m` : `${(m / 1000).toFixed(1)} km`;
   }
 
-  // Dedup routes from the rows and tally upcoming-vehicle counts per route
-  // in a single pass. Numeric short-names sort numerically; alpha after.
-  // Lives here (not in the page) so every StationCard consumer gets the
-  // same badge-row contract for free.
-  const routesWithCounts = $derived.by(() => {
-    const map = new Map<number, { route: Route; count: number }>();
-    for (const r of rows) {
-      const entry = map.get(r.vehicle.route.id);
-      if (entry) entry.count += 1;
-      else map.set(r.vehicle.route.id, { route: r.vehicle.route, count: 1 });
-    }
+  // Dedup routes from the rows in a single pass. Numeric short-names sort
+  // numerically; alpha after. Lives here (not in the page) so every
+  // StationCard consumer gets the same badge-row contract for free.
+  // Counts per route are intentionally NOT surfaced on the collapsed card
+  // — the expanded board already shows them in each bucket header.
+  const routes = $derived.by(() => {
+    const map = new Map<number, Route>();
+    for (const r of rows) map.set(r.vehicle.route.id, r.vehicle.route);
     return Array.from(map.values()).sort((a, b) => {
-      const an = Number(a.route.shortName);
-      const bn = Number(b.route.shortName);
+      const an = Number(a.shortName);
+      const bn = Number(b.shortName);
       if (Number.isFinite(an) && Number.isFinite(bn) && an !== bn) return an - bn;
-      return a.route.shortName.localeCompare(b.route.shortName);
+      return a.shortName.localeCompare(b.shortName);
     });
   });
 
@@ -138,19 +135,16 @@
             {/if}
           </Stack>
 
-          {#if routesWithCounts.length > 0}
+          {#if routes.length > 0}
             <Stack direction="row" spacing={0.5} align="center" wrap class="mt-1">
-              {#each routesWithCounts as { route, count } (route.id)}
-                <span class="inline-flex items-center gap-0.5">
-                  <RouteBadge
-                    {route}
-                    size="medium"
-                    selected={selectedRouteId === route.id}
-                    isFavorite={favoriteRouteIds?.has(route.id)}
-                    onclick={onRouteClick ? () => onRouteClick(route.id) : undefined}
-                  />
-                  <span class="text-[10px] font-semibold text-[color:var(--color-fg-muted)] tabular-nums">{count}</span>
-                </span>
+              {#each routes as route (route.id)}
+                <RouteBadge
+                  {route}
+                  size="medium"
+                  selected={selectedRouteId === route.id}
+                  isFavorite={favoriteRouteIds?.has(route.id)}
+                  onclick={onRouteClick ? () => onRouteClick(route.id) : undefined}
+                />
               {/each}
             </Stack>
           {/if}
