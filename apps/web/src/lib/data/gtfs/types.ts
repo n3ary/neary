@@ -34,6 +34,18 @@ export interface UpcomingDeparture {
 }
 
 export interface GtfsRepo {
+  /**
+   * Select the agency the repo operates on. First call seeds the OPFS file
+   * (downloads + decompresses + imports). Subsequent calls with the same id
+   * are a no-op; calls with a different id close the current DB and
+   * re-bootstrap against the new one.
+   *
+   * Throws (rejects) with a descriptive message when the seed download
+   * fails — the caller (typically the +layout effect) surfaces it via
+   * StatusBar.
+   */
+  setAgency(agencyId: number): Promise<void>;
+
   /** True once the DB is open and queryable. Cheap; safe to await on every call. */
   ready(): Promise<true>;
 

@@ -39,7 +39,9 @@
     const repo = getGtfsRepo();
     statusBus.push({ id: 'gtfs-boot', kind: 'loading', message: 'Loading GTFS database…' });
     try {
-      await repo.ready();
+      // /data-test is agency-agnostic; force-bind agency 2 since that's the
+      // only one with a locally-generated SQLite right now.
+      await repo.setAgency(2);
       manifest = await repo.getManifest();
       routes = await repo.getRoutes();
       nearby = await repo.getStopsNear(userLat, userLon, 500);

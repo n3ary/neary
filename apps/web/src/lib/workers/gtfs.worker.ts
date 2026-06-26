@@ -22,72 +22,110 @@ import type {
 } from '$lib/data/gtfs/types';
 
 // ---------------------------------------------------------------------------
-// Constants — Phase 2 hardcodes a single agency. Multi-agency support comes
-// when the agency picker (Phase 3) lands; until then we always open agency 2.
+// Source URL resolution per agency.
+//
+// Phase 2 ships agency 2 (CTP Cluj) locally — scripts/build-sqlite outputs
+// to apps/web/static/dev-data/, served at /dev-data/. Other agencies don't
+// have a SQLite blob yet; the future location once the neary-gtfs pipeline
+// publishes them is encoded here so the URL doesn't move when they land.
 // ---------------------------------------------------------------------------
 
-const AGENCY_ID = 2;
 const OPFS_POOL_NAME = 'neary-gtfs';
-const OPFS_FILE = `/agency-${AGENCY_ID}.sqlite3`;
-const SEED_URL = `/dev-data/agency-${AGENCY_ID}.sqlite3.gz`;
-const MANIFEST_URL = `/dev-data/agency-${AGENCY_ID}.manifest.json`;
+
+function seedUrlFor(agencyId: number): string {
+  // Local-first for agency 2 so dev doesn't depend on the (yet-to-exist) CDN
+  // .sqlite3 publication. Production deploy will swap this branch out once
+  // the pipeline lands the blob on the releases branch.
+  if (agencyId === 2) return `/dev-data/agency-${agencyId}.sqlite3.gz`;
+  return `https://raw.githubusercontent.com/ciotlosm/neary-gtfs/releases/data/${agencyId}/${agencyId}.sqlite3.gz`;
+}
+
+function manifestUrlFor(agencyId: number): string {
+  if (agencyId === 2) return `/dev-data/agency-${agencyId}.manifest.json`;
+  return `https://raw.githubusercontent.com/ciotlosm/neary-gtfs/releases/data/${agencyId}/${agencyId}.manifest.json`;
+}
+
+function opfsFileFor(agencyId: number): string {
+  return `/agency-${agencyId}.sqlite3`;
+}
 
 // ---------------------------------------------------------------------------
-// Lazy bootstrap — first method call triggers init; subsequent ones await
-// the same promise. Errors propagate to the caller via the Comlink boundary.
+// Lazy + agency-aware bootstrap. The pool is created once (it persists across
+// agency switches — multiple agency files can coexist in OPFS). The DB
+// instance is per-agency: switching agencies closes the previous DB and
+// opens (or seeds) the new one.
 // ---------------------------------------------------------------------------
 
-let dbReady: Promise<Database> | null = null;
+let poolPromise: Promise<Awaited<ReturnType<Sqlite3Static['installOpfsSAHPoolVfs']>>> | null = null;
+let currentAgencyId: number | null = null;
+let currentDb: Database | null = null;
+let bootstrapping: Promise<Database> | null = null;
 
-async function bootstrap(): Promise<Database> {
-  if (dbReady) return dbReady;
-  dbReady = (async () => {
-    // 1) Initialize the wasm runtime.
-    const sqlite3: Sqlite3Static = await sqlite3InitModule({
-      print: (m: string) => console.log('[gtfs.worker:sqlite]', m),
-      printErr: (m: string) => console.error('[gtfs.worker:sqlite]', m),
-    });
+async function getPool() {
+  if (!poolPromise) {
+    poolPromise = (async () => {
+      const sqlite3: Sqlite3Static = await sqlite3InitModule({
+        print: (m: string) => console.log('[gtfs.worker:sqlite]', m),
+        printErr: (m: string) => console.error('[gtfs.worker:sqlite]', m),
+      });
+      return sqlite3.installOpfsSAHPoolVfs({ name: OPFS_POOL_NAME });
+    })();
+  }
+  return poolPromise;
+}
 
-    // 2) Install the OPFS Synchronous Access Handle pool VFS. Returns a util
-    //    object we'll use to import the seed and open the DB.
-    //    `installOpfsSAHPoolVfs` is async — the pool can't be used before it
-    //    resolves.
-    const poolUtil = await sqlite3.installOpfsSAHPoolVfs({ name: OPFS_POOL_NAME });
+async function bootstrap(agencyId: number): Promise<Database> {
+  const poolUtil = await getPool();
+  const opfsFile = opfsFileFor(agencyId);
 
-    // 3) Seed if absent. `getFileNames()` lists files inside the pool's
-    //    private OPFS area.
-    const existing = poolUtil.getFileNames();
-    if (!existing.includes(OPFS_FILE)) {
-      console.log('[gtfs.worker] Seeding OPFS from', SEED_URL);
-      const res = await fetch(SEED_URL);
-      if (!res.ok || !res.body) {
-        throw new Error(`Seed download failed (${res.status}). Did you run scripts/build-sqlite?`);
-      }
-      // The server may or may not have applied Content-Encoding: gzip on
-      // a `.gz` filename. Vite's dev server (sirv) auto-decompresses;
-      // raw.githubusercontent.com (production CDN) does not. Detect by
-      // gzip magic bytes (1f 8b) and decompress only if still compressed.
-      let bytes = new Uint8Array(await res.arrayBuffer());
-      if (bytes.length >= 2 && bytes[0] === 0x1f && bytes[1] === 0x8b) {
-        console.log('[gtfs.worker] Body is still gzipped; decompressing client-side.');
-        const stream = new Response(bytes).body!.pipeThrough(new DecompressionStream('gzip'));
-        bytes = new Uint8Array(await new Response(stream).arrayBuffer());
-      } else {
-        console.log('[gtfs.worker] Body already decompressed by transport.');
-      }
-      console.log(`[gtfs.worker] Importing ${bytes.byteLength} bytes into OPFS…`);
-      poolUtil.importDb(OPFS_FILE, bytes);
-    } else {
-      console.log('[gtfs.worker] OPFS already seeded; opening directly.');
+  if (!poolUtil.getFileNames().includes(opfsFile)) {
+    const url = seedUrlFor(agencyId);
+    console.log(`[gtfs.worker] Seeding OPFS for agency ${agencyId} from`, url);
+    const res = await fetch(url);
+    if (!res.ok || !res.body) {
+      throw new Error(
+        `Seed download for agency ${agencyId} failed (HTTP ${res.status}). ` +
+        (agencyId === 2
+          ? 'Did you run scripts/build-sqlite?'
+          : 'This agency does not have a SQLite blob published yet.'),
+      );
     }
+    // Magic-byte detection: some static servers (Vite's sirv) auto-decompress
+    // `.gz` responses; raw.githubusercontent.com does not. Decompress only
+    // when the body still starts with the gzip header.
+    let bytes = new Uint8Array(await res.arrayBuffer());
+    if (bytes.length >= 2 && bytes[0] === 0x1f && bytes[1] === 0x8b) {
+      const stream = new Response(bytes).body!.pipeThrough(new DecompressionStream('gzip'));
+      bytes = new Uint8Array(await new Response(stream).arrayBuffer());
+    }
+    console.log(`[gtfs.worker] Importing ${bytes.byteLength} bytes into ${opfsFile}…`);
+    poolUtil.importDb(opfsFile, bytes);
+  } else {
+    console.log(`[gtfs.worker] Agency ${agencyId} already seeded; opening directly.`);
+  }
 
-    // 4) Open the DB. The constructor exposed by the pool util produces a
-    //    Database wired to the OPFS-backed file.
-    const db = new poolUtil.OpfsSAHPoolDb(OPFS_FILE);
-    db.exec('PRAGMA query_only = 1;'); // read-only is enough for the GTFS workload
-    return db;
-  })();
-  return dbReady;
+  const db = new poolUtil.OpfsSAHPoolDb(opfsFile);
+  db.exec('PRAGMA query_only = 1;');
+  return db;
+}
+
+/** Close the currently-open DB, if any. The OPFS file stays put. */
+function closeCurrent() {
+  if (currentDb) {
+    try {
+      currentDb.close();
+    } catch (e) {
+      console.warn('[gtfs.worker] db.close() failed', e);
+    }
+    currentDb = null;
+  }
+  bootstrapping = null;
+}
+
+async function ensureDb(): Promise<Database> {
+  if (currentDb) return currentDb;
+  if (bootstrapping) return bootstrapping;
+  throw new Error('GTFS worker not bound to an agency yet — call setAgency(id) first.');
 }
 
 // ---------------------------------------------------------------------------
@@ -133,27 +171,47 @@ function timeToMinutes(t: string): number {
 const dayKeyCols = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'] as const;
 
 const api: GtfsRepo = {
+  async setAgency(agencyId: number): Promise<void> {
+    if (currentAgencyId === agencyId && currentDb) return;
+    if (currentAgencyId === agencyId && bootstrapping) {
+      await bootstrapping;
+      return;
+    }
+    closeCurrent();
+    currentAgencyId = agencyId;
+    bootstrapping = bootstrap(agencyId);
+    try {
+      currentDb = await bootstrapping;
+    } catch (e) {
+      // Failure leaves us without a current db so subsequent calls fail
+      // loudly. Reset the agency tracker so a later setAgency(sameId) can
+      // retry.
+      currentAgencyId = null;
+      throw e;
+    } finally {
+      bootstrapping = null;
+    }
+  },
+
   async ready() {
-    await bootstrap();
+    await ensureDb();
     return true;
   },
 
   async getManifest() {
-    // Manifest sits alongside the gzipped DB on the same origin; it isn't in
-    // the SQLite blob itself (so we can update freshness without rewriting
-    // the DB).
-    const res = await fetch(MANIFEST_URL);
+    if (currentAgencyId == null) {
+      throw new Error('No agency set — call setAgency(id) first.');
+    }
+    const res = await fetch(manifestUrlFor(currentAgencyId));
     if (!res.ok) throw new Error(`Manifest fetch failed (${res.status})`);
     return (await res.json()) as Manifest;
   },
 
   async getRoutes(): Promise<Route[]> {
-    const db = await bootstrap();
+    const db = await ensureDb();
     type Row = { route_id: number; route_short_name: string; route_color: string | null; route_text_color: string | null };
     const rows = selectAll<Row>(
       db,
-      // Sort numeric where possible, fall back to lexicographic for route ids
-      // like "M5" / "B12". CAST returns 0 on non-numeric strings.
       `SELECT route_id, route_short_name, route_color, route_text_color
        FROM routes
        ORDER BY CAST(route_short_name AS INTEGER), route_short_name;`,
@@ -167,11 +225,7 @@ const api: GtfsRepo = {
   },
 
   async getStopsNear(lat, lon, radiusMeters, limit = 25): Promise<StopWithDistance[]> {
-    const db = await bootstrap();
-    // Bounding-box prefilter so SQL only walks nearby rows; then refine in
-    // JS with exact Haversine and sort by distance.
-    //
-    // 1 deg lat ≈ 111_320 m globally; 1 deg lon ≈ 111_320 * cos(lat).
+    const db = await ensureDb();
     const dLat = radiusMeters / 111_320;
     const dLon = radiusMeters / (111_320 * Math.cos((lat * Math.PI) / 180));
     type Row = { stop_id: number; stop_name: string; stop_lat: number; stop_lon: number };
@@ -198,19 +252,14 @@ const api: GtfsRepo = {
   },
 
   async getDeparturesFromStop(stopId, localDate, localMinutesSinceMidnight, windowMinutes) {
-    const db = await bootstrap();
+    const db = await ensureDb();
 
-    // 1) Resolve services active on `localDate`. The CTP feed currently
-    //    doesn't ship calendar_dates (exceptions), so this is a calendar-only
-    //    lookup — when calendar_dates is present we should also UNION-add
-    //    exception_type=1 services and EXCEPT exception_type=2 services for
-    //    the same day. Cheap follow-up once the CSV is in the feed.
     const dow = new Date(
       Number(localDate.slice(0, 4)),
       Number(localDate.slice(4, 6)) - 1,
       Number(localDate.slice(6, 8)),
-    ).getDay(); // 0 = Sunday
-    const dayCol = dayKeyCols[(dow + 6) % 7]; // map JS Sunday=0 to monday-indexed array
+    ).getDay();
+    const dayCol = dayKeyCols[(dow + 6) % 7];
 
     type ServiceRow = { service_id: string };
     const services = selectAll<ServiceRow>(
@@ -224,11 +273,6 @@ const api: GtfsRepo = {
 
     if (services.length === 0) return [];
 
-    // 2) Find departures in the time window. Filter by service IN (...) and
-    //    departure-time >= now AND <= now + window. Trips that wrap past
-    //    midnight have departures like "25:13:00" — we compare as
-    //    minutes-since-midnight (parsed in JS) below, so the SQL pulls a
-    //    superset and JS narrows it.
     const placeholders = services.map(() => '?').join(',');
     type Row = {
       trip_id: string;

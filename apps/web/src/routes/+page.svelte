@@ -2,14 +2,24 @@
   Stations — the default landing route. Until an agency is selected, shows
   an empty state pointing to Settings. Once an agency exists, the real
   proximity-based list lands here in Phase 4.
+
+  Side effect: starts the location watch on mount so the header's GPS dot
+  lights up immediately (any other route doesn't need GPS so the prompt
+  doesn't appear until you've at least visited /).
 -->
 <script lang="ts">
+  import { onMount } from 'svelte';
   import { goto } from '$app/navigation';
   import { Bus, Settings } from 'lucide-svelte';
   import {
     Button, Card, CardContent, Stack, Typography,
   } from '$lib/ui';
+  import { locationStore } from '$lib/stores/locationStore.svelte';
   import { userPrefs } from '$lib/stores/userPrefs.svelte';
+
+  onMount(() => {
+    locationStore.start();
+  });
 </script>
 
 <div class="mx-auto max-w-3xl px-4 py-6">

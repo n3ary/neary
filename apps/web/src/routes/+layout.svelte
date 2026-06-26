@@ -10,7 +10,11 @@
   import { page } from '$app/state';
   import { Heart, Home, MapPin, Settings } from 'lucide-svelte';
   import { AppLayout, type HeaderHealth } from '$lib/ui';
+  import { connectionStore } from '$lib/stores/connectionStore.svelte';
+  import { locationStore } from '$lib/stores/locationStore.svelte';
+  import { statusBus } from '$lib/stores/statusBus.svelte';
   import { userPrefs } from '$lib/stores/userPrefs.svelte';
+  import { getGtfsRepo } from '$lib/data/gtfs/repo';
 
   let { children } = $props();
 
@@ -29,6 +33,43 @@
   // pick up immediately. Idempotent — setting the same value is a no-op.
   $effect(() => {
     document.documentElement.dataset.theme = userPrefs.theme;
+  });
+
+  // Auto-bind the GTFS worker to the user's selected agency. The repo is
+  // lazily constructed; this effect only spawns the worker once an agency
+  // exists, then re-runs only when the id changes. Progress + errors are
+  // surfaced through the global StatusBar so the user sees them regardless
+  // of which route they're on when the change happens.
+  let lastBoundAgency = $state<number | null>(null);
+  $effect(() => {
+    const id = userPrefs.agencyId;
+    if (id == null || id === lastBoundAgency) return;
+    lastBoundAgency = id;
+    const repo = getGtfsRepo();
+    statusBus.push({
+      id: 'gtfs-bind',
+      kind: 'loading',
+      message: `Loading schedule for agency ${id}…`,
+    });
+    repo
+      .setAgency(id)
+      .then(() => {
+        statusBus.push({
+          id: 'gtfs-bind',
+          kind: 'success',
+          message: 'Schedule ready.',
+        });
+      })
+      .catch((e: Error) => {
+        statusBus.push({
+          id: 'gtfs-bind',
+          kind: 'error',
+          message: e?.message ?? 'Failed to load schedule.',
+          ttlMs: 0,
+        });
+        // Roll back the binding tracker so the user can retry by re-selecting.
+        lastBoundAgency = null;
+      });
   });
 
   type NavValue = '/' | '/favorites' | '/planner' | '/settings';
@@ -55,23 +96,29 @@
 
   const title = $derived(TITLES[activeNav]);
 
-  // Phase 3 ships placeholder health states. Real wiring lands in Phase 4
-  // (Schedule), Phase 5 (Live), and the GPS / connection listeners.
+  // Phase 3 ships placeholder Schedule and Live states (real wiring lands in
+  // Phase 4 / 5). GPS and Connection are real — see locationStore + connection
+  // Store. The GPS watch isn't started by the layout itself; the Stations
+  // route calls locationStore.start() on mount so we don't prompt for
+  // permission on routes that don't need it.
   const health: HeaderHealth = $derived({
-    gps: { state: 'idle', tooltip: 'GPS not requested yet' },
+    gps: {
+      state: locationStore.freshness,
+      tooltip: locationStore.tooltip,
+    },
     connection: {
-      state: typeof navigator !== 'undefined' && navigator.onLine === false ? 'error' : 'idle',
-      tooltip: 'Network',
+      state: connectionStore.online ? 'ok' : 'error',
+      tooltip: connectionStore.online ? 'Online' : 'Offline',
     },
     schedule: {
       state: userPrefs.agencyId == null ? 'idle' : 'ok',
       tooltip: userPrefs.agencyId == null ? 'No agency selected' : 'Schedule loaded',
     },
     live: {
-      state: userPrefs.apiKey ? 'idle' : 'idle',
+      state: 'idle',
       tooltip: userPrefs.apiKey
-        ? 'API key present — live worker will start when implemented'
-        : 'Live tracking disabled (add API key in Settings → Advanced)',
+        ? 'API key present — live worker activates in Phase 5'
+        : 'Live tracking disabled (add API key in Settings)',
     },
   });
 </script>
