@@ -416,7 +416,7 @@
   // Cleanup cancels the RAF and clears the layer.
   const DOT_COUNT = 6;
   const DOT_CYCLE_MS = 12000;
-  const DOT_PEAK_OPACITY = 0.9;
+  const DOT_PEAK_OPACITY = 0.45;
   $effect(() => {
     if (!L || !mapInstance || !arrowsLayer) return;
     arrowsLayer.clearLayers();
@@ -435,9 +435,9 @@
     const dots = Array.from({ length: DOT_COUNT }, () =>
       Lref.circleMarker([measured.points[0].lat, measured.points[0].lon], {
         renderer,
-        radius: 4,
+        radius: 3,
         color: '#fff',
-        weight: 1.5,
+        weight: 1,
         fillColor: routeColor,
         fillOpacity: 0,
         opacity: 0,
