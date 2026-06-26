@@ -15,11 +15,7 @@
           <Home size={24} />
         </div>
         <Typography variant="h4">Trip Planner</Typography>
-        <Chip size="small" variant="outlined">Coming in Phase 8</Chip>
-        <Typography variant="body2" class="max-w-prose text-[color:var(--color-fg-muted)]">
-          From/to routing over real GTFS with transfers. Uses the same
-          SQLite-WASM worker as the rest of the app.
-        </Typography>
+        <Chip size="small" variant="outlined">Coming soon</Chip>
       </Stack>
     </CardContent>
   </Card>
