@@ -1,22 +1,30 @@
 <!--
   Schedule view — by-route, by-direction.
 
-  URL: /schedule/route/[id]?dir=0&view=next-trip|today|tomorrow|week
+  URL shape (path segments only — no query string):
+    /schedule/route/[id]                       multi-direction view
+    /schedule/route/[id]_0|[id]_1              single-direction view, today
+    /schedule/route/[id]_0|[id]_1/[view]       single-direction, explicit tab
+
+  Where [view] is one of: next-trip | tomorrow | week. 'today' is the
+  default and never appears in the URL.
+
+  Path-based instead of ?dir=&view= because query strings tripped the
+  dev WebSocket suspension on iOS Safari and because deep links read
+  cleanly without the extra punctuation. The trailing _0/_1 suffix on
+  the id segment is a pragmatic compromise: GTFS allows any text in
+  route_id, but the Cluj feed (and most agencies) don't use underscores
+  in ids. If a feed ever does, we'll switch the separator.
 
   Tabs:
     - 'next-trip': stop timeline for the next upcoming trip in the
       selected direction. Enabled only when a direction is set.
-    - 'today':    today's remaining departures from origin.
+    - 'today':    today's remaining departures from origin (default).
     - 'tomorrow': tomorrow's morning departures (00:00 → noon).
     - 'week':     recurring weekly pattern (Mon-Fri / Sat / Sun).
 
-  The header carries route badge + origin → headsign + dir-swap. We
-  intentionally do NOT track an anchor stop or a pinned trip in the
-  URL: the schedule is for the route in a given direction, regardless
-  of which station the user was looking at when they navigated here.
-
-  Multi-direction mode (no `dir` param) keeps a two-column side-by-side
-  layout, one direction per card, no stop timeline. Used by /favorites.
+  Multi-direction mode (no dir suffix) keeps a two-column side-by-side
+  layout. Used by /favorites.
 -->
 <script lang="ts">
   import { goto } from '$app/navigation';
@@ -254,22 +262,23 @@
     return urgencyClass(scheduleUrgency(min - nowMin));
   }
 
-  function navigateWith(updates: Record<string, string | null>) {
-    const params = new URLSearchParams(page.url.searchParams);
-    for (const [k, v] of Object.entries(updates)) {
-      if (v == null) params.delete(k);
-      else params.set(k, v);
-    }
-    const qs = params.toString();
-    goto(`/schedule/route/${routeId}${qs ? `?${qs}` : ''}`, { replaceState: false });
+  // Build a /schedule/route/... URL from the structured params and
+  // navigate. Any null direction collapses to multi-direction mode;
+  // 'today' view collapses to the bare URL.
+  function navigateTo(opts: { routeId?: string; direction?: 0 | 1 | null; view?: View }) {
+    const rId = opts.routeId ?? routeId;
+    const dir = opts.direction !== undefined ? opts.direction : direction;
+    const v = opts.view ?? view;
+    const id = dir == null ? rId : `${rId}_${dir}`;
+    const path = v === 'today' || dir == null ? `/schedule/route/${id}` : `/schedule/route/${id}/${v}`;
+    goto(path, { replaceState: false });
   }
   function swapDirection() {
     if (direction == null) return;
-    navigateWith({ dir: direction === 0 ? '1' : '0' });
+    navigateTo({ direction: direction === 0 ? 1 : 0 });
   }
   function pickView(v: View) {
-    // 'today' is the default — don't pollute the URL with it.
-    navigateWith({ view: v === 'today' ? null : v });
+    navigateTo({ view: v });
   }
 </script>
 
@@ -515,7 +524,7 @@
                       {dirHeadsign ? `→ ${dirHeadsign}` : `Direction ${dir}`}
                     </Typography>
                     <a
-                      href={`/schedule/route/${routeId}?dir=${dir}`}
+                      href={`/schedule/route/${routeId}_${dir}`}
                       class="text-xs underline text-[color:var(--color-fg-muted)] hover:text-[color:var(--color-fg)] shrink-0"
                     >
                       Full view
