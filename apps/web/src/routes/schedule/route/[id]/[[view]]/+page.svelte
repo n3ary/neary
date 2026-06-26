@@ -35,6 +35,7 @@
     Stack, ToggleGroup, Typography,
   } from '$lib/ui';
   import { getGtfsRepo } from '$lib/data/gtfs/repo';
+  import { useOtherDirectionExists } from '$lib/data/gtfs/otherDirectionExists.svelte';
   import type { Route } from '$lib/domain/types';
   import {
     formatHHMM, formatRelativeMin, isNightRoute, vehicleTypeLabel,
@@ -360,6 +361,15 @@
   function pickView(v: View) {
     navigateTo({ view: v });
   }
+
+  // Reactive gate for the Swap-direction button: greys out when the
+  // opposite direction has no trips on this route (one-way loops
+  // like 15). Shared with the map view via the helper in
+  // lib/data/gtfs/otherDirectionExists.svelte.ts.
+  const otherDirection = useOtherDirectionExists(
+    () => routeId,
+    () => direction,
+  );
 </script>
 
 <!-- One stop-timeline renderer reused by the 'Next trip' tab AND the
@@ -509,8 +519,8 @@
               {/if}
             </Stack>
             <IconButton
-              aria-label="Swap direction"
-              disabled={direction == null}
+              aria-label={otherDirection.value === false ? 'Reverse direction not available' : 'Swap direction'}
+              disabled={direction == null || otherDirection.value === false}
               onclick={swapDirection}
             >
               <ArrowRightLeft size={18} />

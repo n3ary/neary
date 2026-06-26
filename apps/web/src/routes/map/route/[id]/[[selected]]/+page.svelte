@@ -30,6 +30,7 @@
     Stack, Typography,
   } from '$lib/ui';
   import { getGtfsRepo } from '$lib/data/gtfs/repo';
+  import { useOtherDirectionExists } from '$lib/data/gtfs/otherDirectionExists.svelte';
   import type { RouteMapView } from '$lib/data/gtfs/types';
   import {
     formatHHMM, isNightRoute, pickContrastingText, vehicleTypeLabel,
@@ -231,27 +232,12 @@
   // Does the opposite direction even exist on this route? Some Cluj
   // lines are one-way loops (no dir 1 trips at all) so the swap
   // button should grey out instead of taking the user to an empty
-  // map. Probed via the same lightweight endpoints query the schedule
-  // view uses — returns null when no trips exist for that direction.
-  let otherDirectionExists = $state<boolean | null>(null);
-  $effect(() => {
-    const fid = feedsStore.boundFeedId;
-    if (!fid || direction == null || routeId.length === 0) return;
-    const otherDir = (direction === 0 ? 1 : 0) as 0 | 1;
-    const rid = routeId;
-    otherDirectionExists = null;
-    (async () => {
-      try {
-        const repo = getGtfsRepo();
-        const ep = await repo.getRouteDirectionEndpoints(rid, otherDir);
-        otherDirectionExists = ep != null;
-      } catch {
-        // On error, leave the button enabled — worst case the user
-        // taps and gets the 'needs a direction' empty state.
-        otherDirectionExists = true;
-      }
-    })();
-  });
+  // map. Shared probe with the schedule view — see
+  // lib/data/gtfs/otherDirectionExists.svelte.ts.
+  const otherDirection = useOtherDirectionExists(
+    () => routeId,
+    () => direction,
+  );
 
   function swapDirection() {
     if (direction == null) return;
@@ -703,8 +689,8 @@
                 <Maximize2 size={18} />
               </IconButton>
               <IconButton
-                aria-label={otherDirectionExists === false ? 'Reverse direction not available' : 'Swap direction'}
-                disabled={otherDirectionExists === false}
+                aria-label={otherDirection.value === false ? 'Reverse direction not available' : 'Swap direction'}
+                disabled={otherDirection.value === false}
                 onclick={swapDirection}
               >
                 <ArrowRightLeft size={18} />
