@@ -15,7 +15,7 @@
   } from '$lib/ui';
   import { getGtfsRepo } from '$lib/data/gtfs/repo';
   import type { Route, VehicleType } from '$lib/domain/types';
-  import { vehicleTypeLabel } from '$lib/domain/types';
+  import { VEHICLE_TYPE_COLOR, vehicleTypeLabel } from '$lib/domain/types';
   import { feedsStore } from '$lib/stores/feedsStore.svelte';
   import { favoritesStore } from '$lib/stores/favoritesStore.svelte';
   import { userPrefs } from '$lib/stores/userPrefs.svelte';
@@ -86,11 +86,13 @@
      between favorited and other routes. KISS / DRY. -->
 {#snippet routeRow(route: Route)}
   {@const isFav = favoritesStore.has(route.id)}
-  {@const typeLabel = vehicleTypeLabel(route.type ?? 'unknown')}
+  {@const type = route.type ?? 'unknown'}
+  {@const typeLabel = vehicleTypeLabel(type)}
   <Stack direction="row" spacing={1} align="center" class="px-1 py-1 rounded-md hover:bg-[color:var(--color-border)]/30">
     <RouteBadge {route} size="medium" isFavorite={isFav} />
-    <Typography variant="body2" class="flex-1 truncate text-[color:var(--color-fg-muted)]">
-      {typeLabel} {route.shortName}
+    <Typography variant="body2" class="flex-1 truncate">
+      <span style={`color:${VEHICLE_TYPE_COLOR[type]}`} class="font-semibold">{typeLabel}</span>
+      <span class="text-[color:var(--color-fg-muted)]">{route.shortName}</span>
     </Typography>
     <IconButton
       aria-label={`${isFav ? 'Unfavorite' : 'Favorite'} ${typeLabel.toLowerCase()} ${route.shortName}`}
