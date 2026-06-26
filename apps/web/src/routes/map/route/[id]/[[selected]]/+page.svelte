@@ -416,7 +416,7 @@
   // Cleanup cancels the RAF and clears the layer.
   const DOT_COUNT = 6;
   const DOT_CYCLE_MS = 5500;
-  const DOT_PEAK_OPACITY = 0.35;
+  const DOT_PEAK_OPACITY = 0.9;
   $effect(() => {
     if (!L || !mapInstance || !arrowsLayer) return;
     arrowsLayer.clearLayers();
@@ -427,16 +427,18 @@
     const routeColor = view?.route.color ?? '#888';
     // Dots ride their own SVG renderer pinned to the high-z
     // 'nearyDots' pane so they paint above the polyline (see init).
-    // White fill + the route colour as a thin border keeps them
-    // legible on any line colour without going neon.
+    // Route-coloured fill with a 1.5 px white border — same recipe
+    // as the stop markers, which are the legibility reference on
+    // this map. Sin envelope on opacity gives the soft come-and-go
+    // that makes the flock read like current rather than blips.
     const renderer = Lref.svg({ pane: 'nearyDots' });
     const dots = Array.from({ length: DOT_COUNT }, () =>
       Lref.circleMarker([measured.points[0].lat, measured.points[0].lon], {
         renderer,
-        radius: 3.5,
-        color: routeColor,
-        weight: 1,
-        fillColor: '#fff',
+        radius: 4,
+        color: '#fff',
+        weight: 1.5,
+        fillColor: routeColor,
         fillOpacity: 0,
         opacity: 0,
         interactive: false,
