@@ -35,7 +35,19 @@
 
   onMount(() => locationStore.start());
 
-  const hasGps = $derived(locationStore.position != null);
+  // Three-way GPS state: pending (waiting for first fix), available
+  // (we have a position), or unavailable (denied / errored / geolocation
+  // unsupported). The boards-fetch effect gates on this so we never
+  // briefly query the fallback location while GPS is just slow to resolve.
+  type GpsState = 'pending' | 'available' | 'unavailable';
+  const gpsState = $derived.by<GpsState>(() => {
+    if (typeof navigator === 'undefined' || !('geolocation' in navigator)) return 'unavailable';
+    if (locationStore.position) return 'available';
+    if (locationStore.permission === 'denied') return 'unavailable';
+    if (locationStore.error && !locationStore.position) return 'unavailable';
+    return 'pending';
+  });
+
   // Round to 4 decimals so GPS jitter doesn't refire the SQLite query.
   const queryLat = $derived(
     Math.round((locationStore.position?.coords.latitude ?? FALLBACK_LAT) * 1e4) / 1e4,
@@ -61,6 +73,9 @@
     // the page can race the bind and briefly flash a 'not bound' error.
     const fid = feedsStore.boundFeedId;
     if (!fid) return;
+    // Wait for GPS to resolve in one direction or the other so we don't
+    // briefly render the fallback list during the pre-fix window.
+    if (gpsState === 'pending') return;
     // Subscribe to manual-refresh ticks so the header refresh button
     // re-fires this effect.
     refreshBus.tick;
@@ -103,6 +118,17 @@
         </Stack>
       </CardContent>
     </Card>
+  {:else if gpsState === 'pending'}
+    <Card>
+      <CardContent>
+        <Stack direction="row" spacing={1} align="center">
+          <Spinner size={16} />
+          <Typography variant="caption">
+            Determining your location… (allow GPS in your browser to see actual nearby stations)
+          </Typography>
+        </Stack>
+      </CardContent>
+    </Card>
   {:else if boardsError}
     <Card>
       <CardContent>
@@ -127,7 +153,7 @@
         <Stack spacing={1}>
           <Typography variant="h6">No nearby stations</Typography>
           <Typography variant="caption">
-            No stops within {SEARCH_RADIUS_M} m of {hasGps ? 'your current position' : 'the fallback location'}.
+            No stops within {SEARCH_RADIUS_M} m of {gpsState === 'available' ? 'your current position' : 'the fallback location'}.
             Try moving closer to a transit corridor or enabling location.
           </Typography>
         </Stack>
@@ -135,7 +161,7 @@
     </Card>
   {:else}
     <Stack spacing={1}>
-      {#if !hasGps}
+      {#if gpsState === 'unavailable'}
         <Box class="px-2 py-1 text-xs text-[color:var(--color-fg-muted)]">
           <Stack direction="row" spacing={1} align="center">
             <MapPin size={12} />
