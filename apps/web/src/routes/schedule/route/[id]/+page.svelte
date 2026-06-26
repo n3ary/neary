@@ -59,7 +59,10 @@
     if (v === 'today' || v === 'tomorrow' || v === 'next-trip' || v === 'week') return v;
     // Back-compat: old links used 'this-trip' for the same concept.
     if (v === 'this-trip') return 'next-trip';
-    return 'next-trip';
+    // 'today' is the canonical default — `pickView` strips the
+    // query string for it, so the URL with no ?view= must also
+    // resolve here.
+    return 'today';
   });
 
   // ── Data state ──────────────────────────────────────────────────────
