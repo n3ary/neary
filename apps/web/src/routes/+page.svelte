@@ -10,10 +10,9 @@
 -->
 <script lang="ts">
   import { onMount, untrack } from 'svelte';
-  import { goto } from '$app/navigation';
-  import { Bus, MapPin, Settings } from 'lucide-svelte';
+  import { MapPin } from 'lucide-svelte';
   import {
-    Box, Button, Card, CardContent, Spinner, Stack, StationCard, Typography,
+    Box, Card, CardContent, NoFeedState, Spinner, Stack, StationCard, Typography,
   } from '$lib/ui';
   import { getGtfsRepo } from '$lib/data/gtfs/repo';
   import type { StopWithDistance } from '$lib/data/gtfs/types';
@@ -176,25 +175,9 @@
 
 <div class="mx-auto max-w-3xl px-4 py-6">
   {#if userPrefs.feedId == null}
-    <Card class="text-center">
-      <CardContent>
-        <Stack spacing={2} align="center">
-          <div class="inline-flex items-center justify-center w-12 h-12 rounded-full bg-[color:var(--color-primary)]/10 text-[color:var(--color-primary)]">
-            <Bus size={24} />
-          </div>
-          <Typography variant="h4">Select your transit feed</Typography>
-          <Typography variant="body2" class="max-w-prose text-[color:var(--color-fg-muted)]">
-            Neary needs a transit feed to load schedules and routes. Pick
-            one in Settings to get started. The data downloads once and is
-            cached for offline use — no account needed.
-          </Typography>
-          {#snippet settingsIcon()}<Settings size={16} />{/snippet}
-          <Button startIcon={settingsIcon} onclick={() => goto('/settings')}>
-            Open Settings
-          </Button>
-        </Stack>
-      </CardContent>
-    </Card>
+    <NoFeedState
+      message="Neary needs a transit feed to load schedules and routes. Pick one in Settings to get started. The data downloads once and is cached for offline use — no account needed."
+    />
   {:else if boardsError}
     <Card>
       <CardContent>

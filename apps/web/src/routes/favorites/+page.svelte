@@ -10,7 +10,7 @@
 <script lang="ts">
   import { Heart } from 'lucide-svelte';
   import {
-    Card, CardContent, IconButton, RouteBadge, Spinner, Stack, Typography,
+    Card, CardContent, IconButton, NoFeedState, RouteBadge, Spinner, Stack, Typography,
   } from '$lib/ui';
   import { getGtfsRepo } from '$lib/data/gtfs/repo';
   import type { Route } from '$lib/domain/types';
@@ -54,19 +54,7 @@
 
 <div class="mx-auto max-w-3xl px-4 py-6">
   {#if userPrefs.feedId == null}
-    <Card>
-      <CardContent class="text-center">
-        <Stack spacing={1.5} align="center">
-          <div class="inline-flex items-center justify-center w-12 h-12 rounded-full bg-[color:var(--color-danger)]/10 text-[color:var(--color-danger)]">
-            <Heart size={24} />
-          </div>
-          <Typography variant="h4">Favorites</Typography>
-          <Typography variant="body2" class="max-w-prose text-[color:var(--color-fg-muted)]">
-            Pick a feed in Settings first; then star routes here.
-          </Typography>
-        </Stack>
-      </CardContent>
-    </Card>
+    <NoFeedState message="Pick a feed in Settings to star routes here." />
   {:else if error}
     <Card>
       <CardContent>

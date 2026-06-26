@@ -26,10 +26,15 @@
      *  omitted (map popup, standalone), the secondary line stays muted. */
     urgency?: Urgency;
     onclick?: () => void;
+    /** When set, the round kind-badge becomes a link to this URL.
+     *  Used by StationCard to deep-link into /schedule/route/[id].
+     *  Keeping URL-knowledge out of the component lets each consumer
+     *  decide what the icon should navigate to (or omit it). */
+    scheduleHref?: string;
     class?: string;
   };
 
-  let { vehicle, urgency, onclick, class: className }: Props = $props();
+  let { vehicle, urgency, onclick, scheduleHref, class: className }: Props = $props();
 
   // Per-kind visuals. Spec §2 visual-variant table. The kind only drives
   // the badge icon and color now — every row gets the same solid border.
@@ -117,14 +122,30 @@
     </span>
   {/if}
 
-  <span
-    title={KIND.label}
-    aria-label={KIND.label}
-    class={cn(
-      'inline-flex items-center justify-center w-6 h-6 rounded-full text-white shrink-0',
-      KIND.iconBg,
-    )}
-  >
-    <KindIcon size={12} strokeWidth={2.5} />
-  </span>
+  {#if scheduleHref}
+    <a
+      href={scheduleHref}
+      title={`${KIND.label} — open route schedule`}
+      aria-label={`${KIND.label}, open route schedule`}
+      class={cn(
+        'inline-flex items-center justify-center w-6 h-6 rounded-full text-white shrink-0',
+        'hover:ring-2 hover:ring-[color:var(--color-primary)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--color-primary)]',
+        KIND.iconBg,
+      )}
+      onclick={(e) => e.stopPropagation()}
+    >
+      <KindIcon size={12} strokeWidth={2.5} />
+    </a>
+  {:else}
+    <span
+      title={KIND.label}
+      aria-label={KIND.label}
+      class={cn(
+        'inline-flex items-center justify-center w-6 h-6 rounded-full text-white shrink-0',
+        KIND.iconBg,
+      )}
+    >
+      <KindIcon size={12} strokeWidth={2.5} />
+    </span>
+  {/if}
 </div>

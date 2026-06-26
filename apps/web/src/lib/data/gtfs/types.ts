@@ -131,4 +131,57 @@ export interface GtfsRepo {
   getShapesForTrips(
     tripIds: string[],
   ): Promise<Record<string, Array<{ lat: number; lon: number }>>>;
+
+  /** Single route by id, or null when the id isn't in the feed. */
+  getRouteById(routeId: number): Promise<Route | null>;
+
+  /**
+   * Schedule view: a list of trips on (routeId, directionId) whose
+   * service is active for `localDate` and whose tripStartMin falls in
+   * [now, now + windowMin]. Each entry carries the canonical trip_id
+   * (so the page can call getStopsAlongTrip / cross-reference live
+   * data) plus the origin headsign + departure time at the trip's
+   * first stop.
+   */
+  getRouteSchedule(
+    routeId: number,
+    directionId: 0 | 1,
+    nowMs: number,
+    windowMinutes: number,
+  ): Promise<ScheduleTrip[]>;
+
+  /**
+   * Ordered list of stops a trip serves, with arrival time and
+   * cumulative distance-along-shape at each (the latter omitted when
+   * the feed doesn't carry shape_dist_traveled). Used by the schedule
+   * view to render the stop strip + estimated arrival per stop.
+   */
+  getStopsAlongTrip(tripId: string): Promise<ScheduleTripStop[]>;
+}
+
+/** One trip on a route+direction, surfaced by getRouteSchedule. */
+export interface ScheduleTrip {
+  tripId: string;
+  /** Minutes since local midnight at the trip's first stop. */
+  tripStartMin: number;
+  /** Headsign as published in trips.txt (operator-controlled). */
+  headsign: string | null;
+  /** GTFS service_id — exposed so the UI can spot
+   *  through-the-night services (single service spanning past
+   *  midnight) once the night-route handling lands. */
+  serviceId: string;
+}
+
+/** One stop on a single trip's stop_times. */
+export interface ScheduleTripStop {
+  stopId: number;
+  stopName: string;
+  lat: number;
+  lon: number;
+  /** GTFS "HH:MM:SS" arrival_time at this stop (may exceed 24h). */
+  arrivalTime: string;
+  /** Minutes since local midnight at this stop, for sorting + ETA. */
+  arrivalMin: number;
+  /** 1-based stop_sequence as in GTFS. */
+  stopSequence: number;
 }

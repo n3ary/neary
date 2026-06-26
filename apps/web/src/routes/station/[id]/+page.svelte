@@ -8,11 +8,9 @@
   flow exactly as on /.
 -->
 <script lang="ts">
-  import { goto } from '$app/navigation';
   import { page } from '$app/state';
-  import { Bus } from 'lucide-svelte';
   import {
-    Card, CardContent, Spinner, Stack, StationCard, Typography, Button,
+    Card, CardContent, NoFeedState, Spinner, Stack, StationCard, Typography,
   } from '$lib/ui';
   import { getGtfsRepo } from '$lib/data/gtfs/repo';
   import type { StopWithDistance } from '$lib/data/gtfs/types';
@@ -76,19 +74,7 @@
 
 <div class="mx-auto max-w-3xl px-4 py-6">
   {#if userPrefs.feedId == null}
-    <Card class="text-center">
-      <CardContent>
-        <Stack spacing={2} align="center">
-          <div class="inline-flex items-center justify-center w-12 h-12 rounded-full bg-[color:var(--color-primary)]/10 text-[color:var(--color-primary)]">
-            <Bus size={24} />
-          </div>
-          <Typography variant="h4">Select your transit feed</Typography>
-          <Button onclick={() => goto('/settings')}>
-            Open Settings
-          </Button>
-        </Stack>
-      </CardContent>
-    </Card>
+    <NoFeedState />
   {:else if !stopIdValid}
     <Card>
       <CardContent>

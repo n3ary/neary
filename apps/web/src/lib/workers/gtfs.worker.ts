@@ -464,6 +464,107 @@ const api: GtfsRepo = {
     }
     return out;
   },
+
+  async getRouteById(routeId) {
+    const db = await ensureDb();
+    type Row = {
+      route_id: number;
+      route_short_name: string;
+      route_color: string | null;
+      route_text_color: string | null;
+    };
+    const rows = selectAll<Row>(
+      db,
+      `SELECT route_id, route_short_name, route_color, route_text_color
+       FROM routes WHERE route_id = ?;`,
+      [routeId],
+    );
+    if (rows.length === 0) return null;
+    const r = rows[0];
+    return {
+      id: r.route_id,
+      shortName: r.route_short_name,
+      color: r.route_color ? `#${r.route_color}` : '#666666',
+      textColor: r.route_text_color ? `#${r.route_text_color}` : undefined,
+    };
+  },
+
+  async getRouteSchedule(routeId, directionId, nowMs, windowMinutes) {
+    // Trips on (routeId, directionId) whose service is active today
+    // AND whose origin departure falls within [now, now + window].
+    // We deliberately key off the trip's FIRST stop's departure_time
+    // (origin) so the schedule view aligns with passenger language
+    // ("when does the 25 leave Mărăști?"), and so it dovetails with
+    // the reconciler's match key.
+    const db = await ensureDb();
+    const tz = currentFeedTz ?? 'UTC';
+    const localDate = dateKeyInTz(nowMs, tz);
+    const nowMin = minSinceMidnightInTz(nowMs, tz);
+
+    const services = activeServicesOn(db, localDate);
+    if (services.length === 0) return [];
+
+    const placeholders = services.map(() => '?').join(',');
+    type Row = {
+      trip_id: string;
+      trip_headsign: string | null;
+      service_id: string;
+      trip_start_time: string;
+    };
+    const rows = selectAll<Row>(
+      db,
+      `SELECT t.trip_id, t.trip_headsign, t.service_id,
+              (SELECT departure_time FROM stop_times WHERE trip_id = t.trip_id
+               ORDER BY stop_sequence ASC LIMIT 1) AS trip_start_time
+       FROM trips t
+       WHERE t.route_id = ?
+         AND t.direction_id = ?
+         AND t.service_id IN (${placeholders});`,
+      [routeId, directionId, ...services],
+    );
+
+    const upper = nowMin + windowMinutes;
+    return rows
+      .map((r) => ({
+        tripId: r.trip_id,
+        tripStartMin: timeToMinutes(r.trip_start_time),
+        headsign: r.trip_headsign,
+        serviceId: r.service_id,
+      }))
+      .filter((r) => r.tripStartMin >= nowMin && r.tripStartMin <= upper)
+      .sort((a, b) => a.tripStartMin - b.tripStartMin);
+  },
+
+  async getStopsAlongTrip(tripId) {
+    const db = await ensureDb();
+    type Row = {
+      stop_id: number;
+      stop_name: string;
+      stop_lat: number;
+      stop_lon: number;
+      arrival_time: string;
+      stop_sequence: number;
+    };
+    const rows = selectAll<Row>(
+      db,
+      `SELECT s.stop_id, s.stop_name, s.stop_lat, s.stop_lon,
+              st.arrival_time, st.stop_sequence
+       FROM stop_times st
+       JOIN stops s ON s.stop_id = st.stop_id
+       WHERE st.trip_id = ?
+       ORDER BY st.stop_sequence ASC;`,
+      [tripId],
+    );
+    return rows.map((r) => ({
+      stopId: r.stop_id,
+      stopName: r.stop_name,
+      lat: r.stop_lat,
+      lon: r.stop_lon,
+      arrivalTime: r.arrival_time,
+      arrivalMin: timeToMinutes(r.arrival_time),
+      stopSequence: r.stop_sequence,
+    }));
+  },
 };
 
 // Shape cache lives at module scope so it survives across method
