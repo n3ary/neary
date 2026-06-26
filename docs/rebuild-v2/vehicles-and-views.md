@@ -383,16 +383,27 @@ Threshold for "imminent incoming" is `NearyConfig.imminentEtaThresholdMin`
 (default 5). When `VehicleCard` is rendered without an `urgency` prop
 (standalone showcase, future map popup), the row stays muted neutral.
 
-### Departed collapse (one row per route)
+### Board cap — 5 rows, 1 per bucket, expand `incoming`
 
-Even after the trip-end gate, an active route running every few minutes can
-produce many recently-departed rows. The board collapses the `departed`
-bucket to **the most-recent row per route** in
-[`assembleStationBoard`](../../apps/web/src/lib/domain/stationBoard.ts) via
-the helper `collapseDepartedByRoute`. The user sees one departed entry per
-route ("you just missed the 24 a minute ago") instead of a 20-row history.
-The map view bypasses this — it consumes the raw `Vehicle[]` directly,
-showing every still-en-route bus.
+The station card stays scannable by capping at **5 rows** (constant
+`STATION_BOARD_MAX_ROWS` in
+[`stationBoard.ts`](../../apps/web/src/lib/domain/stationBoard.ts) via
+the helper `capStationBoard`):
+
+1. After bucket+filter+sort, take the **first row** of each bucket in
+   priority order (`departing` → `at-station` → `arriving` → `incoming`
+   → `departed`). Result: up to 5 rows, 1 per bucket.
+2. If fewer than 5 rows so far, fill the remaining slots from the
+   **`incoming` overflow** (the bucket users most want to see more of —
+   "how many buses are coming?"). With schedule-only data and no live
+   feed, in practice this fills with more `scheduled` arrivals.
+3. Final sort stays bucket-then-eta.
+
+So at a quiet stop with two future arrivals and nothing else, you see 2
+rows. At a busy stop with all 5 bucket flavours present, you see 5 rows
+(one of each). At a stop with one arriving and a long line of incoming,
+you see 5 rows (1 arriving + 4 incoming). Map view bypasses the cap —
+it consumes the raw `Vehicle[]` directly, showing every en-route bus.
 
 ### Station-view filters (`filterForStationView`)
 

@@ -15,7 +15,7 @@ import {
   filterForStationView,
   type ArrivalBucket,
 } from './buckets';
-import type { Route, Vehicle } from './types';
+import type { Vehicle } from './types';
 
 export interface BoardRow {
   vehicle: Vehicle;
@@ -36,9 +36,8 @@ function nowMinSinceMidnight(nowMs: number): number {
 }
 
 /** Assemble the bucketed, filtered, sorted board for one station's
- *  worth of vehicles. Pure. The `departed` bucket is collapsed to one
- *  row per route (the most-recent departure) so it doesn't dominate
- *  the board with 20+ minutes of past trips when the user opts in. */
+ *  worth of vehicles. Pure. The result is capped at 5 rows (see
+ *  `capStationBoard` for the picking rule) so the card stays scannable. */
 export function assembleStationBoard(
   vehicles: Vehicle[],
   prefs: BoardPrefs,
@@ -57,36 +56,36 @@ export function assembleStationBoard(
     etaMinutes: v.eta?.minutes ?? 0,
   }));
   const sorted = filterForStationView(rows, prefs).sort(compareForBoard);
-  return collapseDepartedByRoute(sorted);
+  return capStationBoard(sorted);
 }
 
-/** Within the `departed` bucket, keep only the most-recent row per route.
- *  Other buckets pass through untouched. Sort order is assumed to already
- *  have most-recent-first inside `departed` (see compareForBoard).
- *  Pulled out as its own helper for testability. */
-export function collapseDepartedByRoute(rows: BoardRow[]): BoardRow[] {
-  const seen = new Set<number>();
-  const out: BoardRow[] = [];
+/** Max rows shown on a single StationCard. Held here (not in NearyConfig)
+ *  because it's a UX layout decision, not a transit-logic one. */
+export const STATION_BOARD_MAX_ROWS = 5;
+
+/** Cap the board to STATION_BOARD_MAX_ROWS using this rule:
+ *   1. Take the first row of each bucket (1 max per bucket).
+ *   2. If we still have slack, fill it with extra `incoming` rows (the
+ *      bucket users most want to see more of — "how many buses are
+ *      coming?").
+ *  Output preserves the input's bucket-then-eta sort order. Pure. */
+export function capStationBoard(rows: BoardRow[]): BoardRow[] {
+  const seen = new Set<ArrivalBucket>();
+  const picked: BoardRow[] = [];
+  const incomingOverflow: BoardRow[] = [];
   for (const r of rows) {
-    if (r.bucket === 'departed') {
-      if (seen.has(r.vehicle.route.id)) continue;
-      seen.add(r.vehicle.route.id);
+    if (!seen.has(r.bucket)) {
+      seen.add(r.bucket);
+      picked.push(r);
+    } else if (r.bucket === 'incoming') {
+      incomingOverflow.push(r);
     }
-    out.push(r);
   }
-  return out;
-}
-
-/** Deduplicated, naturally-sorted list of routes from a `Vehicle[]`.
- *  Numeric route shortNames sort numerically; the rest fall back to
- *  lexicographic. Used to render the badge row on a StationCard. */
-export function dedupRoutes(vehicles: Vehicle[]): Route[] {
-  const map = new Map<number, Route>();
-  for (const v of vehicles) map.set(v.route.id, v.route);
-  return Array.from(map.values()).sort((a, b) => {
-    const an = Number(a.shortName);
-    const bn = Number(b.shortName);
-    if (Number.isFinite(an) && Number.isFinite(bn) && an !== bn) return an - bn;
-    return a.shortName.localeCompare(b.shortName);
-  });
+  while (picked.length < STATION_BOARD_MAX_ROWS && incomingOverflow.length > 0) {
+    picked.push(incomingOverflow.shift()!);
+  }
+  // Picked respects input order (bucket-then-eta), but the expansion
+  // appended incoming rows possibly after a `departed` first-pick — sort
+  // once more so the on-screen order matches compareForBoard exactly.
+  return picked.sort(compareForBoard).slice(0, STATION_BOARD_MAX_ROWS);
 }
