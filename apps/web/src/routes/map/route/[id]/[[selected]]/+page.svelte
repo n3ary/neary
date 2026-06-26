@@ -209,32 +209,60 @@
   let vehiclesLayer: import('leaflet').LayerGroup | null = null;
   let userMarker: import('leaflet').CircleMarker | null = null;
   let hasFitOnce = false;
+  let resizeObserver: ResizeObserver | null = null;
 
   onMount(async () => {
-    // Tree-shake to client: importing leaflet at module top would
-    // pull it into the SSR bundle and explode on `window`.
+    // Only the Leaflet module load happens here. The actual map init
+    // is deferred to the $effect below: the map div lives inside the
+    // `{:else}` branch of the loading guard, so `mapEl` is undefined
+    // at onMount until `view` becomes non-null.
     L = (await import('leaflet')).default;
     await import('leaflet/dist/leaflet.css');
-    if (!mapEl) return;
-    mapInstance = L.map(mapEl, {
+  });
+
+  // Lazy init the Leaflet instance the first time both the library
+  // and the container are ready. Reactive on mapEl + L + view.
+  $effect(() => {
+    if (!L || mapInstance || !mapEl || view == null) return;
+    const Lref = L;
+    mapInstance = Lref.map(mapEl, {
       // Native +/- control is moved into the page header alongside
       // the direction-swap button so all map chrome lives in one
       // place. Attribution stays on (license requirement).
       zoomControl: false,
       attributionControl: true,
-      // Reasonable default — we'll fitBounds once shape loads.
       center: [46.77, 23.6],
       zoom: 13,
     });
-    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    Lref.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
       maxZoom: 19,
       attribution: '© OpenStreetMap contributors',
     }).addTo(mapInstance);
-    stopsLayer = L.layerGroup().addTo(mapInstance);
-    vehiclesLayer = L.layerGroup().addTo(mapInstance);
+    stopsLayer = Lref.layerGroup().addTo(mapInstance);
+    vehiclesLayer = Lref.layerGroup().addTo(mapInstance);
+
+    // Classic 'blank Leaflet card' guard: `L.map()` measures its
+    // container synchronously and caches that size. If flex layout
+    // hasn't settled in the same frame, Leaflet draws nothing
+    // forever. Two invalidateSize passes (microtask + next frame)
+    // cover both cases.
+    const rect = mapEl.getBoundingClientRect();
+    // eslint-disable-next-line no-console
+    console.debug('[map] init container', rect.width, 'x', rect.height);
+    queueMicrotask(() => mapInstance?.invalidateSize());
+    requestAnimationFrame(() => mapInstance?.invalidateSize());
+
+    // Future viewport changes (rotation, splitscreen, sidebar)
+    // re-invalidate so tiles retile.
+    if (typeof ResizeObserver !== 'undefined') {
+      resizeObserver = new ResizeObserver(() => mapInstance?.invalidateSize());
+      resizeObserver.observe(mapEl);
+    }
   });
 
   onDestroy(() => {
+    resizeObserver?.disconnect();
+    resizeObserver = null;
     mapInstance?.remove();
     mapInstance = null;
   });
