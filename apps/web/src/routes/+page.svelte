@@ -114,9 +114,13 @@
     (async () => {
       try {
         const repo = getGtfsRepo();
-        boards = await repo.getStationBoardsNear(
+        const all = await repo.getStationBoardsNear(
           lat, lon, SEARCH_RADIUS_M, MAX_STATIONS, Date.now(), ARRIVALS_WINDOW_MIN,
         );
+        // Hide stops with no routes serving them today — they'd render
+        // as empty cards otherwise. Common for GTFS stops that exist in
+        // the data for legacy / terminus / one-off reasons.
+        boards = all.filter((b) => b.vehicles.length > 0);
         boardsError = null;
         // Auto-expand if there's exactly one station — saves a tap.
         if (boards.length === 1) expandedStopId = boards[0].stop.id;
