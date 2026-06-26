@@ -451,22 +451,15 @@
               {@render weekColumns()}
             {:else}
               <!-- Today / Tomorrow: one row per trip, click to expand
-                   the stop timeline below the row. Tomorrow gets a
-                   first/last summary above the list so the card
-                   isn't a wall of times with no orientation. -->
+                   the stop timeline below the row. Both day-tabs
+                   render rows identically; the only difference is
+                   which window the repo query covers. -->
               <Stack spacing={0.5}>
                 {#if trips.length === 0}
                   <Typography variant="body2" class="text-[color:var(--color-fg-muted)] py-2">
                     No more departures {view === 'tomorrow' ? 'tomorrow morning' : 'today'}.
                   </Typography>
                 {:else}
-                  {#if view === 'tomorrow'}
-                    <Typography variant="caption" class="text-[color:var(--color-fg-muted)] pb-1">
-                      Showing morning only (until 12:00) ·
-                      {trips.length} departure{trips.length === 1 ? '' : 's'} ·
-                      {formatHHMM(trips[0].tripStartMin)}–{formatHHMM(trips[trips.length - 1].tripStartMin)}
-                    </Typography>
-                  {/if}
                   {#each trips as t (t.tripId)}
                     {@const isOpen = expandedTripId === t.tripId}
                     {@const stops = tripStops.get(t.tripId)}
@@ -479,7 +472,7 @@
                       >
                         <Chip size="small" class="font-mono shrink-0">{formatHHMM(t.tripStartMin)}</Chip>
                         <span class={`flex-1 min-w-0 text-xs ${relClass(t.tripStartMin)}`}>
-                          {#if view === 'today'}{relText(t.tripStartMin)}{/if}
+                          {relText(t.tripStartMin)}
                         </span>
                         <ChevronDown
                           size={16}
