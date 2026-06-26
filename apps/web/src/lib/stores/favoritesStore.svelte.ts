@@ -11,32 +11,38 @@
  * JSON array of route ids. Loaded once on construction (browser only),
  * saved on every mutation. SSR-safe (no-ops on the server).
  *
- * KISS: a plain Set wrapped in $state. No debounce, no validation —
- * the set stays small (typical user favorites a handful of routes).
+ * Implementation: a `SvelteSet` from svelte/reactivity. We previously
+ * wrapped a plain Set in `$state` and reassigned on every mutation
+ * (`this.#routes = new Set(this.#routes).add(id)`). That worked for
+ * UI re-renders but tripped a Svelte 5 quirk where the reassignment
+ * happened before the rune finished tracking, so consumers
+ * occasionally saw stale data — including after a reload, where the
+ * persisted value looked unchanged. SvelteSet's `.add` / `.delete`
+ * fire reactivity natively and avoid the in-flight copy entirely.
  */
+
+import { SvelteSet } from 'svelte/reactivity';
 
 const STORAGE_KEY = 'neary:favoriteRoutes';
 
-function loadInitial(): Set<number> {
-  if (typeof localStorage === 'undefined') return new Set();
+function loadInitial(): number[] {
+  if (typeof localStorage === 'undefined') return [];
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
-    if (!raw) return new Set();
+    if (!raw) return [];
     const arr: unknown = JSON.parse(raw);
-    if (!Array.isArray(arr)) return new Set();
-    const set = new Set<number>();
-    for (const x of arr) if (typeof x === 'number' && Number.isFinite(x)) set.add(x);
-    return set;
+    if (!Array.isArray(arr)) return [];
+    return arr.filter((x): x is number => typeof x === 'number' && Number.isFinite(x));
   } catch {
-    return new Set();
+    return [];
   }
 }
 
 class FavoritesStore {
-  // Backing field is a $state-wrapped Set so mutations Svelte-track,
-  // BUT consumers read through `routeIds` (cast to ReadonlySet) so they
-  // can't mutate behind our back.
-  #routes = $state<Set<number>>(loadInitial());
+  // Native reactive Set — mutations on it propagate without any
+  // reassignment dance, and consumers read through `routeIds` (a
+  // ReadonlySet view) so they can't mutate behind our back.
+  #routes = new SvelteSet<number>(loadInitial());
 
   /** Reactive, read-only view. */
   get routeIds(): ReadonlySet<number> {
@@ -49,19 +55,13 @@ class FavoritesStore {
 
   add(routeId: number): void {
     if (this.#routes.has(routeId)) return;
-    // Reassign so Svelte's reactivity sees a new reference. A plain
-    // `.add` on the inner Set works for `$state.raw` but not for the
-    // proxy-tracked set in some runes builds — reassignment is the
-    // safe form across versions.
-    this.#routes = new Set(this.#routes).add(routeId);
+    this.#routes.add(routeId);
     this.#persist();
   }
 
   remove(routeId: number): void {
     if (!this.#routes.has(routeId)) return;
-    const next = new Set(this.#routes);
-    next.delete(routeId);
-    this.#routes = next;
+    this.#routes.delete(routeId);
     this.#persist();
   }
 
@@ -71,7 +71,7 @@ class FavoritesStore {
   }
 
   clear(): void {
-    this.#routes = new Set();
+    this.#routes.clear();
     this.#persist();
   }
 
