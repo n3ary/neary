@@ -575,6 +575,70 @@ The win on refresh is the user-facing one: tapping the button is finally meaning
 
 ---
 
+## 6.7 — Calibrating the per-feed speed profile
+
+The seed numbers in P1 (`kmh_peak: 12`, `kmh_offpeak: 22`, `kmh_night: 30`) are starting points, not measurements. Three approaches to refining them, in increasing automation.
+
+### Cluj-specific consideration: bus lanes
+
+The standard transit-ETA shortcut is "take driving time from a routing API, multiply by ~0.65 to discount for stops". **That heuristic is wrong-direction for Cluj**, and probably for any city with a partial dedicated bus-lane network.
+
+- **Routes mostly on dedicated bus lanes** (Mănăștur axis, parts of Eroilor) are *faster* than cars at peak hours, not slower. The "× 0.65" adjustment underestimates them badly.
+- **Routes in mixed traffic** behave like buses everywhere — slower than cars by stop frequency. The "× 0.65" is roughly right.
+
+Since the adjustment factor varies per route within the same city, automating from any car-time API requires per-route knowledge anyway. At which point you've replaced one estimate (lived experience) with a more complicated one (car time × per-route factor) and gained nothing.
+
+This is why Cluj is also the strongest case for Q.1 eventually flipping to per-route overrides (see Option C below). For now the per-feed defaults are fine; we accept some routes will be a few minutes off until P1 has shipped and we have something to compare against.
+
+### Option A — Ride the bus (recommended for v2.5 launch)
+
+Cheapest, most accurate per route, captures bus-lane behaviour directly. Stopwatch a representative trip during peak and off-peak; divide shape distance by elapsed time; that's `kmh_peak` and `kmh_offpeak` for that route. Two rides → numbers good enough for P1 to ship.
+
+### Option B — OSM driving + per-route factor (other cities only)
+
+[OpenRouteService](https://openrouteservice.org/) gives free car-driving time without traffic. Multiply by:
+
+- ~0.65 for routes in mixed traffic
+- ~0.95 for routes on partial bus lanes
+- ~1.0–1.1 for routes on dedicated bus lanes
+
+Useful for non-Cluj feeds where we have no local knowledge. **Not recommended for Cluj** because the per-route factor has to come from somewhere, and once you have it you've done Option A anyway.
+
+**Why not Google Maps APIs:**
+
+- `mode=driving` gives car time, which is wrong-direction-biased for bus-lane routes (same problem as OSM, but it costs money to be wrong).
+- `mode=transit` returns the operator's GTFS schedule back — that's our input, not useful as calibration.
+- ToS restricts storing derived data from their APIs beyond display.
+
+### Option C — Historical observation script (future work)
+
+A script in `neary-gtfs/scripts/`, run manually whenever the operator data feels stale, that:
+
+1. Captures GTFS-RT VehiclePositions continuously for some window (a week, a month).
+2. Per `(routeId, directionId, segmentIdx, hour-of-week)` computes empirical median bus speed.
+3. Collapses the hour-of-week dimension to the three TOD buckets (`peak`, `offpeak`, `night`) so the cascade can consume it.
+4. Writes per-route overrides into `feeds/<id>/config.json`:
+
+```json
+{
+  "speed": { "kmh_peak": 12, "kmh_offpeak": 22, "kmh_night": 30 },
+  "route_overrides": {
+    "25_0": { "kmh_peak": 18, "kmh_offpeak": 25, "kmh_night": 32 },
+    "5_1":  { "kmh_peak": 20, "kmh_offpeak": 24, "kmh_night": 30 }
+  }
+}
+```
+
+The shared `prediction-core/` cascade reads `feedConfig.route_overrides[routeId_directionId]` when present, falls back to `feedConfig.speed` otherwise. Per-route overrides hold only the speed numbers; everything else (city-centre coords, peak windows, dwell) stays at the feed level.
+
+**Deferred from v2.5** per §8 anti-goals — we explicitly didn't want a historical-speed store as part of the initial pipeline. The slot in the data shape exists so when this script ships it's a config-file change, not an architectural one. The cascade already knows how to read it.
+
+**Scope when built:** a standalone Node script, not part of the build pipeline. Capture by storing GTFS-RT snapshots to a local directory (or SQLite, if it grows); analysis is a separate pass. Storage stays local — no operator data leaves the machine. This keeps the script in the same "tool you can run when you feel like it" category as `scripts/build-sqlite/` rather than a load-bearing service.
+
+---
+
+---
+
 ## 7. Open design questions
 
 Decisions needed before P1 starts. None of them block writing the v1 port modules (those are pure).
@@ -622,3 +686,4 @@ Things this design deliberately does *not* attempt, with reasons:
 - 2026-06-27 — P1 scope spelled out in full instead of "Stage A from §5". Five explicit deliverables: shape-aware segment distance, per-feed time-of-day speed profile, per-stop dwell with proper arrival/departure split, `shape_dist_traveled` populated, drop the min/max clamp. Worked example added showing today's haversine+18 km/h+0 dwell vs the new formula on a 4-stop trip. Acceptance criteria added. Only the Cluj path changes; feeds with operator-provided `stop_times.txt` keep using those as authoritative.
 - 2026-06-27 — P0 ("measurement") deleted. User confirmed no historical-speed pipeline; seed defaults come from lived experience instead. New P0 ("Foundation") replaces it: shared `prediction-core` module (geo math + TOD bucket + speed cascade + dwell), byte-mirrored between the two repos with CI enforcement. §6.6 added explaining the vendor-and-mirror strategy, the sync script, and when to graduate to a private NPM package. P1–P6 renumbered to P1–P5 (the old P3 "speedEstimator domain module" is absorbed into P0 since it's the same shared cascade). Anti-goals section updated to call out the absence of a measurement pipeline.
 - 2026-06-27 — Q.4 revised. Earlier decision was 5 s `nowTicker` everywhere. Reconsidered: that's overkill because predictor inputs only change on the poll cadence (15 s) anyway, and 5 s ticking just re-runs the predictor with identical inputs. New decision: `nowTicker = 15 s`, synchronised with `livePollMs`. Map marker smoothness handled by an RAF interpolation loop on the map page (`pos += vel * dt` per frame, anchor recomputed at each tick) — same pattern the traveling-dots layer already uses. §2.7 cadence comparison fixed (v1 vs v2 vs v2.5 was wrongly framed); §6 P5 description rewritten; §6.5 config table + latency table updated.
+- 2026-06-27 — §6.7 added: "Calibrating the per-feed speed profile". Documents three options (ride / OSM with per-route factor / future historical-observation script). Calls out the Cluj-specific bus-lane wrinkle: standard "car driving time × 0.65" rule is wrong-direction-biased for routes on dedicated bus lanes (which are FASTER than cars at peak, not slower). So Google / OSM car-time APIs are not recommended for Cluj; ride-the-bus stays the cheapest path to accurate numbers for now. Future historical script slot is documented in the feed config shape (`route_overrides` block) so the cascade can already consume it when the script ships — keeps it a config change rather than an architectural one. Anti-goal of "no historical store" preserved; the script is deferred work, not part of v2.5.
