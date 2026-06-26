@@ -40,7 +40,7 @@
     type TripShapePlan,
   } from '$lib/domain/predictPosition';
   import {
-    measurePolyline, pointAtDistance, projectOnPolyline,
+    measurePolyline, pointAtDistance,
     type MeasuredPolyline,
   } from '$lib/domain/shapeProjection';
   import { feedsStore } from '$lib/stores/feedsStore.svelte';
@@ -393,39 +393,33 @@
     }
   });
 
-  // Traveling dots along the route shape: a small flock of route-
-  // coloured circles departs the origin in sequence, slides along
-  // the polyline as far as the second stop, then fades out while
-  // the next dot is already on its way. Gives the line a clear
-  // direction-of-travel cue at a glance — replaces the earlier
-  // static chevrons which were too subtle to read on a colored
-  // polyline. KISS: requestAnimationFrame with N dots out of phase;
-  // cleanup cancels the RAF + clears the layer.
-  const DOT_COUNT = 3;
-  const DOT_CYCLE_MS = 2800;
+  // Traveling dots along the route shape: a steady flock of small
+  // route-coloured circles cycle from origin to terminus, evenly
+  // staggered so the line reads like current flowing through a wire.
+  // Each dot fades in, peaks brightness around the middle of the
+  // route, and fades back out before looping — sin(πp) envelope —
+  // so endpoints feel like the source and sink rather than hard
+  // pop-in/pop-out. Subtle by design (peak opacity ~0.35) so it
+  // hints at direction without competing with stops or vehicles.
+  //
+  // Cost: ~6 setLatLng + setStyle calls per RAF frame. Negligible.
+  // Cleanup cancels the RAF and clears the layer.
+  const DOT_COUNT = 6;
+  const DOT_CYCLE_MS = 5500;
+  const DOT_PEAK_OPACITY = 0.35;
   $effect(() => {
     if (!L || !mapInstance || !arrowsLayer) return;
     arrowsLayer.clearLayers();
     if (!measuredShape || measuredShape.totalDistM === 0) return;
-    if (!view || view.stops.length < 2) return;
     const Lref = L;
     const layer = arrowsLayer;
     const measured = measuredShape;
-    const second = view.stops[1];
-    // Distance along the polyline at which the dot reaches the
-    // 2nd stop — the projection collapses any small lat/lon mismatch
-    // between stop coordinates and the shape vertex.
-    const targetDist = Math.min(
-      projectOnPolyline({ lat: second.lat, lon: second.lon }, measured.points).distAlongM,
-      measured.totalDistM,
-    );
-    if (targetDist <= 0) return;
-    const color = view.route.color;
+    const color = view?.route.color ?? '#888';
     const dots = Array.from({ length: DOT_COUNT }, () =>
       Lref.circleMarker([measured.points[0].lat, measured.points[0].lon], {
-        radius: 4,
-        color: '#fff',
-        weight: 1,
+        radius: 3,
+        color,
+        weight: 0,
         fillColor: color,
         fillOpacity: 0,
         interactive: false,
@@ -434,27 +428,16 @@
     const start = performance.now();
     let rafId = 0;
     const tick = (t: number) => {
-      const elapsed = ((t - start) / DOT_CYCLE_MS);
+      const elapsed = (t - start) / DOT_CYCLE_MS;
       for (let i = 0; i < DOT_COUNT; i++) {
-        // Phase per dot in [0,1); staggered evenly so the flock
-        // reads as a steady march rather than a single blip.
         const p = (elapsed + i / DOT_COUNT) % 1;
-        let dist: number;
-        let opacity: number;
-        if (p <= 0.7) {
-          // Travel phase: linear from origin to the 2nd stop.
-          // Fade in over the first 15 % so the dot doesn't pop.
-          dist = (p / 0.7) * targetDist;
-          opacity = Math.min(p / 0.15, 1) * 0.85;
-        } else {
-          // Hold at the 2nd stop for the last 30 % of the cycle
-          // while fading out — the 'arrived, dissolving' beat.
-          dist = targetDist;
-          opacity = (1 - (p - 0.7) / 0.3) * 0.85;
-        }
+        const dist = p * measured.totalDistM;
+        // sin(πp): 0 → 1 → 0 across the cycle. Looks like a soft
+        // current pulse riding the wire from origin to terminus.
+        const opacity = Math.sin(p * Math.PI) * DOT_PEAK_OPACITY;
         const pt = pointAtDistance(measured, dist);
         dots[i].setLatLng([pt.lat, pt.lon]);
-        dots[i].setStyle({ fillOpacity: opacity, opacity });
+        dots[i].setStyle({ fillOpacity: opacity });
       }
       rafId = requestAnimationFrame(tick);
     };
