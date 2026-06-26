@@ -196,7 +196,7 @@
                   <VehicleCard
                     {vehicle}
                     urgency={etaUrgency(group.bucket, vehicle.eta?.minutes ?? 0)}
-                    scheduleHref={`/schedule/route/${vehicle.route.id}?dir=${vehicle.schedule?.directionId ?? 0}&stop=${station.id}`}
+                    scheduleHref={`/schedule/route/${vehicle.route.id}?dir=${vehicle.schedule?.directionId ?? 0}&stop=${station.id}${vehicle.schedule?.tripId ? `&trip=${encodeURIComponent(vehicle.schedule.tripId)}` : ''}`}
                   />
                 {/each}
               </Stack>

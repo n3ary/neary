@@ -1,85 +1,165 @@
 <!--
-  Schedule view — by-route, by-direction, optionally anchored to a stop.
+  Schedule view — by-route, by-direction, optionally anchored to a stop
+  and/or a specific trip. Single page covers four modes:
 
-  URL: /schedule/route/[id]?dir=0&stop=18
+    1. anchored-trip: ?dir=…&stop=…&trip=…
+       Left column shows TODAY's next departures from origin (focused
+       trip highlighted). Right column shows that trip's full stop
+       timeline origin → terminus, with the user's stop highlighted.
+       This is the "tap the kind-badge on a station card" path.
 
-  Modes (this commit):
-    - With `stop`: shows the strip of stations from the trip's ORIGIN
-      up to (and including) the user's stop, with a "link from here"
-      icon per row that deep-links into /station/[id]. Also shows the
-      next N origin-departures with the predicted arrival time at the
-      user's stop alongside.
-    - Without `stop`: shows the trip strip from the most-recent /
-      next-upcoming trip and the next N origin-departures, no per-row
-      arrival annotation.
+    2. anchored-stop: ?dir=…&stop=…
+       Same layout as (1) but no specific trip — right column shows
+       the next-upcoming trip's timeline with the stop highlighted.
 
-  Direction-swap button toggles dir=0 ↔ dir=1 in the URL (keeps stop).
+    3. unfocused: ?dir=…
+       Single direction; right column shows the next-upcoming trip's
+       timeline with no highlight. Useful when typed by URL.
 
-  Deferred to Pass B (see /memories/session for plan): tomorrow toggle,
-  night-route handling, favorites side-by-side, "show on map" button.
+    4. multi-direction: (no dir param)
+       Two side-by-side departure lists (dir 0 and dir 1). No stop
+       timeline. Used by /favorites deep-links.
+
+  Day mode (?day=tomorrow) switches the data window: today shows from
+  now until end-of-day (24h window so Cluj night routes' 24:00+ trips
+  surface), tomorrow shows from 00:00 until 12:00.
+
+  Anchor-stop deep-links to /station/[id] via the per-row ExternalLink.
 -->
 <script lang="ts">
   import { goto } from '$app/navigation';
   import { page } from '$app/state';
-  import { ArrowRightLeft, ExternalLink, MapPin } from 'lucide-svelte';
+  import { ArrowRightLeft, CalendarDays, ExternalLink, Moon } from 'lucide-svelte';
   import {
     Card, CardContent, Chip, IconButton, NoFeedState, RouteBadge, Spinner,
-    Stack, Typography,
+    Stack, ToggleGroup, Typography,
   } from '$lib/ui';
   import { getGtfsRepo } from '$lib/data/gtfs/repo';
   import type { Route } from '$lib/domain/types';
+  import { vehicleTypeLabel } from '$lib/domain/types';
   import type { ScheduleTrip, ScheduleTripStop } from '$lib/data/gtfs/types';
-  import { minSinceMidnightInTz } from '$lib/domain/pipeline/timeUtils';
+  import {
+    dateKeyInTz, minSinceMidnightInTz,
+  } from '$lib/domain/pipeline/timeUtils';
   import { feedsStore } from '$lib/stores/feedsStore.svelte';
   import { favoritesStore } from '$lib/stores/favoritesStore.svelte';
   import { nowTicker } from '$lib/stores/nowTicker.svelte';
   import { refreshBus } from '$lib/stores/refreshBus.svelte';
   import { userPrefs } from '$lib/stores/userPrefs.svelte';
 
-  // 18h window means "rest of today" for a normal-service feed query
-  // around lunchtime, and "next ~few-hours" if opened late evening.
-  // Bigger isn't useful — schedules far ahead are noise.
-  const SCHEDULE_WINDOW_MIN = 18 * 60;
-  const NEXT_DEPARTURES_TO_SHOW = 12;
-
+  // ── URL params ──────────────────────────────────────────────────────
   const routeId = $derived(Number(page.params.id));
-  const direction = $derived<0 | 1>(page.url.searchParams.get('dir') === '1' ? 1 : 0);
+  const routeIdValid = $derived(Number.isFinite(routeId) && routeId > 0);
+  // Direction is optional — when omitted we render multi-direction mode.
+  const directionParam = $derived(page.url.searchParams.get('dir'));
+  const direction = $derived<0 | 1 | null>(
+    directionParam === '0' ? 0 : directionParam === '1' ? 1 : null,
+  );
   const anchorStopId = $derived.by(() => {
     const raw = page.url.searchParams.get('stop');
     if (!raw) return null;
     const n = Number(raw);
     return Number.isFinite(n) && n > 0 ? n : null;
   });
+  const focusTripId = $derived(page.url.searchParams.get('trip'));
+  const dayMode = $derived<'today' | 'tomorrow'>(
+    page.url.searchParams.get('day') === 'tomorrow' ? 'tomorrow' : 'today',
+  );
 
+  // ── Data state ──────────────────────────────────────────────────────
   let route = $state<Route | null>(null);
-  let trips = $state<ScheduleTrip[]>([]);
-  let stripStops = $state<ScheduleTripStop[]>([]);
-  let stripTripId = $state<string | null>(null);
+  // Departures per direction. In single-direction mode only one is
+  // populated; in multi-direction mode both are.
+  let tripsByDir = $state<{ 0: ScheduleTrip[]; 1: ScheduleTrip[] }>({ 0: [], 1: [] });
+  // Focus trip's stop timeline (single-direction mode only).
+  let focusStops = $state<ScheduleTripStop[]>([]);
+  let focusTrip = $state<ScheduleTrip | null>(null);
   let error = $state<string | null>(null);
   let loading = $state(false);
 
+  const tz = $derived(feedsStore.activeTimezone);
+
+  // Night route: Cluj convention is shortName ending in 'N'. The check
+  // is a single regex so other feeds following the same convention
+  // get it for free. Used to extend today's query window so trips
+  // scheduled past 24:00 (encoded as 24:00:00, 25:30:00 etc per GTFS)
+  // still surface.
+  const isNightRoute = $derived(route ? /n$/i.test(route.shortName) : false);
+
+  // Window math per dayMode. Today: from now until end-of-day (24h to
+  // catch night-route post-midnight trips). Tomorrow: from 00:00 to
+  // 12:00 (the user just wants "what's running first thing").
+  const queryParams = $derived.by(() => {
+    const nowMs = nowTicker.ms;
+    if (dayMode === 'today') {
+      return {
+        localDate: dateKeyInTz(nowMs, tz),
+        fromMin: minSinceMidnightInTz(nowMs, tz),
+        windowMin: isNightRoute ? 24 * 60 : 18 * 60,
+      };
+    }
+    // Tomorrow: +24h gets us a timestamp solidly in tomorrow's date,
+    // regardless of when "now" falls within today.
+    const tomorrowMs = nowMs + 24 * 60 * 60 * 1000;
+    return {
+      localDate: dateKeyInTz(tomorrowMs, tz),
+      fromMin: 0,
+      windowMin: 12 * 60,
+    };
+  });
+
   $effect(() => {
     const fid = feedsStore.boundFeedId;
-    if (!fid || !Number.isFinite(routeId)) return;
-    refreshBus.tick; // re-fire on manual refresh
+    if (!fid || !routeIdValid) return;
+    refreshBus.tick;
+    // Capture params at start so the async block isn't reactive on
+    // later changes (the effect re-runs on real input change anyway).
     const rid = routeId;
     const dir = direction;
+    const ftId = focusTripId;
+    const qp = queryParams;
     (async () => {
       loading = true;
       try {
         const repo = getGtfsRepo();
-        const [r, ts] = await Promise.all([
-          repo.getRouteById(rid),
-          repo.getRouteSchedule(rid, dir, Date.now(), SCHEDULE_WINDOW_MIN),
-        ]);
+        const r = await repo.getRouteById(rid);
         route = r;
-        trips = ts;
-        // Strip = the stop-list of whichever trip is most useful right
-        // now: the next-upcoming, or fall back to the most-recent
-        // (purely so an evening-of view still has something to show).
-        const stripTrip = ts[0] ?? null;
-        stripTripId = stripTrip?.tripId ?? null;
-        stripStops = stripTrip ? await repo.getStopsAlongTrip(stripTrip.tripId) : [];
+
+        // Fetch departures. Multi-direction = both; single = the chosen.
+        if (dir == null) {
+          const [d0, d1] = await Promise.all([
+            repo.getRouteSchedule(rid, 0, qp.localDate, qp.fromMin, qp.windowMin),
+            repo.getRouteSchedule(rid, 1, qp.localDate, qp.fromMin, qp.windowMin),
+          ]);
+          tripsByDir = { 0: d0, 1: d1 };
+          focusStops = [];
+          focusTrip = null;
+        } else {
+          const trips = await repo.getRouteSchedule(rid, dir, qp.localDate, qp.fromMin, qp.windowMin);
+          tripsByDir = dir === 0 ? { 0: trips, 1: [] } : { 0: [], 1: trips };
+          // Right-column focus = the URL-pinned trip if present in the
+          // result list, else the next-upcoming one, else null. Even
+          // when the focus trip already left origin (so it's not in
+          // `trips`), getStopsAlongTrip still works.
+          const pinned = ftId ? trips.find((t) => t.tripId === ftId) ?? null : null;
+          focusTrip = pinned ?? trips[0] ?? null;
+          // If a trip_id was pinned but not in the window (e.g. it
+          // already departed origin), still fetch its stops for the
+          // right column.
+          const stopsTripId = pinned?.tripId ?? ftId ?? focusTrip?.tripId ?? null;
+          focusStops = stopsTripId ? await repo.getStopsAlongTrip(stopsTripId) : [];
+          // Resolve display headsign for the focus trip even when only
+          // its trip_id was URL-pinned (focusTrip would be null in
+          // that case).
+          if (!focusTrip && stopsTripId) {
+            focusTrip = {
+              tripId: stopsTripId,
+              tripStartMin: focusStops[0]?.arrivalMin ?? 0,
+              headsign: focusStops[focusStops.length - 1]?.stopName ?? null,
+              serviceId: '',
+            };
+          }
+        }
         error = null;
       } catch (e) {
         error = e instanceof Error ? e.message : String(e);
@@ -89,56 +169,44 @@
     })();
   });
 
-  // Stops to render: when anchored to a stop, take origin → anchor
-  // (inclusive). Otherwise show all stops on the strip trip.
-  const visibleStops = $derived.by<ScheduleTripStop[]>(() => {
-    if (stripStops.length === 0) return [];
-    if (anchorStopId == null) return stripStops;
-    const idx = stripStops.findIndex((s) => s.stopId === anchorStopId);
-    return idx >= 0 ? stripStops.slice(0, idx + 1) : stripStops;
-  });
-
-  // For each upcoming origin departure, compute the anchor stop's
-  // predicted arrival = tripStartMin + (anchorArrivalMin - originDepartureMin).
-  // Origin departure on stripStops is index 0's arrival in feed-local
-  // minutes (close enough to departure for KISS; the worker's
-  // tripStartMin uses departure_time explicitly so it's tighter).
-  const anchorStop = $derived(
-    anchorStopId == null ? null : stripStops.find((s) => s.stopId === anchorStopId) ?? null,
-  );
-  const originStop = $derived(stripStops[0] ?? null);
-  const anchorOffsetMin = $derived(
-    anchorStop && originStop ? anchorStop.arrivalMin - originStop.arrivalMin : 0,
-  );
-
-  // ETA at anchor for each departure, in minutes from now.
-  const tz = $derived(feedsStore.activeTimezone);
-  const nowMin = $derived(minSinceMidnightInTz(nowTicker.ms, tz));
-
-  function swapDirection() {
-    const params = new URLSearchParams(page.url.searchParams);
-    params.set('dir', direction === 0 ? '1' : '0');
-    goto(`/schedule/route/${routeId}?${params.toString()}`, { replaceState: false });
-  }
-
-  function formatMinutes(min: number): string {
+  // ── Helpers ─────────────────────────────────────────────────────────
+  function formatHHMM(min: number): string {
     const h = Math.floor(min / 60) % 24;
     const m = Math.round(min % 60);
     return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
   }
-  function formatEta(min: number): string {
-    if (min < 0) return `${-min} min ago`;
-    if (min === 0) return 'now';
-    return `in ${min} min`;
+
+  function navigateWith(updates: Record<string, string | null>) {
+    const params = new URLSearchParams(page.url.searchParams);
+    for (const [k, v] of Object.entries(updates)) {
+      if (v == null) params.delete(k);
+      else params.set(k, v);
+    }
+    const qs = params.toString();
+    goto(`/schedule/route/${routeId}${qs ? `?${qs}` : ''}`, { replaceState: false });
+  }
+  function swapDirection() {
+    // Only meaningful when a direction is set. Multi-direction mode
+    // exposes the button as disabled.
+    if (direction == null) return;
+    navigateWith({ dir: direction === 0 ? '1' : '0', trip: null });
+  }
+  function pickDay(d: 'today' | 'tomorrow') {
+    // Tomorrow drops the pinned trip (it's a today-only artifact).
+    navigateWith({ day: d === 'today' ? null : 'tomorrow', trip: d === 'tomorrow' ? null : focusTripId });
   }
 
   const isFav = $derived(route ? favoritesStore.has(route.id) : false);
+  const headerTitle = $derived(
+    route ? `${vehicleTypeLabel(route.type ?? 'unknown')} ${route.shortName}` : '',
+  );
+  const headerSubtitle = $derived(focusTrip?.headsign ?? '');
 </script>
 
-<div class="mx-auto max-w-3xl px-4 py-6">
+<div class="mx-auto max-w-5xl px-4 py-6">
   {#if userPrefs.feedId == null}
     <NoFeedState message="Pick a feed in Settings to view route schedules." />
-  {:else if !Number.isFinite(routeId)}
+  {:else if !routeIdValid}
     <Card><CardContent>
       <Typography variant="h6" class="text-[color:var(--color-danger)]">Invalid route id</Typography>
     </CardContent></Card>
@@ -162,94 +230,189 @@
     </CardContent></Card>
   {:else}
     <Stack spacing={2}>
-      <!-- Header: route badge + headsign hint + dir-swap + favorite. -->
+      <!-- Header card: route + headsign + day toggle + dir-swap. -->
       <Card>
         <CardContent>
-          <Stack direction="row" spacing={1.5} align="center">
+          <Stack direction="row" spacing={1.5} align="center" wrap>
             <RouteBadge route={route} size="large" isFavorite={isFav} />
-            <Stack spacing={0.25} class="flex-1 min-w-0">
-              <Typography variant="h5" class="truncate">
-                {stripStops[stripStops.length - 1]?.stopName ?? `Route ${route.shortName}`}
-              </Typography>
-              <Typography variant="caption" class="text-[color:var(--color-fg-muted)]">
-                {anchorStop ? `Today's schedule from origin to ${anchorStop.stopName}` : "Today's schedule"}
-              </Typography>
+            <Stack spacing={0.5} class="flex-1 min-w-0">
+              <Stack direction="row" spacing={1} align="center" wrap>
+                <Typography variant="h5" class="truncate">{headerTitle}</Typography>
+                {#if isNightRoute}
+                  <Chip size="small" variant="outlined">
+                    {#snippet icon()}<Moon size={12} />{/snippet}
+                    Night route
+                  </Chip>
+                {/if}
+              </Stack>
+              {#if headerSubtitle}
+                <Typography variant="caption" class="text-[color:var(--color-fg-muted)] truncate">
+                  → {headerSubtitle}
+                </Typography>
+              {/if}
             </Stack>
-            <IconButton aria-label="Swap direction" onclick={swapDirection}>
+            <ToggleGroup
+              value={dayMode}
+              onchange={(v) => pickDay(v as 'today' | 'tomorrow')}
+              items={[
+                { value: 'today', label: 'Today' },
+                { value: 'tomorrow', label: 'Tomorrow' },
+              ]}
+            />
+            <IconButton
+              aria-label="Swap direction"
+              disabled={direction == null}
+              onclick={swapDirection}
+            >
               <ArrowRightLeft size={18} />
             </IconButton>
           </Stack>
         </CardContent>
       </Card>
 
-      <!-- Stops strip: origin → anchor (inclusive), with deep-link per row. -->
-      {#if visibleStops.length > 0}
-        <Card>
-          <CardContent>
-            <Stack spacing={0.5}>
-              <Typography variant="overline" class="uppercase tracking-wide text-[color:var(--color-fg-muted)]">
-                Stops on this trip {anchorStop ? '(up to your stop)' : ''}
-              </Typography>
-              {#each visibleStops as s, i (s.stopId)}
-                {@const isAnchor = anchorStopId === s.stopId}
-                <Stack direction="row" spacing={1} align="center" class="px-1 py-1 rounded-md hover:bg-[color:var(--color-border)]/30">
-                  <Chip size="small" class="font-mono">{i + 1}</Chip>
-                  <Typography
-                    variant="body2"
-                    class={`flex-1 truncate ${isAnchor ? 'font-semibold' : ''}`}
-                  >
-                    {s.stopName}
-                  </Typography>
-                  <Typography variant="caption" class="text-[color:var(--color-fg-muted)] font-mono">
-                    {formatMinutes(s.arrivalMin)}
-                  </Typography>
-                  <IconButton
-                    aria-label={`Open station ${s.stopName}`}
-                    onclick={() => goto(`/station/${s.stopId}`)}
-                  >
-                    <ExternalLink size={16} />
-                  </IconButton>
-                </Stack>
-              {/each}
-            </Stack>
-          </CardContent>
-        </Card>
-      {/if}
+      {#if direction != null}
+        <!-- Single-direction view: two columns on desktop, stacked on mobile. -->
+        {@const trips = direction === 0 ? tripsByDir[0] : tripsByDir[1]}
+        {@const originStop = focusStops[0] ?? null}
+        {@const terminusStop = focusStops[focusStops.length - 1] ?? null}
+        {@const anchorOffset =
+          anchorStopId != null && originStop
+            ? (focusStops.find((s) => s.stopId === anchorStopId)?.arrivalMin ?? originStop.arrivalMin) - originStop.arrivalMin
+            : 0}
 
-      <!-- Next departures from origin. -->
-      <Card>
-        <CardContent>
-          <Stack spacing={0.5}>
-            <Typography variant="overline" class="uppercase tracking-wide text-[color:var(--color-fg-muted)]">
-              Next departures from {originStop?.stopName ?? 'origin'}
-            </Typography>
-            {#if trips.length === 0}
-              <Typography variant="body2" class="text-[color:var(--color-fg-muted)] py-2">
-                No more departures today on this direction.
-              </Typography>
-            {:else}
-              {#each trips.slice(0, NEXT_DEPARTURES_TO_SHOW) as t (t.tripId)}
-                {@const anchorMin = t.tripStartMin + anchorOffsetMin}
-                {@const etaMin = anchorMin - nowMin}
-                <Stack direction="row" spacing={1} align="center" class="px-1 py-1 rounded-md">
-                  <Chip size="small" class="font-mono">{formatMinutes(t.tripStartMin)}</Chip>
-                  <Typography variant="body2" class="flex-1 truncate text-[color:var(--color-fg-muted)]">
-                    {t.headsign ?? ''}
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+          <!-- LEFT: today/tomorrow departures from origin. -->
+          <Card>
+            <CardContent>
+              <Stack spacing={0.5}>
+                <Typography variant="overline" class="uppercase tracking-wide text-[color:var(--color-fg-muted)]">
+                  Departures{originStop ? ` from ${originStop.stopName}` : ''}
+                </Typography>
+                {#if trips.length === 0}
+                  <Typography variant="body2" class="text-[color:var(--color-fg-muted)] py-2">
+                    No more departures {dayMode === 'today' ? 'today' : 'tomorrow morning'} on this direction.
                   </Typography>
-                  {#if anchorStop}
-                    <Stack direction="row" spacing={0.5} align="center">
-                      <MapPin size={12} class="text-[color:var(--color-fg-muted)]" />
-                      <Typography variant="caption" class="font-mono">
-                        {formatMinutes(anchorMin)} · {formatEta(etaMin)}
+                {:else}
+                  {#each trips as t (t.tripId)}
+                    {@const isFocused = focusTrip?.tripId === t.tripId}
+                    {@const anchorArrivalMin = t.tripStartMin + anchorOffset}
+                    <a
+                      href={`/schedule/route/${routeId}?dir=${direction}${anchorStopId != null ? `&stop=${anchorStopId}` : ''}&trip=${encodeURIComponent(t.tripId)}${dayMode === 'tomorrow' ? '&day=tomorrow' : ''}`}
+                      class={`flex items-center gap-2 px-2 py-1 rounded-md transition-colors no-underline text-[color:var(--color-fg)] hover:bg-[color:var(--color-border)]/30 ${isFocused ? 'bg-[color:var(--color-border)]/40 ring-1 ring-[color:var(--color-primary)]' : ''}`}
+                    >
+                      <Chip size="small" class="font-mono shrink-0">{formatHHMM(t.tripStartMin)}</Chip>
+                      <span class="flex-1 min-w-0 truncate text-xs text-[color:var(--color-fg-muted)]">
+                        {t.headsign ?? ''}
+                      </span>
+                      {#if anchorStopId != null && originStop}
+                        <span class="text-xs font-mono text-[color:var(--color-fg-muted)] shrink-0">
+                          @ {formatHHMM(anchorArrivalMin)}
+                        </span>
+                      {/if}
+                    </a>
+                  {/each}
+                {/if}
+              </Stack>
+            </CardContent>
+          </Card>
+
+          <!-- RIGHT: focus trip's full stop timeline. -->
+          {#if focusStops.length > 0}
+            <Card>
+              <CardContent>
+                <Stack spacing={0.5}>
+                  <Typography variant="overline" class="uppercase tracking-wide text-[color:var(--color-fg-muted)]">
+                    This trip{focusTrip ? ` · departs ${formatHHMM(focusTrip.tripStartMin)}` : ''}
+                  </Typography>
+                  {#each focusStops as s, i (s.stopId)}
+                    {@const isAnchor = anchorStopId === s.stopId}
+                    {@const isOrigin = i === 0}
+                    {@const isTerminus = i === focusStops.length - 1}
+                    <Stack
+                      direction="row"
+                      spacing={1}
+                      align="center"
+                      class={`px-2 py-1 rounded-md ${isAnchor ? 'bg-[color:var(--color-primary)]/15 ring-1 ring-[color:var(--color-primary)]' : 'hover:bg-[color:var(--color-border)]/30'}`}
+                    >
+                      <Chip size="small" class="font-mono shrink-0">{i + 1}</Chip>
+                      <Typography
+                        variant="body2"
+                        class={`flex-1 truncate ${isAnchor || isOrigin || isTerminus ? 'font-semibold' : ''}`}
+                      >
+                        {s.stopName}
                       </Typography>
+                      <Typography variant="caption" class="text-[color:var(--color-fg-muted)] font-mono shrink-0">
+                        {formatHHMM(s.arrivalMin)}
+                      </Typography>
+                      <IconButton
+                        aria-label={`Open station ${s.stopName}`}
+                        onclick={() => goto(`/station/${s.stopId}`)}
+                      >
+                        <ExternalLink size={16} />
+                      </IconButton>
                     </Stack>
+                  {/each}
+                </Stack>
+              </CardContent>
+            </Card>
+          {/if}
+        </div>
+      {:else}
+        <!-- Multi-direction view: two side-by-side departure lists. -->
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+          {#each [0, 1] as dir (dir)}
+            {@const trips = dir === 0 ? tripsByDir[0] : tripsByDir[1]}
+            {@const sampleHeadsign = trips[0]?.headsign ?? ''}
+            <Card>
+              <CardContent>
+                <Stack spacing={0.5}>
+                  <Stack direction="row" spacing={1} align="center" justify="between">
+                    <Stack spacing={0.5}>
+                      <Typography variant="overline" class="uppercase tracking-wide text-[color:var(--color-fg-muted)]">
+                        Direction {dir}
+                      </Typography>
+                      {#if sampleHeadsign}
+                        <Typography variant="body2" class="truncate font-medium">→ {sampleHeadsign}</Typography>
+                      {/if}
+                    </Stack>
+                    <a
+                      href={`/schedule/route/${routeId}?dir=${dir}${dayMode === 'tomorrow' ? '&day=tomorrow' : ''}`}
+                      class="text-xs underline text-[color:var(--color-fg-muted)] hover:text-[color:var(--color-fg)]"
+                    >
+                      Full view
+                    </a>
+                  </Stack>
+                  {#if trips.length === 0}
+                    <Typography variant="body2" class="text-[color:var(--color-fg-muted)] py-2">
+                      No upcoming departures.
+                    </Typography>
+                  {:else}
+                    {#each trips as t (t.tripId)}
+                      <Stack direction="row" spacing={1} align="center" class="px-2 py-1">
+                        <Chip size="small" class="font-mono shrink-0">{formatHHMM(t.tripStartMin)}</Chip>
+                        <span class="flex-1 min-w-0 truncate text-xs text-[color:var(--color-fg-muted)]">
+                          {t.headsign ?? ''}
+                        </span>
+                      </Stack>
+                    {/each}
                   {/if}
                 </Stack>
-              {/each}
-            {/if}
-          </Stack>
-        </CardContent>
-      </Card>
+              </CardContent>
+            </Card>
+          {/each}
+        </div>
+      {/if}
     </Stack>
   {/if}
 </div>
+
+<style>
+  /* Grid utilities. Tailwind doesn't ship the breakpoint classes in
+     this project's setup — write the minimum we need inline. */
+  .grid { display: grid; }
+  .grid-cols-1 { grid-template-columns: 1fr; }
+  .gap-3 { gap: 0.75rem; }
+  @media (min-width: 768px) {
+    .md\:grid-cols-2 { grid-template-columns: 1fr 1fr; }
+  }
+</style>

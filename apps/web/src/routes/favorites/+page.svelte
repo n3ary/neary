@@ -10,16 +10,29 @@
 <script lang="ts">
   import { Heart } from 'lucide-svelte';
   import {
-    Card, CardContent, IconButton, NoFeedState, RouteBadge, Spinner, Stack, Typography,
+    Card, CardContent, IconButton, NoFeedState, RouteBadge, Spinner, Stack,
+    Typography, TypeBubble,
   } from '$lib/ui';
   import { getGtfsRepo } from '$lib/data/gtfs/repo';
-  import type { Route } from '$lib/domain/types';
+  import type { Route, VehicleType } from '$lib/domain/types';
+  import { vehicleTypeLabel } from '$lib/domain/types';
   import { feedsStore } from '$lib/stores/feedsStore.svelte';
   import { favoritesStore } from '$lib/stores/favoritesStore.svelte';
   import { userPrefs } from '$lib/stores/userPrefs.svelte';
 
   let allRoutes = $state<Route[] | null>(null);
   let error = $state<string | null>(null);
+  // Multi-select type filter. Empty set = no filter (show all).
+  // View-only; resets on page remount per the same pattern as the
+  // Stations route filter.
+  let typeFilter = $state<Set<VehicleType>>(new Set());
+
+  function toggleType(t: VehicleType) {
+    const next = new Set(typeFilter);
+    if (next.has(t)) next.delete(t);
+    else next.add(t);
+    typeFilter = next;
+  }
 
   $effect(() => {
     const fid = feedsStore.boundFeedId;
@@ -34,10 +47,20 @@
     })();
   });
 
-  // Split into two lists so the UI can render favorited routes in
-  // their own card on top — clear visual separation between "what I
-  // care about" and "everything else". Within each section, sort
-  // numeric-first then alpha.
+  // Set of types actually present in the feed — we don't render filter
+  // bubbles for modes that have zero routes (would just be noise).
+  // Ordered by vehicleTypeLabel so the row reads alphabetically.
+  const presentTypes = $derived.by<VehicleType[]>(() => {
+    if (!allRoutes) return [];
+    const set = new Set<VehicleType>();
+    for (const r of allRoutes) set.add(r.type ?? 'unknown');
+    return Array.from(set).sort((a, b) =>
+      vehicleTypeLabel(a).localeCompare(vehicleTypeLabel(b)),
+    );
+  });
+
+  // Apply the type filter once, then split into the two cards. Within
+  // each section, sort numeric-first then alpha.
   function sortRoutes(list: Route[]): Route[] {
     return [...list].sort((a, b) => {
       const an = Number(a.shortName);
@@ -46,11 +69,16 @@
       return a.shortName.localeCompare(b.shortName);
     });
   }
+  const filteredRoutes = $derived.by<Route[]>(() => {
+    if (!allRoutes) return [];
+    if (typeFilter.size === 0) return allRoutes;
+    return allRoutes.filter((r) => typeFilter.has(r.type ?? 'unknown'));
+  });
   const favRoutes = $derived(
-    allRoutes ? sortRoutes(allRoutes.filter((r) => favoritesStore.has(r.id))) : [],
+    sortRoutes(filteredRoutes.filter((r) => favoritesStore.has(r.id))),
   );
   const otherRoutes = $derived(
-    allRoutes ? sortRoutes(allRoutes.filter((r) => !favoritesStore.has(r.id))) : [],
+    sortRoutes(filteredRoutes.filter((r) => !favoritesStore.has(r.id))),
   );
 </script>
 
@@ -58,13 +86,14 @@
      between favorited and other routes. KISS / DRY. -->
 {#snippet routeRow(route: Route)}
   {@const isFav = favoritesStore.has(route.id)}
+  {@const typeLabel = vehicleTypeLabel(route.type ?? 'unknown')}
   <Stack direction="row" spacing={1} align="center" class="px-1 py-1 rounded-md hover:bg-[color:var(--color-border)]/30">
     <RouteBadge {route} size="medium" isFavorite={isFav} />
     <Typography variant="body2" class="flex-1 truncate text-[color:var(--color-fg-muted)]">
-      Route {route.shortName}
+      {typeLabel} {route.shortName}
     </Typography>
     <IconButton
-      aria-label={`${isFav ? 'Unfavorite' : 'Favorite'} route ${route.shortName}`}
+      aria-label={`${isFav ? 'Unfavorite' : 'Favorite'} ${typeLabel.toLowerCase()} ${route.shortName}`}
       aria-pressed={isFav}
       onclick={() => favoritesStore.toggle(route.id)}
     >
@@ -98,6 +127,32 @@
     </Card>
   {:else}
     <Stack spacing={2}>
+      {#if presentTypes.length > 1}
+        <Card>
+          <CardContent>
+            <Stack spacing={0.5}>
+              <Typography variant="overline" class="uppercase tracking-wide text-[color:var(--color-fg-muted)]">
+                Filter by mode
+              </Typography>
+              <Stack direction="row" spacing={0.5} align="center" wrap>
+                {#each presentTypes as t (t)}
+                  <TypeBubble type={t} active={typeFilter.has(t)} onclick={() => toggleType(t)} />
+                {/each}
+                {#if typeFilter.size > 0}
+                  <button
+                    type="button"
+                    class="ml-2 text-xs underline text-[color:var(--color-fg-muted)] hover:text-[color:var(--color-fg)]"
+                    onclick={() => (typeFilter = new Set())}
+                  >
+                    Clear
+                  </button>
+                {/if}
+              </Stack>
+            </Stack>
+          </CardContent>
+        </Card>
+      {/if}
+
       {#if favRoutes.length > 0}
         <Card>
           <CardContent>

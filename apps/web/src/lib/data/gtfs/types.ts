@@ -136,17 +136,21 @@ export interface GtfsRepo {
   getRouteById(routeId: number): Promise<Route | null>;
 
   /**
-   * Schedule view: a list of trips on (routeId, directionId) whose
-   * service is active for `localDate` and whose tripStartMin falls in
-   * [now, now + windowMin]. Each entry carries the canonical trip_id
-   * (so the page can call getStopsAlongTrip / cross-reference live
-   * data) plus the origin headsign + departure time at the trip's
-   * first stop.
+   * Schedule view: trips on (routeId, directionId) whose service is
+   * active on `localDate` and whose tripStartMin falls in
+   * [fromMin, fromMin + windowMinutes]. Each entry carries the
+   * canonical trip_id, headsign, service_id, and origin start time.
+   *
+   * Callers compute the date + fromMin in feed-local tz themselves so
+   * this method stays a pure window query — enabling "tomorrow until
+   * noon" or "today including post-midnight night routes" without
+   * special-casing inside the worker.
    */
   getRouteSchedule(
     routeId: number,
     directionId: 0 | 1,
-    nowMs: number,
+    localDate: string,
+    fromMin: number,
     windowMinutes: number,
   ): Promise<ScheduleTrip[]>;
 

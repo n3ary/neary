@@ -18,6 +18,7 @@ import sqlite3InitModule, { type Database, type Sqlite3Static } from '@sqlite.or
 
 import type { Feed } from '$lib/data/feeds';
 import type { Route, Station, Vehicle } from '$lib/domain/types';
+import { vehicleTypeFromGtfs } from '$lib/domain/types';
 import type {
   GtfsRepo, StopWithDistance, UpcomingDeparture,
 } from '$lib/data/gtfs/types';
@@ -202,10 +203,16 @@ const api: GtfsRepo = {
 
   async getRoutes(): Promise<Route[]> {
     const db = await ensureDb();
-    type Row = { route_id: number; route_short_name: string; route_color: string | null; route_text_color: string | null };
+    type Row = {
+      route_id: number;
+      route_short_name: string;
+      route_color: string | null;
+      route_text_color: string | null;
+      route_type: number | null;
+    };
     const rows = selectAll<Row>(
       db,
-      `SELECT route_id, route_short_name, route_color, route_text_color
+      `SELECT route_id, route_short_name, route_color, route_text_color, route_type
        FROM routes
        ORDER BY CAST(route_short_name AS INTEGER), route_short_name;`,
     );
@@ -214,6 +221,7 @@ const api: GtfsRepo = {
       shortName: r.route_short_name,
       color: r.route_color ? `#${r.route_color}` : '#666666',
       textColor: r.route_text_color ? `#${r.route_text_color}` : undefined,
+      type: vehicleTypeFromGtfs(r.route_type),
     }));
   },
 
@@ -472,10 +480,11 @@ const api: GtfsRepo = {
       route_short_name: string;
       route_color: string | null;
       route_text_color: string | null;
+      route_type: number | null;
     };
     const rows = selectAll<Row>(
       db,
-      `SELECT route_id, route_short_name, route_color, route_text_color
+      `SELECT route_id, route_short_name, route_color, route_text_color, route_type
        FROM routes WHERE route_id = ?;`,
       [routeId],
     );
@@ -486,21 +495,17 @@ const api: GtfsRepo = {
       shortName: r.route_short_name,
       color: r.route_color ? `#${r.route_color}` : '#666666',
       textColor: r.route_text_color ? `#${r.route_text_color}` : undefined,
+      type: vehicleTypeFromGtfs(r.route_type),
     };
   },
 
-  async getRouteSchedule(routeId, directionId, nowMs, windowMinutes) {
-    // Trips on (routeId, directionId) whose service is active today
-    // AND whose origin departure falls within [now, now + window].
-    // We deliberately key off the trip's FIRST stop's departure_time
-    // (origin) so the schedule view aligns with passenger language
-    // ("when does the 25 leave Mărăști?"), and so it dovetails with
-    // the reconciler's match key.
+  async getRouteSchedule(routeId, directionId, localDate, fromMin, windowMinutes) {
+    // Trips on (routeId, directionId) whose service is active for the
+    // given localDate AND whose origin departure falls in
+    // [fromMin, fromMin + windowMinutes]. Caller controls the window
+    // so we can serve "rest of today", "tomorrow until noon", or
+    // "night-route past-midnight" with the same query.
     const db = await ensureDb();
-    const tz = currentFeedTz ?? 'UTC';
-    const localDate = dateKeyInTz(nowMs, tz);
-    const nowMin = minSinceMidnightInTz(nowMs, tz);
-
     const services = activeServicesOn(db, localDate);
     if (services.length === 0) return [];
 
@@ -523,7 +528,7 @@ const api: GtfsRepo = {
       [routeId, directionId, ...services],
     );
 
-    const upper = nowMin + windowMinutes;
+    const upper = fromMin + windowMinutes;
     return rows
       .map((r) => ({
         tripId: r.trip_id,
@@ -531,7 +536,7 @@ const api: GtfsRepo = {
         headsign: r.trip_headsign,
         serviceId: r.service_id,
       }))
-      .filter((r) => r.tripStartMin >= nowMin && r.tripStartMin <= upper)
+      .filter((r) => r.tripStartMin >= fromMin && r.tripStartMin <= upper)
       .sort((a, b) => a.tripStartMin - b.tripStartMin);
   },
 

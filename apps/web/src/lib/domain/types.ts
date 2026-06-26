@@ -23,6 +23,11 @@ export interface Route {
   color: string;
   /** Optional explicit foreground; if omitted we compute a contrast color. */
   textColor?: string;
+  /** Vehicle type that runs this route, derived from GTFS
+   *  `routes.route_type`. Optional so existing producers that don’t
+   *  populate it still typecheck — callers must tolerate undefined
+   *  and fall back to 'unknown'. */
+  type?: VehicleType;
 }
 
 /** A station / stop as the UI sees it. */
@@ -146,6 +151,42 @@ export function vehicleTypeFromGtfs(routeType: number | null | undefined): Vehic
       return 'bus';
   }
 }
+
+/** Human-readable label for a VehicleType, used in row labels like
+ *  "Bus 25" / "Tram 101". Title-case, English; consumers can wrap for
+ *  i18n later. */
+export function vehicleTypeLabel(t: VehicleType): string {
+  switch (t) {
+    case 'tram': return 'Tram';
+    case 'metro': return 'Metro';
+    case 'rail': return 'Rail';
+    case 'bus': return 'Bus';
+    case 'ferry': return 'Ferry';
+    case 'cablecar': return 'Cable car';
+    case 'gondola': return 'Gondola';
+    case 'funicular': return 'Funicular';
+    case 'trolleybus': return 'Trolleybus';
+    case 'monorail': return 'Monorail';
+    default: return 'Route';
+  }
+}
+
+/** Stable per-type accent color used by filter bubbles + any future
+ *  per-type chart / map glyph. Picked to read against the app's
+ *  surface in both themes without needing per-theme overrides. */
+export const VEHICLE_TYPE_COLOR: Record<VehicleType, string> = {
+  tram: '#e07b00',        // orange
+  metro: '#1565c0',       // blue
+  rail: '#c62828',        // deep red
+  bus: '#2e7d32',         // green
+  ferry: '#00838f',       // teal
+  cablecar: '#6a1b9a',    // purple
+  gondola: '#6a1b9a',     // purple (shared family with cablecar)
+  funicular: '#6a1b9a',   // purple (shared family)
+  trolleybus: '#8e24aa',  // magenta
+  monorail: '#3949ab',    // indigo
+  unknown: '#666666',     // neutral
+};
 
 interface VehicleBase {
   id: string;

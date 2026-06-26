@@ -34,6 +34,7 @@ export { default as RouteBadge } from './RouteBadge.svelte';
 export { default as VehicleCard } from './VehicleCard.svelte';
 export { default as StationCard } from './StationCard.svelte';
 export { default as NoFeedState } from './NoFeedState.svelte';
+export { default as TypeBubble } from './TypeBubble.svelte';
 
 // App shell.
 export { default as Header } from './Header.svelte';
