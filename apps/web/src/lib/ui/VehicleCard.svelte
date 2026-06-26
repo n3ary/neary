@@ -45,7 +45,7 @@
       const m = vehicle.eta.minutes;
       if (m < 0) return `${-m} min ago`;
       if (m === 0) return 'Now';
-      return `${m} min`;
+      return `in ${m} min`;
     }
     if (vehicle.schedule) return `Scheduled ${formatHHMM(vehicle.schedule.scheduledDeparture)}`;
     return 'En route';

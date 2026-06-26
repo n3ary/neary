@@ -163,7 +163,7 @@
         <StationCard
           station={{ id: stop.id, name: stop.name, distance: stop.distance, lat: stop.lat, lon: stop.lon }}
           routes={dedupRoutes(vehicles)}
-          vehicles={board.map((r) => r.vehicle)}
+          rows={board}
           expanded={expandedStopId === stop.id}
           ontoggle={() => (expandedStopId = expandedStopId === stop.id ? null : stop.id)}
         />

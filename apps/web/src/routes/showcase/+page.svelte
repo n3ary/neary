@@ -13,6 +13,7 @@
     Switch, Tabs, TextField, ToggleGroup, Tooltip, Typography, VehicleCard,
   } from '$lib/ui';
   import type { Route, Station, Vehicle } from '$lib/domain/types';
+  import type { BoardRow } from '$lib/domain/stationBoard';
   import { statusBus } from '$lib/stores/statusBus.svelte';
   import { userPrefs, type Theme } from '$lib/stores/userPrefs.svelte';
   import {
@@ -385,7 +386,11 @@
       <StationCard
         station={demoStation}
         routes={[route24, route35, route9, routeM]}
-        vehicles={demoVehicles}
+        rows={demoVehicles.map((v, i) => ({
+          vehicle: v,
+          bucket: (['arriving', 'at-station', 'incoming', 'incoming', 'incoming'] as const)[i] ?? 'incoming',
+          etaMinutes: v.eta?.minutes ?? 0,
+        })) as BoardRow[]}
         expanded={stationExpanded}
         ontoggle={() => (stationExpanded = !stationExpanded)}
         dropOffOnly={false}

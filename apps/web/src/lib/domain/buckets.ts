@@ -36,6 +36,18 @@ export const BUCKET_ORDER: Record<ArrivalBucket, number> = {
   'off-route': 5,
 };
 
+/** Human-readable label for each bucket. Used by section headers on the
+ *  StationCard. Lives in the domain because the bucket name is a UX
+ *  concept, not a CSS one. */
+export const BUCKET_LABEL: Record<ArrivalBucket, string> = {
+  departing: 'Departing',
+  'at-station': 'At station',
+  arriving: 'Arriving',
+  incoming: 'Incoming',
+  departed: 'Recently departed',
+  'off-route': 'Off route',
+};
+
 // Thresholds — see v1 references in the spec.
 export const PROXIMITY_AT_STATION_M = 50;       // v1: STATION_PROXIMITY_METERS
 export const OFF_ROUTE_DISTANCE_M = 200;        // v1: off-route cutoff

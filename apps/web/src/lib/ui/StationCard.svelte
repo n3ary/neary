@@ -14,6 +14,10 @@
 <script lang="ts">
   import { Bus, ChevronDown, MapPin } from 'lucide-svelte';
   import type { Route, Station, Vehicle } from '$lib/domain/types';
+  import {
+    BUCKET_LABEL, BUCKET_ORDER, type ArrivalBucket,
+  } from '$lib/domain/buckets';
+  import type { BoardRow } from '$lib/domain/stationBoard';
   import Avatar from './Avatar.svelte';
   import Box from './Box.svelte';
   import Card from './Card.svelte';
@@ -32,8 +36,11 @@
     station: Station;
     /** Routes serving this station, used for the badge row. */
     routes: Route[];
-    /** Vehicles serving this station — shown inside the expand region. */
-    vehicles: Vehicle[];
+    /** Bucketed vehicle rows for this station — already filtered + sorted
+     *  by the domain layer. StationCard groups them into sections by
+     *  bucket; the domain decides what's in / out, the card decides how
+     *  the groups look. */
+    rows: BoardRow[];
     expanded: boolean;
     ontoggle: () => void;
     /** When true, station shows a "Drop off only" outlined chip. */
@@ -49,7 +56,7 @@
   let {
     station,
     routes,
-    vehicles,
+    rows,
     expanded,
     ontoggle,
     dropOffOnly = false,
@@ -64,11 +71,28 @@
     return m < 1000 ? `${Math.round(m)} m` : `${(m / 1000).toFixed(1)} km`;
   }
 
-  const filteredVehicles = $derived(
-    typeof selectedRouteId === 'number'
-      ? vehicles.filter((v) => v.route.id === selectedRouteId)
-      : vehicles,
-  );
+  // Apply the selected-route filter, then group by bucket while preserving
+  // the domain-sorted order. Empty buckets are dropped so the UI shows
+  // only headers that have content.
+  const groups = $derived.by(() => {
+    const filtered = typeof selectedRouteId === 'number'
+      ? rows.filter((r) => r.vehicle.route.id === selectedRouteId)
+      : rows;
+    const byBucket = new Map<ArrivalBucket, Vehicle[]>();
+    for (const r of filtered) {
+      const list = byBucket.get(r.bucket) ?? [];
+      list.push(r.vehicle);
+      byBucket.set(r.bucket, list);
+    }
+    return Array.from(byBucket.entries())
+      .sort(([a], [b]) => BUCKET_ORDER[a] - BUCKET_ORDER[b])
+      .map(([bucket, vehicles]) => ({
+        bucket,
+        label: BUCKET_LABEL[bucket],
+        vehicles,
+      }));
+  });
+  const isEmpty = $derived(groups.length === 0);
 </script>
 
 <Card variant="station" class={className}>
@@ -124,16 +148,28 @@
     </Stack>
 
     <Collapsible in={expanded} class="mt-2">
-      {#if filteredVehicles.length === 0}
+      {#if isEmpty}
         <Box class="px-3 py-3 text-sm text-[color:var(--color-fg-muted)]">
           {selectedRouteId != null
             ? 'No vehicles for the selected route right now.'
             : 'No vehicles right now.'}
         </Box>
       {:else}
-        <Stack spacing={0.5} class="pt-1">
-          {#each filteredVehicles as vehicle (vehicle.id)}
-            <VehicleCard {vehicle} />
+        <Stack spacing={1.5} class="pt-1">
+          {#each groups as group (group.bucket)}
+            <Box>
+              <Typography
+                variant="caption"
+                class="px-1 pb-1 uppercase tracking-wide text-[color:var(--color-fg-muted)]"
+              >
+                {group.label} · {group.vehicles.length}
+              </Typography>
+              <Stack spacing={0.5}>
+                {#each group.vehicles as vehicle (vehicle.id)}
+                  <VehicleCard {vehicle} />
+                {/each}
+              </Stack>
+            </Box>
           {/each}
         </Stack>
       {/if}
