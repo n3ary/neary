@@ -49,7 +49,9 @@
     ontoggle: () => void;
     /** When true, station shows a "Drop off only" outlined chip. */
     dropOffOnly?: boolean;
-    /** Selected route badge id (filter applied within the station). */
+    /** Selected route badge id. Visual hint only — marks the badge as
+     *  pressed. Any actual row filtering must happen upstream so the
+     *  domain pipeline (filter → bucket → cap) sees the full set. */
     selectedRouteId?: number | null;
     onRouteClick?: (routeId: number) => void;
     /** Optional set of route ids that are favorited. */
@@ -96,15 +98,16 @@
     });
   });
 
-  // Apply the selected-route filter, then group by bucket while preserving
-  // the domain-sorted order. Empty buckets are dropped so the UI shows
-  // only headers that have content.
+  // Group rows by bucket while preserving the domain-sorted order. Empty
+  // buckets are dropped so the UI shows only headers that have content.
+  // The card does NOT filter \u2014 the caller is expected to hand us only
+  // the rows that should appear (route filter, prefs filter, etc. all
+  // belong upstream so the cap operates on the already-filtered set).
+  // `selectedRouteId` here is purely a visual prop: it tells the badge
+  // row which pill to render as pressed.
   const groups = $derived.by(() => {
-    const filtered = typeof selectedRouteId === 'number'
-      ? rows.filter((r) => r.vehicle.route.id === selectedRouteId)
-      : rows;
     const byBucket = new Map<ArrivalBucket, Vehicle[]>();
-    for (const r of filtered) {
+    for (const r of rows) {
       const list = byBucket.get(r.bucket) ?? [];
       list.push(r.vehicle);
       byBucket.set(r.bucket, list);
@@ -176,9 +179,7 @@
     <Collapsible in={expanded} class="mt-2">
       {#if isEmpty}
         <Box class="px-3 py-3 text-sm text-[color:var(--color-fg-muted)]">
-          {selectedRouteId != null
-            ? 'No vehicles for the selected route right now.'
-            : 'No vehicles right now.'}
+          No vehicles right now.
         </Box>
       {:else}
         <Stack spacing={1.5} class="pt-1">

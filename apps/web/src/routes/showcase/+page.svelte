@@ -71,6 +71,11 @@
   let stationExpanded = $state(true);
   let selectedRouteId = $state<number | null>(null);
   const favorites = new Set<number>([35]);
+  // All routes serving the demo station (pre-filter), so the badge row
+  // stays stable when a single route is selected.
+  const demoAllRoutes = Array.from(
+    new Map(demoVehicles.map((v) => [v.route.id, v.route])).values(),
+  );
 
   onMount(() => {
     statusBus.push({
@@ -385,11 +390,14 @@
       <Typography variant="body2">StationCard</Typography>
       <StationCard
         station={demoStation}
-        rows={demoVehicles.map((v, i) => ({
-          vehicle: v,
-          bucket: (['arriving', 'at-station', 'incoming', 'incoming', 'incoming'] as const)[i] ?? 'incoming',
-          etaMinutes: v.eta?.minutes ?? 0,
-        })) as BoardRow[]}
+        rows={(demoVehicles
+          .map((v, i) => ({
+            vehicle: v,
+            bucket: (['arriving', 'at-station', 'incoming', 'incoming', 'incoming'] as const)[i] ?? 'incoming',
+            etaMinutes: v.eta?.minutes ?? 0,
+          })) as BoardRow[])
+          .filter((r) => selectedRouteId == null || r.vehicle.route.id === selectedRouteId)}
+        allRoutes={demoAllRoutes}
         expanded={stationExpanded}
         ontoggle={() => (stationExpanded = !stationExpanded)}
         dropOffOnly={false}
