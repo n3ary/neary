@@ -118,6 +118,9 @@ function closeCurrent() {
   }
   currentFeedTz = null;
   bootstrapping = null;
+  // Shape polylines are feed-scoped — invalidate so the next feed
+  // can't see stale entries from this one.
+  shapeCache.clear();
 }
 
 async function ensureDb(): Promise<Database> {
@@ -397,7 +400,77 @@ const api: GtfsRepo = {
       vehicles,
     };
   },
+
+  async getShapesForTrips(tripIds) {
+    if (tripIds.length === 0) return {};
+    const db = await ensureDb();
+
+    // 1. Resolve trip_id -> shape_id, deduped. Use a single IN(...)
+    //    query so resolution is one round-trip regardless of how many
+    //    vehicles are visible.
+    const uniqTrips = Array.from(new Set(tripIds));
+    const tripPh = uniqTrips.map(() => '?').join(',');
+    type TripShapeRow = { trip_id: string; shape_id: string | null };
+    const tripRows = selectAll<TripShapeRow>(
+      db,
+      `SELECT trip_id, shape_id FROM trips WHERE trip_id IN (${tripPh});`,
+      uniqTrips,
+    );
+    const tripIdToShapeId = new Map<string, string>();
+    for (const r of tripRows) {
+      if (r.shape_id) tripIdToShapeId.set(r.trip_id, r.shape_id);
+    }
+
+    // 2. For shape_ids not yet cached, fetch their polylines in a
+    //    single grouped SELECT. The composite index
+    //    (shape_id, shape_pt_sequence) keeps this cheap.
+    const neededShapeIds = new Set<string>();
+    for (const sid of tripIdToShapeId.values()) {
+      if (!shapeCache.has(sid)) neededShapeIds.add(sid);
+    }
+    if (neededShapeIds.size > 0) {
+      const shapePh = Array.from(neededShapeIds).map(() => '?').join(',');
+      type ShapeRow = { shape_id: string; shape_pt_lat: number; shape_pt_lon: number };
+      const shapeRows = selectAll<ShapeRow>(
+        db,
+        `SELECT shape_id, shape_pt_lat, shape_pt_lon
+         FROM shapes
+         WHERE shape_id IN (${shapePh})
+         ORDER BY shape_id, shape_pt_sequence;`,
+        Array.from(neededShapeIds),
+      );
+      const grouped = new Map<string, Array<{ lat: number; lon: number }>>();
+      for (const r of shapeRows) {
+        const list = grouped.get(r.shape_id) ?? [];
+        list.push({ lat: r.shape_pt_lat, lon: r.shape_pt_lon });
+        grouped.set(r.shape_id, list);
+      }
+      for (const sid of neededShapeIds) {
+        // Cache even empty shapes (negative cache) so a missing
+        // shape_id doesn't re-query every render.
+        shapeCache.set(sid, grouped.get(sid) ?? []);
+      }
+    }
+
+    // 3. Build the tripId-keyed result. Trips with no shape_id or
+    //    an empty cached polyline are omitted — caller falls back.
+    const out: Record<string, Array<{ lat: number; lon: number }>> = {};
+    for (const tid of uniqTrips) {
+      const sid = tripIdToShapeId.get(tid);
+      if (!sid) continue;
+      const poly = shapeCache.get(sid);
+      if (!poly || poly.length < 2) continue;
+      out[tid] = poly;
+    }
+    return out;
+  },
 };
+
+// Shape cache lives at module scope so it survives across method
+// calls. Shapes are immutable per feed; the cache is invalidated
+// implicitly when setFeed swaps the database (closeCurrent below
+// clears it explicitly).
+const shapeCache = new Map<string, Array<{ lat: number; lon: number }>>();
 
 // ---------------------------------------------------------------------------
 // Service-calendar helper — resolves which service_ids are active for a

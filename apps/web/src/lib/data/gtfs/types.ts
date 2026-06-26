@@ -113,4 +113,22 @@ export interface GtfsRepo {
     nowMs: number,
     windowMinutes: number,
   ): Promise<{ stop: StopWithDistance; vehicles: Vehicle[] } | null>;
+
+  /**
+   * Resolve trip_id → route shape polyline for many trips in one
+   * round-trip. Used by the Phase 5.4 prediction stage: the page
+   * collects the trip_ids of every reconciled vehicle currently on
+   * screen and asks for their shapes; the predictor then projects
+   * vehicle + stop onto the polyline to derive a GPS-based ETA.
+   *
+   * Returned record is keyed by tripId. Trips whose shape is missing
+   * from the feed are omitted from the result (caller falls back to
+   * scheduled ETA for those).
+   *
+   * Worker caches shapes by shape_id, so re-fetching the same shape
+   * across renders is O(1).
+   */
+  getShapesForTrips(
+    tripIds: string[],
+  ): Promise<Record<string, Array<{ lat: number; lon: number }>>>;
 }
