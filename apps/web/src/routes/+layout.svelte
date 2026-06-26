@@ -12,6 +12,7 @@
   import { AppLayout, type HeaderHealth } from '$lib/ui';
   import { connectionStore } from '$lib/stores/connectionStore.svelte';
   import { feedsStore } from '$lib/stores/feedsStore.svelte';
+  import { liveVehiclesStore } from '$lib/stores/liveVehiclesStore.svelte';
   import { locationStore } from '$lib/stores/locationStore.svelte';
   import { refreshBus } from '$lib/stores/refreshBus.svelte';
   import { statusBus } from '$lib/stores/statusBus.svelte';
@@ -33,7 +34,7 @@
       setLocation: (lat: number, lon: number, accuracy = 25) =>
         locationStore.setMockPosition(lat, lon, accuracy),
       clearLocation: () => locationStore.clearMockPosition(),
-      stores: { locationStore, feedsStore, statusBus, userPrefs, refreshBus },
+      stores: { locationStore, feedsStore, statusBus, userPrefs, refreshBus, liveVehiclesStore },
     };
   });
 
@@ -79,6 +80,9 @@
       .setFeed($state.snapshot(feed) as typeof feed)
       .then(() => {
         feedsStore.boundFeedId = feed.id;
+        // Kick off live-data polling for this feed. Idempotent across
+        // feed switches; rebinds to the new id when applicable.
+        liveVehiclesStore.bind(feed.id);
         statusBus.push({
           id: 'gtfs-bind',
           kind: 'success',
@@ -140,12 +144,25 @@
       state: userPrefs.feedId == null ? 'idle' : 'ok',
       tooltip: userPrefs.feedId == null ? 'No feed selected' : 'Schedule loaded',
     },
-    live: {
-      state: 'idle',
-      tooltip: userPrefs.apiKey
-        ? 'API key present — live worker activates in Phase 5'
-        : 'Live tracking disabled (add API key in Settings)',
-    },
+    live: (() => {
+      // Health of the GTFS-RT poller.
+      //   no feed bound yet            -> idle
+      //   error and never succeeded    -> error
+      //   last successful fetch < 30s  -> ok
+      //   last successful fetch < 2min -> stale
+      //   older                        -> error
+      if (liveVehiclesStore.error && liveVehiclesStore.lastFetchMs == null) {
+        return { state: 'error', tooltip: `Live feed error: ${liveVehiclesStore.error}` };
+      }
+      if (liveVehiclesStore.lastFetchMs == null) {
+        return { state: 'idle', tooltip: 'Live feed not started' };
+      }
+      const age = Date.now() - liveVehiclesStore.lastFetchMs;
+      const count = liveVehiclesStore.observations.length;
+      if (age < 30_000) return { state: 'ok', tooltip: `${count} live vehicles · just now` };
+      if (age < 2 * 60_000) return { state: 'stale', tooltip: `${count} live vehicles · ${Math.round(age / 1000)}s ago` };
+      return { state: 'error', tooltip: `Live feed last fetched ${Math.round(age / 60_000)} min ago` };
+    })(),
   });
 </script>
 
@@ -160,7 +177,10 @@
   navItems={NAV_ITEMS}
   {activeNav}
   onnav={(to) => goto(to)}
-  onrefresh={() => refreshBus.fire()}
+  onrefresh={() => {
+    refreshBus.fire();
+    liveVehiclesStore.refresh();
+  }}
 >
   {@render children()}
 </AppLayout>

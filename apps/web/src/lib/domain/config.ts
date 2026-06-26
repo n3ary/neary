@@ -30,6 +30,10 @@ export interface NearyConfig {
    *  surfaces as "arriving" rather than splitting into at-station. */
   minDwellGapMin: number;
 
+  // ── Live data ───────────────────────────────────────────────────────
+  /** Poll cadence for GTFS-RT VehiclePositions, in ms. The upstream feed
+   *  typically updates every ≈10–20 s. */
+  livePollMs: number;
 }
 
 /** Production defaults. v1 magic numbers ported per spec §7.1. */
@@ -40,4 +44,5 @@ export const DEFAULT_CONFIG: NearyConfig = {
   imminentEtaThresholdMin: 5,
   departingSpeedKmh: 5,
   minDwellGapMin: 1,
+  livePollMs: 15_000,
 };
