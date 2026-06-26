@@ -35,7 +35,10 @@
     formatHHMM, isNightRoute, pickContrastingText, vehicleTypeLabel,
   } from '$lib/domain/types';
   import { minSinceMidnightInTz } from '$lib/domain/pipeline/timeUtils';
-  import { predictPosition } from '$lib/domain/predictPosition';
+  import {
+    buildTripShapePlan, predictPosition, predictPositionOnShape,
+    type TripShapePlan,
+  } from '$lib/domain/predictPosition';
   import { feedsStore } from '$lib/stores/feedsStore.svelte';
   import { favoritesStore } from '$lib/stores/favoritesStore.svelte';
   import { locationStore } from '$lib/stores/locationStore.svelte';
@@ -102,6 +105,20 @@
   const isFav = $derived(route ? favoritesStore.has(route.id) : false);
   const nightRoute = $derived(route ? isNightRoute(route) : false);
 
+  // Pre-projected per-trip shape plans. Built once when the view
+  // payload arrives and reused on every nowMin tick — the per-tick
+  // cost is then a binary search + interpolation per visible
+  // vehicle. Trips with no usable shape get `null` here and the UI
+  // falls back to straight-line interpolation between stops.
+  const tripPlans = $derived.by<Map<string, TripShapePlan | null>>(() => {
+    const map = new Map<string, TripShapePlan | null>();
+    if (!view) return map;
+    for (const t of view.trips) {
+      map.set(t.tripId, buildTripShapePlan(t.stops, view.shape));
+    }
+    return map;
+  });
+
   // ── Derived view-model ──────────────────────────────────────────────
   /** Render-ready vehicles for the current nowMin. Each trip yields
    *  one entry; the domain decides position + status, the UI maps
@@ -118,7 +135,10 @@
     if (!view) return [];
     const out: VehicleMarker[] = [];
     for (const t of view.trips) {
-      const p = predictPosition(t.stops, nowMin);
+      const plan = tripPlans.get(t.tripId);
+      const p = plan
+        ? predictPositionOnShape(plan, nowMin)
+        : predictPosition(t.stops, nowMin);
       if (!p) continue;
       // 'before' = scheduled but not yet imminent at the origin
       // → hide so the start station isn't a tower of buses.

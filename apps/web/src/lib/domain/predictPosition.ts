@@ -1,20 +1,18 @@
 /*
  * Predict a vehicle's current position from its trip's stop timeline.
  *
- * A trip's "stops" are an ordered list of (lat, lon, arrivalMin) tuples;
- * `nowMin` is minutes since local midnight. We find the segment the
- * vehicle should be on right now (i.e. the pair of consecutive stops
- * whose arrival times straddle `nowMin`) and linearly interpolate
- * between their coordinates by the time fraction.
+ * Two flavors:
  *
- * Limitations (intentional for Phase 1):
- *   - Linear segment between stop coordinates instead of along the
- *     GTFS shape polyline. A bus on a curvy road shows up as
- *     straight-line dots between stops. Acceptable for v2's first
- *     map cut; can be sharpened by projecting onto shape later.
- *   - Time is purely scheduled. Live GPS hasn't been wired through
- *     this helper yet — when it is, the live reconciler will short-
- *     circuit `predictPosition` with the GPS fix.
+ *   `predictPosition(stops, nowMin)` — straight-line interpolation
+ *   between consecutive stops. Falls back well when the feed doesn't
+ *   carry shapes.txt.
+ *
+ *   `predictPositionOnShape(plan, nowMin)` — interpolates along the
+ *   route's polyline using cumulative distances, so the marker
+ *   follows the road instead of cutting through buildings. Use
+ *   whenever a shape is available; build the `TripShapePlan` once
+ *   per trip+shape pair with `buildTripShapePlan` and reuse across
+ *   every render tick.
  *
  * Status values let the UI hide / dim a vehicle without re-deriving:
  *   - 'before':   nowMin < origin departure — bus hasn't started yet.
@@ -22,7 +20,19 @@
  *                  — coming up at the start station.
  *   - 'active':   between origin departure and terminus arrival.
  *   - 'after':    past terminus.
+ *
+ * Live GPS hasn't been wired through this helper yet — when it is,
+ * the reconciler will short-circuit prediction with the GPS fix.
  */
+
+import {
+  measurePolyline,
+  pointAtDistance,
+  projectOnPolyline,
+  type LatLon,
+  type MeasuredPolyline,
+  type Polyline,
+} from './shapeProjection';
 
 export interface PredictStop {
   lat: number;
@@ -49,6 +59,11 @@ export const DEFAULT_IMMINENT_MIN = 5;
  * Pick the position to render for a vehicle on a known trip.
  * Returns `null` only when the trip has no stops at all — every
  * other case yields a position + status.
+ *
+ * Straight-line variant: the position between two stops lies on the
+ * direct segment between their coordinates. Acceptable when no shape
+ * is available; prefer `predictPositionOnShape` when the feed does
+ * have shapes.txt for the route.
  */
 export function predictPosition(
   stops: readonly PredictStop[],
@@ -59,21 +74,15 @@ export function predictPosition(
   const origin = stops[0];
   const terminus = stops[stops.length - 1];
 
-  // Not started yet — sit at origin. `status` distinguishes
-  // 'before' (too early to display) from 'at-origin' (imminent;
-  // worth showing dimly).
   if (nowMin < origin.arrivalMin) {
     const status: TripStatus =
       origin.arrivalMin - nowMin <= imminentMin ? 'at-origin' : 'before';
     return { lat: origin.lat, lon: origin.lon, status };
   }
-  // Past terminus — pin at terminus, marked 'after' so the UI hides it.
   if (nowMin >= terminus.arrivalMin) {
     return { lat: terminus.lat, lon: terminus.lon, status: 'after' };
   }
 
-  // Active: find the segment [stops[i], stops[i+1]] whose arrivals
-  // bracket nowMin. Linear search is fine — trips have O(20–60) stops.
   for (let i = 0; i < stops.length - 1; i++) {
     const a = stops[i];
     const b = stops[i + 1];
@@ -87,7 +96,76 @@ export function predictPosition(
       };
     }
   }
-  // Should be unreachable given the early returns, but keep the
-  // type narrow by falling back to the terminus.
   return { lat: terminus.lat, lon: terminus.lon, status: 'active' };
+}
+
+/** Precomputed per-trip data used by `predictPositionOnShape`.
+ *  Build once when the route's shape + stops arrive (mount-time);
+ *  the only per-tick work is then a binary search + an interpolation. */
+export interface TripShapePlan {
+  /** Polyline + cumulative distances. */
+  measured: MeasuredPolyline;
+  /** One entry per stop in `stops`, same length and order.
+   *  `arrivalMin` carries the schedule; `distAlongM` is the stop's
+   *  position projected onto the shape. */
+  legs: Array<{ arrivalMin: number; distAlongM: number }>;
+}
+
+/** Build a `TripShapePlan` by projecting each stop onto the shape's
+ *  polyline. O(stops × shape segments). Run once per trip+shape.
+ *  Returns `null` when no usable shape exists — caller should fall
+ *  back to `predictPosition`. */
+export function buildTripShapePlan(
+  stops: readonly PredictStop[],
+  shape: Polyline,
+): TripShapePlan | null {
+  if (stops.length === 0 || shape.length < 2) return null;
+  const measured = measurePolyline(shape);
+  const legs = stops.map((s) => {
+    const proj = projectOnPolyline({ lat: s.lat, lon: s.lon } as LatLon, shape);
+    return { arrivalMin: s.arrivalMin, distAlongM: proj.distAlongM };
+  });
+  // Stops projected onto a doubled-back shape (rare but possible
+  // when an operator publishes the same trace for both directions)
+  // can land out of order. Ignore that here — the time-based bracket
+  // below uses arrivalMin, not distAlongM, so a non-monotonic legs[]
+  // array still produces sensible interpolation.
+  return { measured, legs };
+}
+
+/** Shape-aware variant of `predictPosition`. Same status semantics. */
+export function predictPositionOnShape(
+  plan: TripShapePlan,
+  nowMin: number,
+  imminentMin: number = DEFAULT_IMMINENT_MIN,
+): PredictedPosition | null {
+  const { legs, measured } = plan;
+  if (legs.length === 0) return null;
+  const origin = legs[0];
+  const terminus = legs[legs.length - 1];
+
+  const originPoint = pointAtDistance(measured, origin.distAlongM);
+  if (nowMin < origin.arrivalMin) {
+    const status: TripStatus =
+      origin.arrivalMin - nowMin <= imminentMin ? 'at-origin' : 'before';
+    return { lat: originPoint.lat, lon: originPoint.lon, status };
+  }
+  if (nowMin >= terminus.arrivalMin) {
+    const p = pointAtDistance(measured, terminus.distAlongM);
+    return { lat: p.lat, lon: p.lon, status: 'after' };
+  }
+
+  for (let i = 0; i < legs.length - 1; i++) {
+    const a = legs[i];
+    const b = legs[i + 1];
+    if (nowMin >= a.arrivalMin && nowMin < b.arrivalMin) {
+      const span = b.arrivalMin - a.arrivalMin;
+      const t = span > 0 ? (nowMin - a.arrivalMin) / span : 0;
+      const distAlongM = a.distAlongM + (b.distAlongM - a.distAlongM) * t;
+      const p = pointAtDistance(measured, distAlongM);
+      return { lat: p.lat, lon: p.lon, status: 'active' };
+    }
+  }
+  const p = pointAtDistance(measured, terminus.distAlongM);
+  return { lat: p.lat, lon: p.lon, status: 'active' };
 }
