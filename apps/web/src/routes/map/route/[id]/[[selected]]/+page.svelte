@@ -24,7 +24,7 @@
   import { onDestroy, onMount } from 'svelte';
   import { goto } from '$app/navigation';
   import { page } from '$app/state';
-  import { ArrowRightLeft, Maximize2, Minus, Moon, Plus } from 'lucide-svelte';
+  import { ArrowRightLeft, Moon } from 'lucide-svelte';
   import {
     BackButton, Card, CardContent, Chip, IconButton, NoFeedState, RouteBadge, Spinner,
     Stack, Typography,
@@ -246,12 +246,9 @@
     goto(`/map/route/${routeId}_${otherDir}`, { replaceState: true });
   }
 
-  // Header zoom controls. Thin wrappers over Leaflet's imperative
-  // API — disabled until the map is mounted so the buttons don't
-  // throw before init.
-  const mapReady = $derived(mapInstance != null);
-  function zoomIn() { mapInstance?.zoomIn(); }
-  function zoomOut() { mapInstance?.zoomOut(); }
+  // Fit-to-route helper used by the on-map Leaflet control (see init
+  // effect below). Native zoom is handled by Leaflet's built-in
+  // `L.control.zoom`, which we re-enabled via `zoomControl: true`.
   function fitToRoute() {
     if (!mapInstance || !shapeLayer) return;
     mapInstance.fitBounds(shapeLayer.getBounds(), {
@@ -312,12 +309,37 @@
     const doInit = () => {
       try {
         mapInstance = Lref.map(el, {
-          zoomControl: false,
+          zoomControl: true,
           attributionControl: true,
           center: [46.77, 23.6],
           zoom: 13,
         });
         (window as unknown as { __nearyMap?: import('leaflet').Map }).__nearyMap = mapInstance;
+        // Custom 'fit route to view' control, paired with the
+        // built-in zoom buttons in the top-left bar. Plain Leaflet
+        // control — no Svelte reactivity needed since the closure
+        // captures the page-scoped `fitToRoute()` which already
+        // reads the latest mapInstance + shapeLayer.
+        const FitControl = Lref.Control.extend({
+          options: { position: 'topleft' },
+          onAdd() {
+            const bar = Lref.DomUtil.create('div', 'leaflet-bar leaflet-control');
+            const btn = Lref.DomUtil.create('a', '', bar) as HTMLAnchorElement;
+            btn.href = '#';
+            btn.title = 'Fit route to view';
+            btn.setAttribute('role', 'button');
+            btn.setAttribute('aria-label', 'Fit route to view');
+            btn.innerHTML =
+              '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:middle;"><polyline points="15 3 21 3 21 9"/><polyline points="9 21 3 21 3 15"/><line x1="21" y1="3" x2="14" y2="10"/><line x1="3" y1="21" x2="10" y2="14"/></svg>';
+            Lref.DomEvent.disableClickPropagation(bar);
+            Lref.DomEvent.on(btn, 'click', (e) => {
+              Lref.DomEvent.preventDefault(e);
+              fitToRoute();
+            });
+            return bar;
+          },
+        });
+        new FitControl().addTo(mapInstance);
         Lref.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
           maxZoom: 19,
           attribution: '© OpenStreetMap contributors',
@@ -671,15 +693,6 @@
               {/if}
             </Stack>
             <Stack direction="row" spacing={0.5} align="center" class="shrink-0">
-              <IconButton aria-label="Zoom out" disabled={!mapReady} onclick={zoomOut}>
-                <Minus size={18} />
-              </IconButton>
-              <IconButton aria-label="Zoom in" disabled={!mapReady} onclick={zoomIn}>
-                <Plus size={18} />
-              </IconButton>
-              <IconButton aria-label="Fit route to view" disabled={!mapReady} onclick={fitToRoute}>
-                <Maximize2 size={18} />
-              </IconButton>
               <IconButton
                 aria-label={otherDirection.value === false ? 'Reverse direction not available' : 'Swap direction'}
                 disabled={otherDirection.value === false}

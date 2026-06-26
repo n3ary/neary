@@ -64,6 +64,6 @@
   });
 </script>
 
-<IconButton aria-label={ariaLabel} onclick={goBack}>
+<IconButton aria-label={ariaLabel} onclick={goBack} size="small">
   <ArrowLeft size={18} />
 </IconButton>
