@@ -45,12 +45,7 @@
 <div class="min-h-svh flex flex-col bg-[color:var(--color-bg)] text-[color:var(--color-fg)]">
   <Header {title} {health} {onrefresh} {refreshing} />
   <StatusBar />
-  <!-- Main is a flex column itself so a page can opt into "fill the
-       viewport" (Stack with flex-1, then h-full on grandchildren) —
-       used by the map view. Pages that don't opt in fall back to
-       intrinsic content height like before, since a single flex
-       item with `min-height: auto` floors at its content size. -->
-  <main class="flex-1 flex flex-col overflow-x-hidden pb-20">
+  <main class="flex-1 overflow-x-hidden pb-20">
     {@render children?.()}
   </main>
   <BottomNavigation

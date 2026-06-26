@@ -424,7 +424,7 @@
   }
 </script>
 
-<div class="mx-auto w-full max-w-5xl px-4 py-3 flex flex-col flex-1 min-h-0">
+<div class="mx-auto max-w-5xl px-4 py-3">
   {#if userPrefs.feedId == null}
     <NoFeedState message="Pick a feed in Settings to view the route map." />
   {:else if direction == null}
@@ -447,7 +447,7 @@
       </Stack>
     </CardContent></Card>
   {:else}
-    <Stack spacing={2} class="flex-1 min-h-0">
+    <Stack spacing={2}>
       <!-- Header: same chrome the schedule view uses, with a swap-
            direction icon. -->
       <Card>
@@ -488,14 +488,14 @@
         </CardContent>
       </Card>
 
-      <!-- Map card flexes to fill remaining vertical space when the
-           flex chain is intact, but always has a viewport-based
-           min-height as a safety net so the container is never
-           0×0 (Leaflet measures its container synchronously at
-           init and an empty container stays empty forever). The
-           min collapses on tall desktops where flex-1 already
-           hands it more room. -->
-      <Card class="flex-1 min-h-0 overflow-hidden neary-map-card">
+      <!-- The map card is the only thing on the page besides the
+           header, so we just give it an explicit viewport-calc
+           height. The 14rem accounts for the app header bar
+           (~3.5rem), the in-page header Card + margin (~4rem),
+           the page padding (~1.5rem), and the bottom navigation
+           (~5rem) — i.e. everything between this card and the
+           viewport edges. Single rule, no flex chain to debug. -->
+      <Card class="overflow-hidden neary-map-card">
         <div bind:this={mapEl} class="neary-map"></div>
       </Card>
     </Stack>
@@ -503,21 +503,23 @@
 </div>
 
 <style>
-  /* The flex chain (main flex-col → page flex-1 → Stack flex-1 →
-     Card flex-1 → map div h-full) sizes the map card correctly
-     on its own; no min-height floor needed in the common case.
-     Leaflet's invalidateSize on init + ResizeObserver handle
-     the post-mount measurement. */
+  /* Map card height is computed once from the viewport and the
+     fixed chrome offsets above/below. No flex-1 chain involved,
+     so the container is never 0×0 at init and Leaflet measures
+     a real box from the first call. */
+  :global(.neary-map-card) {
+    height: calc(100svh - 14rem);
+  }
   .neary-map {
     width: 100%;
     height: 100%;
   }
   /* Floor for tiny viewports (e.g. landscape phone): the map gets
-     a usable minimum even if the flex math would otherwise hand
-     it near-zero height. */
+     a usable minimum even if the calc would otherwise hand it
+     near-zero height. */
   @media (max-height: 480px) {
     :global(.neary-map-card) {
-      min-height: 220px;
+      height: 220px;
     }
   }
   /* Leaflet's own popup container inherits a default white bg; ours
