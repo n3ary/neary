@@ -415,7 +415,7 @@
   // Cost: ~6 setLatLng + setStyle calls per RAF frame. Negligible.
   // Cleanup cancels the RAF and clears the layer.
   const DOT_COUNT = 6;
-  const DOT_CYCLE_MS = 5500;
+  const DOT_CYCLE_MS = 12000;
   const DOT_PEAK_OPACITY = 0.9;
   $effect(() => {
     if (!L || !mapInstance || !arrowsLayer) return;
