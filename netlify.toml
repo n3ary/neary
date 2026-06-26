@@ -20,6 +20,21 @@
   status = 200
   force = true
 
+# GTFS-RT feeds are protobuf-binary and don't expose CORS. Proxy them so
+# the client can fetch /api/rt/<feed>/<endpoint> regardless of origin.
+# Mirrors the dev-time Vite proxy in apps/web/vite.config.ts.
+[[redirects]]
+  from = "/api/rt/cluj-napoca/*"
+  to = "https://cluj-rt-feed.gtfs.ro/:splat"
+  status = 200
+  force = true
+
+[[redirects]]
+  from = "/api/rt/bucuresti-ilfov/*"
+  to = "https://gtfs.tpbi.ro/api/gtfs-rt/:splat"
+  status = 200
+  force = true
+
 # Prevent caching on API proxy responses
 [[headers]]
   for = "/api/*"
