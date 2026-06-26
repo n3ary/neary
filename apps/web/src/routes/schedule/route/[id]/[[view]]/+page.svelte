@@ -274,12 +274,33 @@
   // ("departures from Biserica Câmpului"). The route badge on the
   // left already carries the route identity; the subtitle confirms
   // the destination.
+  //
+  // We cache the last non-null origin + headsign so the header
+  // doesn't blank out when the user opens Week (whose underlying
+  // fetch is keyed on today and may return empty late at night).
+  // The cache resets on a direction change so the swap button
+  // doesn't show stale info.
+  let stickyOrigin = $state<string | null>(null);
+  let stickyHeadsign = $state<string | null>(null);
+  $effect(() => {
+    // Direction is the cache key.
+    direction;
+    stickyOrigin = null;
+    stickyHeadsign = null;
+  });
+  $effect(() => {
+    if (originStopName) stickyOrigin = originStopName;
+    if (headsign) stickyHeadsign = headsign;
+  });
+
+  const displayOrigin = $derived(originStopName ?? stickyOrigin);
+  const displayHeadsign = $derived(headsign ?? stickyHeadsign);
   const headerTitle = $derived(
-    originStopName
+    displayOrigin
     ?? (route ? `${vehicleTypeLabel(route.type ?? 'unknown')} ${route.shortName}` : ''),
   );
   const headerSubtitle = $derived(
-    direction != null && headsign ? `→ ${headsign}` : null,
+    direction != null && displayHeadsign ? `→ ${displayHeadsign}` : null,
   );
 
   // ── Helpers (UI-only) ───────────────────────────────────────────────
