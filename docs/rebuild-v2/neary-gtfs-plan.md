@@ -86,7 +86,7 @@ neary-gtfs/
 │     ├─ derive-bbox.js                   # min/max lat,lon from stops.txt
 │     │                                   # (replaces hand-curated per-feed bboxes)
 │     └─ make-app-registry.js             # builds outputs/feeds.json from results
-├─ outputs/                               # built artifacts (published to releases-v2)
+├─ outputs/                               # built artifacts (published to binaries)
 │  ├─ feeds.json                          # THE single index the v2 app fetches
 │  └─ feeds/
 │     ├─ ctp-cluj.gtfs.zip                # standalone (publishable to Transitous)
@@ -95,7 +95,7 @@ neary-gtfs/
 │     ├─ sctp-iasi.sqlite3.gz             # derived from Transitous's Iași mdb-2116
 │     └─ ...                              # one per entry in resolved list
 └─ .github/workflows/
-   └─ daily.yml                           # cron 00:30 UTC → build-all.js → push releases-v2
+   └─ daily.yml                           # cron 00:30 UTC → build-all.js → push binaries
 ```
 
 ## 6. Daily pipeline
@@ -132,10 +132,10 @@ neary-gtfs/
   └─ make-app-registry.js
        └─ outputs/feeds.json (see §7)
 
-  └─ git commit + force-push to releases-v2 branch (only if any output changed)
+  └─ git commit + force-push to binaries branch (only if any output changed)
 ```
 
-Output is published to the **`releases-v2`** branch — separate from
+Output is published to the **`binaries`** branch — separate from
 `releases` so the v1 neary app keeps working unchanged.
 
 ## 7. `outputs/feeds.json` schema (the app-facing index)
@@ -166,7 +166,7 @@ Output is published to the **`releases-v2`** branch — separate from
         "upstream_url": null
       },
       "files": {
-        "gtfs_zip":  "feeds/ctp-cluj.gtfs.zip",    // relative to releases-v2 root
+        "gtfs_zip":  "feeds/ctp-cluj.gtfs.zip",    // relative to binaries root
         "sqlite_gz": "feeds/ctp-cluj.sqlite3.gz"
       },
       "size_bytes": { "gtfs_zip": 1395000, "sqlite_gz": 4406857 },
@@ -209,7 +209,7 @@ PR against `public-transport/transitous`** adding a new source to `ro.json`:
 {
   "name": "Cluj-Napoca-CTP",
   "type": "http",
-  "url": "https://raw.githubusercontent.com/ciotlosm/neary-gtfs/releases-v2/feeds/ctp-cluj.gtfs.zip",
+  "url": "https://raw.githubusercontent.com/ciotlosm/neary-gtfs/binaries/feeds/ctp-cluj.gtfs.zip",
   "license": {
     "spdx-identifier": "CC-BY-SA-4.0",
     "attribution-text": "© Compania de Transport Public Cluj-Napoca",
@@ -219,7 +219,7 @@ PR against `public-transport/transitous`** adding a new source to `ro.json`:
 }
 ```
 
-URL hosting choice: **GitHub raw on the `releases-v2` branch**. Reasoning:
+URL hosting choice: **GitHub raw on the `binaries` branch**. Reasoning:
 - Free, public, HTTPS, CORS-open.
 - Honors `Last-Modified` / `ETag` (Transitous's fetcher uses both).
 - Same hosting pattern your current `data/<id>/*.json` already uses.
@@ -242,7 +242,7 @@ nothing in `apps/legacy/`.
 
 | Today | Replacement |
 |---|---|
-| `agencies.ts` (fetches `data/agency.json`) | `feeds.ts` (fetches `feeds.json` from `releases-v2`); exposes `Feed[]` with `bbox`, `realtime` URLs, `files.sqlite_gz` |
+| `agencies.ts` (fetches `data/agency.json`) | `feeds.ts` (fetches `feeds.json` from `binaries`); exposes `Feed[]` with `bbox`, `realtime` URLs, `files.sqlite_gz` |
 | `AGENCIES_WITH_SQLITE = new Set([2])` hardcode | Removed — `hasSqlite` is now `feed.files.sqlite_gz != null` directly (always true; entries without SQLite simply aren't in `feeds.json`) |
 | `gtfs/repo.ts` `setAgency(agencyId: number)` | `setFeed(feedId: string)` |
 | `gtfs/types.ts` `Agency` | `Feed` (broader shape — see §7) |
@@ -253,7 +253,7 @@ nothing in `apps/legacy/`.
   become `seedUrlFor(feed: Feed)` etc., reading
   `feed.files.sqlite_gz` directly.
 - The hardcoded special-case for `agencyId === 2` (the dev `/dev-data/` path)
-  is dropped — `feeds.json`'s `releases-v2` URL becomes the single source for
+  is dropped — `feeds.json`'s `binaries` URL becomes the single source for
   every feed including Cluj (no more `apps/web/static/dev-data/`).
 - Stays agency-parameterized — switching feeds = close current db, seed new
   OPFS file `/<feed-id>.sqlite3`, open.
@@ -282,12 +282,24 @@ when `userPrefs.feedId == null` and we have a GPS fix.
 
 ### 9.6 New worker for live data (Phase 5 starts here)
 
-- `apps/web/src/lib/workers/live.worker.ts` — polls `feed.realtime.*` URLs
-  every 30 s, decodes GTFS-RT via `gtfs-realtime-bindings` (which we
-  already have installed), pushes vehicle / alert updates through Comlink.
+- `apps/web/src/lib/workers/live.worker.ts` — polls `feed.realtime.*` URLs,
+  decodes GTFS-RT via `gtfs-realtime-bindings` (already installed), pushes
+  vehicle / alert updates through Comlink.
+- **Recommended poll cadence: every 15–30 s.** Validated empirically
+  against `cluj-rt-feed.gtfs.ro/vehiclePositions` (2026-06-26):
+  - Server regenerates the feed exactly every **10 s** (header
+    `timestamp` advances 10 s per sample).
+  - Per-vehicle AVL pings arrive every **~1–2 min** upstream (27% of
+    vehicles got a newer timestamp within a 60 s window).
+  - Polling faster than 10 s gets you the same bytes; slower than 30 s
+    makes ghost UI lag behind reality.
+  - Vehicle freshness: median 60–110 s, p90 200–260 s. ~10% long-tail
+    (parked / transponder issues) — must be handled by the reconciler
+    (move into `ghost` after > 5 min of staleness).
 - **CORS workaround**: a Netlify Edge Function at `/rt/[feed]/[endpoint]`
-  proxies the upstream RT URL with a 5–10 s cache. Lives in `apps/web/`
-  edge config; same-origin to the app, ~10 lines.
+  proxies the upstream RT URL with a 5–10 s cache (matching server
+  regen). Lives in `apps/web/` edge config; same-origin to the app,
+  ~10 lines.
 
 ### 9.7 Header status dots
 
@@ -301,7 +313,7 @@ when `userPrefs.feedId == null` and we have a GPS fix.
 | Step | Where | Done in |
 |---|---|---|
 | 1. Refactor `neary-gtfs` to this layout, drop Tranzy | `ciotlosm/neary-gtfs` branch `refactor/feeds-from-transitous` | Out-of-band |
-| 2. First `releases-v2` publish with just `ctp-cluj` + `Bucuresti-Ilfov` (proof of multi-feed) | `ciotlosm/neary-gtfs` | Out-of-band |
+| 2. First `binaries` publish with just `ctp-cluj` + `Bucuresti-Ilfov` (proof of multi-feed) | `ciotlosm/neary-gtfs` | Out-of-band |
 | 3. Open Transitous PR adding `Cluj-Napoca-CTP` to `ro.json` | `public-transport/transitous` | Out-of-band, after #2 stable |
 | 4. v2 app: swap `agencies.ts` → `feeds.ts`, `agencyId` → `feedId`, drop `apiKey` | This repo, `rebuild/v2-svelte-sqlite` (or a child branch) | Phase 3.5 — small commit |
 | 5. v2 app: GPS-based feed auto-pick | Same | Same commit |
@@ -311,7 +323,7 @@ when `userPrefs.feedId == null` and we have a GPS fix.
 Until step 1+2 are live, the v2 app keeps using the dev-only
 `apps/web/static/dev-data/agency-2.sqlite3.gz` we generate from
 `scripts/build-sqlite`. The migration to `feeds.json` is one well-scoped
-commit when the new `releases-v2` branch is publishing.
+commit when the new `binaries` branch is publishing.
 
 ## 11. Open items
 
@@ -326,7 +338,7 @@ commit when the new `releases-v2` branch is publishing.
   is one-line edits to `countries.json` plus disk space for more SQLite
   blobs. We grow this once neary v2 has Romanian users actually trying
   to use it abroad.
-- **Force-push vs append** to `releases-v2`: I'd start with appending
+- **Force-push vs append** to `binaries`: I'd start with appending
   commits (clean diff history per build); switch to force-push later if
   the branch gets too large.
 
@@ -335,7 +347,7 @@ commit when the new `releases-v2` branch is publishing.
 ## Appendix: example flow for the v2 app's first user
 
 1. User installs the PWA, lands on `/`.
-2. App fetches `https://raw.githubusercontent.com/ciotlosm/neary-gtfs/releases-v2/outputs/feeds.json`.
+2. App fetches `https://raw.githubusercontent.com/ciotlosm/neary-gtfs/binaries/outputs/feeds.json`.
 3. App requests GPS (the location dot turns yellow then green).
 4. App's `pickFeed()` finds `ctp-cluj`'s bbox contains the user → sets
    `userPrefs.feedId = "ctp-cluj"` automatically.

@@ -245,7 +245,7 @@ Commits: `60d167e` · `7f0a610`
 - `/data-test` route exercises the full pipeline end-to-end.
 - **Outstanding (blocked on neary-gtfs work)**: pipeline refactor described
   in [neary-gtfs-plan.md](neary-gtfs-plan.md). v2 app keeps using the
-  dev-only `agency-2.sqlite3.gz` until that branch's `releases-v2`
+  dev-only `agency-2.sqlite3.gz` until that branch's `binaries`
   publishes the new `feeds.json` + SQLite blobs.
 
 ### Phase 3 — App shell + status system · ✓ done
