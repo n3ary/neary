@@ -9,7 +9,7 @@
   doesn't appear until you've at least visited /).
 -->
 <script lang="ts">
-  import { onMount } from 'svelte';
+  import { onMount, untrack } from 'svelte';
   import { goto } from '$app/navigation';
   import { Bus, MapPin, Settings } from 'lucide-svelte';
   import {
@@ -71,16 +71,23 @@
   // card — the StatusBar already exists for cross-cutting loading info
   // (per plan §4) and the schedule-bind effect in +layout.svelte uses
   // the same channel. KISS / DRY.
+  //
+  // `untrack` is required around the bus calls because `push` reads
+  // `entries` (findIndex for dedupe), so without it the effect would
+  // re-run on every push and loop infinitely — effect_update_depth.
   $effect(() => {
-    if (gpsState === 'pending') {
-      statusBus.push({
-        id: 'gps-pending',
-        kind: 'loading',
-        message: 'Determining your location…',
-      });
-    } else {
-      statusBus.dismiss('gps-pending');
-    }
+    const pending = gpsState === 'pending';
+    untrack(() => {
+      if (pending) {
+        statusBus.push({
+          id: 'gps-pending',
+          kind: 'loading',
+          message: 'Determining your location…',
+        });
+      } else {
+        statusBus.dismiss('gps-pending');
+      }
+    });
   });
 
   // Tick once a minute so ETAs/buckets refresh without re-querying SQLite.
