@@ -479,14 +479,16 @@
 </div>
 
 <style>
-  /* Floor: the map card always reserves ~60 % of small-viewport
-     height even when the flex chain hands it none. On bigger
-     viewports the flex-1 above wins and the map fills more.
-     `:global` because the class is forwarded into the <Card>
-     child component's root, where Svelte's scoped selector
-     hash never lands. */
+  /* The flex chain (main flex-col → page flex-1 → Stack flex-1 →
+     Card flex-1) should fill the map card to the available
+     viewport, but in practice some browsers don't propagate
+     flex-grow through nested grandchildren reliably. We use an
+     explicit `calc(100svh − fixed-offset)` floor as the source
+     of truth instead. The offset accounts for: app header bar
+     (~3.5rem), in-page header Card + its margin (~4rem), page
+     padding (~1.5rem), bottom navigation (~5rem). */
   :global(.neary-map-card) {
-    min-height: 60svh;
+    min-height: calc(100svh - 14rem);
   }
   .neary-map {
     width: 100%;
@@ -494,7 +496,7 @@
     min-height: inherit;
   }
   /* Floor for tiny viewports (e.g. landscape phone): the map gets
-     a usable minimum even if flex math would otherwise hand it
+     a usable minimum even if the calc would otherwise hand it
      near-zero height. */
   @media (max-height: 480px) {
     :global(.neary-map-card) {
