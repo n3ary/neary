@@ -24,7 +24,7 @@
   import { onDestroy, onMount } from 'svelte';
   import { goto } from '$app/navigation';
   import { page } from '$app/state';
-  import { ArrowRightLeft, Moon } from 'lucide-svelte';
+  import { ArrowRightLeft, Maximize2, Minus, Moon, Plus } from 'lucide-svelte';
   import {
     BackButton, Card, CardContent, Chip, IconButton, NoFeedState, RouteBadge, Spinner,
     Stack, Typography,
@@ -246,9 +246,12 @@
     goto(`/map/route/${routeId}_${otherDir}`, { replaceState: true });
   }
 
-  // Fit-to-route helper used by the on-map Leaflet control (see init
-  // effect below). Native zoom is handled by Leaflet's built-in
-  // `L.control.zoom`, which we re-enabled via `zoomControl: true`.
+  // Map control wrappers — thin closures over Leaflet's imperative
+  // API. Rendered as a styled IconButton overlay in the top-right of
+  // the map card (see markup below), not as Leaflet's native
+  // `leaflet-bar` controls (those don't match the app's chrome).
+  function zoomIn() { mapInstance?.zoomIn(); }
+  function zoomOut() { mapInstance?.zoomOut(); }
   function fitToRoute() {
     if (!mapInstance || !shapeLayer) return;
     mapInstance.fitBounds(shapeLayer.getBounds(), {
@@ -309,37 +312,12 @@
     const doInit = () => {
       try {
         mapInstance = Lref.map(el, {
-          zoomControl: true,
+          zoomControl: false,
           attributionControl: true,
           center: [46.77, 23.6],
           zoom: 13,
         });
         (window as unknown as { __nearyMap?: import('leaflet').Map }).__nearyMap = mapInstance;
-        // Custom 'fit route to view' control, paired with the
-        // built-in zoom buttons in the top-left bar. Plain Leaflet
-        // control — no Svelte reactivity needed since the closure
-        // captures the page-scoped `fitToRoute()` which already
-        // reads the latest mapInstance + shapeLayer.
-        const FitControl = Lref.Control.extend({
-          options: { position: 'topleft' },
-          onAdd() {
-            const bar = Lref.DomUtil.create('div', 'leaflet-bar leaflet-control');
-            const btn = Lref.DomUtil.create('a', '', bar) as HTMLAnchorElement;
-            btn.href = '#';
-            btn.title = 'Fit route to view';
-            btn.setAttribute('role', 'button');
-            btn.setAttribute('aria-label', 'Fit route to view');
-            btn.innerHTML =
-              '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:middle;"><polyline points="15 3 21 3 21 9"/><polyline points="9 21 3 21 3 15"/><line x1="21" y1="3" x2="14" y2="10"/><line x1="3" y1="21" x2="10" y2="14"/></svg>';
-            Lref.DomEvent.disableClickPropagation(bar);
-            Lref.DomEvent.on(btn, 'click', (e) => {
-              Lref.DomEvent.preventDefault(e);
-              fitToRoute();
-            });
-            return bar;
-          },
-        });
-        new FitControl().addTo(mapInstance);
         Lref.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
           maxZoom: 19,
           attribution: '© OpenStreetMap contributors',
@@ -714,6 +692,36 @@
            viewport edges. Single rule, no flex chain to debug. -->
       <Card class="overflow-hidden neary-map-card">
         <div bind:this={mapEl} class="neary-map"></div>
+        <!-- Viewport controls overlaid on the map, top-right.
+             Same IconButton styling the rest of the app uses, with a
+             surface background + shadow so they read against any
+             map tile. Sits above Leaflet's panes via z-index. -->
+        <div class="neary-map-controls">
+          <IconButton
+            size="small"
+            aria-label="Zoom in"
+            class="bg-[color:var(--color-surface-elevated)] text-[color:var(--color-fg)] shadow-md hover:bg-[color:var(--color-border)]/60"
+            onclick={zoomIn}
+          >
+            <Plus size={16} />
+          </IconButton>
+          <IconButton
+            size="small"
+            aria-label="Zoom out"
+            class="bg-[color:var(--color-surface-elevated)] text-[color:var(--color-fg)] shadow-md hover:bg-[color:var(--color-border)]/60"
+            onclick={zoomOut}
+          >
+            <Minus size={16} />
+          </IconButton>
+          <IconButton
+            size="small"
+            aria-label="Fit route to view"
+            class="bg-[color:var(--color-surface-elevated)] text-[color:var(--color-fg)] shadow-md hover:bg-[color:var(--color-border)]/60"
+            onclick={fitToRoute}
+          >
+            <Maximize2 size={16} />
+          </IconButton>
+        </div>
       </Card>
     </Stack>
   {/if}
@@ -730,10 +738,24 @@
      bottom navigation. */
   :global(.neary-map-card) {
     height: calc(100svh - 18rem);
+    position: relative;
   }
   .neary-map {
     width: 100%;
     height: 100%;
+  }
+  /* Floating viewport controls in the top-right corner. Above the
+     Leaflet panes (which top out at ~700 for popups) so the buttons
+     are always clickable; rounded shadow matches the app's surface
+     chrome. */
+  .neary-map-controls {
+    position: absolute;
+    top: 0.5rem;
+    right: 0.5rem;
+    z-index: 1000;
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
   }
   /* Floor for tiny viewports (e.g. landscape phone): the map gets
      a usable minimum even if the calc would otherwise hand it
