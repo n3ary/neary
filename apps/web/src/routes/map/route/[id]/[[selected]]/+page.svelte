@@ -26,7 +26,7 @@
   import { page } from '$app/state';
   import { ArrowRightLeft, Maximize2, Minus, Moon, Plus } from 'lucide-svelte';
   import {
-    Card, CardContent, Chip, IconButton, NoFeedState, RouteBadge, Spinner,
+    BackButton, Card, CardContent, Chip, IconButton, NoFeedState, RouteBadge, Spinner,
     Stack, Typography,
   } from '$lib/ui';
   import { getGtfsRepo } from '$lib/data/gtfs/repo';
@@ -257,7 +257,9 @@
     if (direction == null) return;
     const otherDir = direction === 0 ? 1 : 0;
     // Selected vehicle isn't on the other direction — drop it.
-    goto(`/map/route/${routeId}_${otherDir}`, { replaceState: false });
+    // replaceState so BackButton skips the swap and returns to the
+    // surface the user came from (see BackButton.svelte).
+    goto(`/map/route/${routeId}_${otherDir}`, { replaceState: true });
   }
 
   // Header zoom controls. Thin wrappers over Leaflet's imperative
@@ -672,6 +674,7 @@
       <Card>
         <CardContent>
           <Stack direction="row" spacing={1.5} align="center" wrap>
+            <BackButton />
             <RouteBadge route={view.route} size="large" isFavorite={isFav} />
             <Stack spacing={0.25} class="flex-1 min-w-0">
               <Stack direction="row" spacing={1} align="center" wrap>

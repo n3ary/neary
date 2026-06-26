@@ -31,7 +31,7 @@
   import { page } from '$app/state';
   import { ArrowRightLeft, ChevronDown, ExternalLink, Moon } from 'lucide-svelte';
   import {
-    Card, CardContent, Chip, IconButton, NoFeedState, RouteBadge, Spinner,
+    BackButton, Card, CardContent, Chip, IconButton, NoFeedState, RouteBadge, Spinner,
     Stack, ToggleGroup, Typography,
   } from '$lib/ui';
   import { getGtfsRepo } from '$lib/data/gtfs/repo';
@@ -338,13 +338,20 @@
   // Build a /schedule/route/... URL from the structured params and
   // navigate. Any null direction collapses to multi-direction mode;
   // 'today' view collapses to the bare URL.
+  //
+  // History rule: navigating WITHIN the same route (tab swap, dir
+  // swap) replaces the current history entry, so the page-level
+  // BackButton walks the user back to wherever they came from
+  // BEFORE entering this schedule view — not through every tab
+  // they touched. Cross-route nav (rare here) pushes a new entry.
   function navigateTo(opts: { routeId?: string; direction?: 0 | 1 | null; view?: View }) {
     const rId = opts.routeId ?? routeId;
     const dir = opts.direction !== undefined ? opts.direction : direction;
     const v = opts.view ?? view;
     const id = dir == null ? rId : `${rId}_${dir}`;
     const path = v === 'today' || dir == null ? `/schedule/route/${id}` : `/schedule/route/${id}/${v}`;
-    goto(path, { replaceState: false });
+    const sameRoute = rId === routeId;
+    goto(path, { replaceState: sameRoute });
   }
   function swapDirection() {
     if (direction == null) return;
@@ -483,6 +490,7 @@
       <Card>
         <CardContent>
           <Stack direction="row" spacing={1.5} align="center" wrap>
+            <BackButton />
             <RouteBadge route={route} size="large" isFavorite={isFav} />
             <Stack spacing={0.25} class="flex-1 min-w-0">
               <Stack direction="row" spacing={1} align="center" wrap>

@@ -9,6 +9,7 @@ export { default as Chip } from './Chip.svelte';
 export { default as Avatar } from './Avatar.svelte';
 export { default as Button } from './Button.svelte';
 export { default as IconButton } from './IconButton.svelte';
+export { default as BackButton } from './BackButton.svelte';
 export { default as Spinner } from './Spinner.svelte';
 export { default as StatusBar } from './StatusBar.svelte';
 export { default as BottomNavigation } from './BottomNavigation.svelte';
