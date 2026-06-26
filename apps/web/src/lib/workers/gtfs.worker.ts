@@ -331,6 +331,18 @@ const api: GtfsRepo = {
       checkedSources: [],
     });
   },
+
+  async getStationBoardsNear(lat, lon, radiusMeters, maxStations, nowMs, windowMinutes) {
+    // Single-round-trip variant of getStopsNear + N×getStationArrivals.
+    // Worker does the fan-out so the UI sees one Promise instead of N+1.
+    const stops = await api.getStopsNear(lat, lon, radiusMeters, maxStations);
+    const boards: { stop: StopWithDistance; vehicles: Vehicle[] }[] = [];
+    for (const stop of stops) {
+      const vehicles = await api.getStationArrivals(stop.id, nowMs, windowMinutes);
+      boards.push({ stop, vehicles });
+    }
+    return boards;
+  },
 };
 
 // ---------------------------------------------------------------------------

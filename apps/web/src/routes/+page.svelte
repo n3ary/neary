@@ -17,107 +17,60 @@
   } from '$lib/ui';
   import { getGtfsRepo } from '$lib/data/gtfs/repo';
   import type { StopWithDistance } from '$lib/data/gtfs/types';
-  import {
-    bucketOf, compareForBoard, filterForStationView, type ArrivalBucket,
-  } from '$lib/domain/buckets';
-  import type { Route, Vehicle } from '$lib/domain/types';
+  import { assembleStationBoard, dedupRoutes } from '$lib/domain/stationBoard';
+  import type { Vehicle } from '$lib/domain/types';
   import { locationStore } from '$lib/stores/locationStore.svelte';
   import { userPrefs } from '$lib/stores/userPrefs.svelte';
 
-  // Demo fallback location when GPS is unavailable or denied: Piața Mihai
-  // Viteazul, central Cluj. Lets the page work in dev / offline / before
-  // the location prompt is accepted.
+  // Demo fallback location when GPS is unavailable / not yet granted:
+  // Piața Mihai Viteazul, central Cluj. Lets the page work in dev /
+  // offline / before the location prompt is accepted.
   const FALLBACK_LAT = 46.7712;
   const FALLBACK_LON = 23.6236;
   const SEARCH_RADIUS_M = 500;
   const MAX_STATIONS = 8;
   const ARRIVALS_WINDOW_MIN = 60;
 
-  onMount(() => {
-    locationStore.start();
-  });
+  onMount(() => locationStore.start());
 
   const hasGps = $derived(locationStore.position != null);
-  const queryLat = $derived(locationStore.position?.coords.latitude ?? FALLBACK_LAT);
-  const queryLon = $derived(locationStore.position?.coords.longitude ?? FALLBACK_LON);
+  // Round to 4 decimals so GPS jitter doesn't refire the SQLite query.
+  const queryLat = $derived(
+    Math.round((locationStore.position?.coords.latitude ?? FALLBACK_LAT) * 1e4) / 1e4,
+  );
+  const queryLon = $derived(
+    Math.round((locationStore.position?.coords.longitude ?? FALLBACK_LON) * 1e4) / 1e4,
+  );
 
-  let stops = $state<StopWithDistance[] | null>(null);
-  let stopsError = $state<string | null>(null);
-  let arrivalsByStop = $state<Record<number, Vehicle[]>>({});
+  let boards = $state<{ stop: StopWithDistance; vehicles: Vehicle[] }[] | null>(null);
+  let boardsError = $state<string | null>(null);
   let expandedStopId = $state<number | null>(null);
 
-  // Re-tick every minute so ETAs and buckets stay current without
-  // re-fetching from SQLite.
+  // Tick once a minute so ETAs/buckets refresh without re-querying SQLite.
   let nowMs = $state(Date.now());
   $effect(() => {
     const t = setInterval(() => (nowMs = Date.now()), 30_000);
     return () => clearInterval(t);
   });
 
-  // Round the query lat/lon so jitter doesn't refire the effect.
-  const queryLatRounded = $derived(Math.round(queryLat * 1e4) / 1e4);
-  const queryLonRounded = $derived(Math.round(queryLon * 1e4) / 1e4);
-
   $effect(() => {
     const fid = userPrefs.feedId;
     if (!fid) return;
-    const lat = queryLatRounded;
-    const lon = queryLonRounded;
+    const lat = queryLat;
+    const lon = queryLon;
     (async () => {
       try {
         const repo = getGtfsRepo();
         await repo.ready();
-        const ss = await repo.getStopsNear(lat, lon, SEARCH_RADIUS_M, MAX_STATIONS);
-        stops = ss;
-        stopsError = null;
-        const next: Record<number, Vehicle[]> = {};
-        for (const s of ss) {
-          next[s.id] = await repo.getStationArrivals(s.id, Date.now(), ARRIVALS_WINDOW_MIN);
-        }
-        arrivalsByStop = next;
+        boards = await repo.getStationBoardsNear(
+          lat, lon, SEARCH_RADIUS_M, MAX_STATIONS, Date.now(), ARRIVALS_WINDOW_MIN,
+        );
+        boardsError = null;
       } catch (e) {
-        stopsError = e instanceof Error ? e.message : String(e);
+        boardsError = e instanceof Error ? e.message : String(e);
       }
     })();
   });
-
-  function nowMinSinceMidnight(ts: number) {
-    const d = new Date(ts);
-    return d.getHours() * 60 + d.getMinutes();
-  }
-
-  type ArrivalRow = { vehicle: Vehicle; bucket: ArrivalBucket; etaMinutes: number };
-
-  function processArrivals(vehicles: Vehicle[]): ArrivalRow[] {
-    const nowMin = nowMinSinceMidnight(nowMs);
-    const items: ArrivalRow[] = vehicles.map((v) => ({
-      vehicle: v,
-      bucket: bucketOf(v.kind, {
-        etaMinutes: v.eta?.minutes ?? 0,
-        distanceToStopMeters: 0,
-        scheduledArrivalMin: v.schedule?.scheduledArrival,
-        scheduledDepartureMin: v.schedule?.scheduledDeparture,
-        nowMin,
-      }),
-      etaMinutes: v.eta?.minutes ?? 0,
-    }));
-    return filterForStationView(items, {
-      showDepartedVehicles: userPrefs.showDepartedVehicles,
-      showDropOffOnly: userPrefs.showDropOffOnly,
-      showScheduleOnlyVehicles: userPrefs.showScheduleOnlyVehicles,
-    }).sort(compareForBoard);
-  }
-
-  function routesAtStop(vehicles: Vehicle[]): Route[] {
-    const map = new Map<number, Route>();
-    for (const v of vehicles) map.set(v.route.id, v.route);
-    return Array.from(map.values()).sort((a, b) => {
-      const an = Number(a.shortName);
-      const bn = Number(b.shortName);
-      if (Number.isFinite(an) && Number.isFinite(bn) && an !== bn) return an - bn;
-      return a.shortName.localeCompare(b.shortName);
-    });
-  }
 </script>
 
 <div class="mx-auto max-w-3xl px-4 py-6">
@@ -141,16 +94,16 @@
         </Stack>
       </CardContent>
     </Card>
-  {:else if stopsError}
+  {:else if boardsError}
     <Card>
       <CardContent>
         <Stack spacing={1}>
           <Typography variant="h6" class="text-[color:var(--color-danger)]">Failed to load nearby stations</Typography>
-          <Typography variant="caption">{stopsError}</Typography>
+          <Typography variant="caption">{boardsError}</Typography>
         </Stack>
       </CardContent>
     </Card>
-  {:else if !stops}
+  {:else if !boards}
     <Card>
       <CardContent>
         <Stack direction="row" spacing={1} align="center">
@@ -159,7 +112,7 @@
         </Stack>
       </CardContent>
     </Card>
-  {:else if stops.length === 0}
+  {:else if boards.length === 0}
     <Card>
       <CardContent>
         <Stack spacing={1}>
@@ -181,13 +134,12 @@
           </Stack>
         </Box>
       {/if}
-      {#each stops as stop (stop.id)}
-        {@const allArrivals = arrivalsByStop[stop.id] ?? []}
-        {@const processed = processArrivals(allArrivals)}
+      {#each boards as { stop, vehicles } (stop.id)}
+        {@const board = assembleStationBoard(vehicles, userPrefs, nowMs)}
         <StationCard
           station={{ id: stop.id, name: stop.name, distance: stop.distance, lat: stop.lat, lon: stop.lon }}
-          routes={routesAtStop(allArrivals)}
-          vehicles={processed.map((p) => p.vehicle)}
+          routes={dedupRoutes(vehicles)}
+          vehicles={board.map((r) => r.vehicle)}
           expanded={expandedStopId === stop.id}
           ontoggle={() => (expandedStopId = expandedStopId === stop.id ? null : stop.id)}
         />

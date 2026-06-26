@@ -79,4 +79,19 @@ export interface GtfsRepo {
     nowMs: number,
     windowMinutes: number,
   ): Promise<Vehicle[]>;
+
+  /**
+   * Stops near (lat, lon) with their arrivals fetched in one round-trip.
+   * Replaces N+1 calls to getStopsNear + getStationArrivals from the UI.
+   * Each entry is `{ stop, vehicles }`; consumers run
+   * `assembleStationBoard(vehicles, prefs, nowMs)` to bucket + filter + sort.
+   */
+  getStationBoardsNear(
+    lat: number,
+    lon: number,
+    radiusMeters: number,
+    maxStations: number,
+    nowMs: number,
+    windowMinutes: number,
+  ): Promise<{ stop: StopWithDistance; vehicles: Vehicle[] }[]>;
 }

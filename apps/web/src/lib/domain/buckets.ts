@@ -89,8 +89,11 @@ export function bucketOf(
     return 'off-route';
   }
 
-  // 2. At station — physical proximity (with speed=0 if live) OR scheduled
-  //    dwell window (for predicted/scheduled).
+  // 2. At station — physical proximity is only meaningful for live vehicles
+  //    (we trust GPS). For predicted/scheduled we instead use the schedule's
+  //    own arrival ≤ now ≤ departure window. Otherwise a scheduled future
+  //    arrival with no real distance (we pass 0 by default) would always
+  //    fall into the at-stop branch.
   const inDwellWindow =
     scheduledArrivalMin != null &&
     scheduledDepartureMin != null &&
@@ -99,7 +102,7 @@ export function bucketOf(
 
   const physicallyAtStation = distanceToStopMeters <= PROXIMITY_AT_STATION_M;
 
-  if (physicallyAtStation || (!isLive && inDwellWindow)) {
+  if ((isLive && physicallyAtStation) || (!isLive && inDwellWindow)) {
     // Split the at-stop period into arriving / at-station / departing using
     // the scheduled dwell gap and any live motion signal.
     const dwellMin =
