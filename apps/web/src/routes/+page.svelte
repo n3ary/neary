@@ -18,8 +18,10 @@
   import { getGtfsRepo } from '$lib/data/gtfs/repo';
   import type { StopWithDistance } from '$lib/data/gtfs/types';
   import { assembleStationBoard } from '$lib/domain/stationBoard';
+  import { reconcileWithLive } from '$lib/domain/reconcile';
   import type { Vehicle } from '$lib/domain/types';
   import { feedsStore } from '$lib/stores/feedsStore.svelte';
+  import { liveVehiclesStore } from '$lib/stores/liveVehiclesStore.svelte';
   import { locationStore } from '$lib/stores/locationStore.svelte';
   import { refreshBus } from '$lib/stores/refreshBus.svelte';
   import { statusBus } from '$lib/stores/statusBus.svelte';
@@ -194,7 +196,9 @@
       {/if}
       {@const rawTotal = boards.reduce((n, b) => n + b.vehicles.length, 0)}
       {@const filteredTotal = boards.reduce(
-        (n, b) => n + assembleStationBoard(b.vehicles, userPrefs, nowMs).length, 0)}
+        (n, b) => n + assembleStationBoard(
+          reconcileWithLive(b.vehicles, liveVehiclesStore.observations).vehicles,
+          userPrefs, nowMs).length, 0)}
       {#if rawTotal === 0}
         <Box class="px-2 py-1 text-xs text-[color:var(--color-warning)]">
           No upcoming vehicles found in any of the {boards.length} nearby
@@ -212,7 +216,8 @@
         </Box>
       {/if}
       {#each boards as { stop, vehicles } (stop.id)}
-        {@const board = assembleStationBoard(vehicles, userPrefs, nowMs)}
+        {@const reconciled = reconcileWithLive(vehicles, liveVehiclesStore.observations).vehicles}
+        {@const board = assembleStationBoard(reconciled, userPrefs, nowMs)}
         <StationCard
           station={{ id: stop.id, name: stop.name, distance: stop.distance, lat: stop.lat, lon: stop.lon }}
           rows={board}
