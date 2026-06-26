@@ -58,15 +58,20 @@
     'aria-label': ariaLabel,
   }: Props = $props();
 
-  // Neutral mode: favorites keep their route color (so they pop in a
-  // long line-up of buses), everything else flattens to a single
-  // surface-muted look. Foreground tracks bg for contrast.
-  const useRouteColor = $derived(colorMode === 'route' || isFavorite);
+  // In 'route' mode the badge always paints itself with the route's
+  // own color. In 'neutral' mode every line flattens to a uniform
+  // surface so a long line-up doesn't read like a clown car;
+  // favorites then call attention to themselves with red text (and
+  // the heart pip below) instead of a re-introduced background
+  // color, which would defeat the point of the neutral mode.
+  const useRouteColor = $derived(colorMode === 'route');
   const bg = $derived(useRouteColor ? route.color : 'var(--color-surface-elevated)');
   const fg = $derived(
     useRouteColor
       ? (route.textColor ?? pickContrastingText(route.color))
-      : 'var(--color-fg)',
+      : isFavorite
+        ? 'var(--color-danger)'
+        : 'var(--color-fg)',
   );
 
   const SIZE: Record<Size, string> = {
