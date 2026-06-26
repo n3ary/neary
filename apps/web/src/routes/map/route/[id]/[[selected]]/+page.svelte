@@ -207,10 +207,12 @@
   // below would never know L changed from null to the module and
   // would stay stuck on its early-return.
   let L = $state<LeafletNS | null>(null);
-  // mapInstance + the layer refs are mutated imperatively by Leaflet
-  // and read only inside effects that already track mapEl / view, so
-  // they don't need to be reactive themselves.
-  let mapInstance: import('leaflet').Map | null = null;
+  // mapInstance is $state so the shape / stops / vehicles render
+  // effects below re-run once the deferred init (gated by a
+  // ResizeObserver waiting for non-zero container size) finally
+  // assigns it. Layer refs stay plain since they're only ever
+  // touched from effects that already track mapInstance + view.
+  let mapInstance = $state<import('leaflet').Map | null>(null);
   let shapeLayer: import('leaflet').Polyline | null = null;
   let stopsLayer: import('leaflet').LayerGroup | null = null;
   let vehiclesLayer: import('leaflet').LayerGroup | null = null;
