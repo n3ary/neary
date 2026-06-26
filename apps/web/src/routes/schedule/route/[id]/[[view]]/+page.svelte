@@ -36,6 +36,7 @@
   } from '$lib/ui';
   import { getGtfsRepo } from '$lib/data/gtfs/repo';
   import { useOtherDirectionExists } from '$lib/data/gtfs/otherDirectionExists.svelte';
+  import { parseRouteIdWithDirection } from '$lib/data/gtfs/parseRouteIdWithDirection';
   import type { Route } from '$lib/domain/types';
   import {
     formatHHMM, formatRelativeMin, isNightRoute, vehicleTypeLabel,
@@ -62,11 +63,7 @@
   // Anything else (or no suffix) means multi-direction, so a malformed
   // URL never half-renders a single-direction view.
   const idSegment = $derived(page.params.id ?? '');
-  const parsed = $derived.by<{ routeId: string; direction: 0 | 1 | null }>(() => {
-    const m = idSegment.match(/^(.+)_([01])$/);
-    if (m) return { routeId: m[1], direction: Number(m[2]) as 0 | 1 };
-    return { routeId: idSegment, direction: null };
-  });
+  const parsed = $derived(parseRouteIdWithDirection(idSegment));
   const routeId = $derived(parsed.routeId);
   const direction = $derived(parsed.direction);
   const routeIdValid = $derived(routeId.length > 0);

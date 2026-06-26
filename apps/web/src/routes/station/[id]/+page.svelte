@@ -15,6 +15,8 @@
   import { getGtfsRepo } from '$lib/data/gtfs/repo';
   import type { StopWithDistance } from '$lib/data/gtfs/types';
   import { assembleLiveBoard, routesFromVehicles } from '$lib/domain/stationBoard';
+  import { DEFAULT_CONFIG } from '$lib/domain/config';
+  import { tripIdsFromVehicles } from '$lib/domain/tripIdsFromVehicles';
   import type { Vehicle } from '$lib/domain/types';
   import { feedsStore } from '$lib/stores/feedsStore.svelte';
   import { liveVehiclesStore } from '$lib/stores/liveVehiclesStore.svelte';
@@ -23,9 +25,10 @@
   import { refreshBus } from '$lib/stores/refreshBus.svelte';
   import { userPrefs } from '$lib/stores/userPrefs.svelte';
 
-  // Cover the rest of the GTFS service day from any wall-clock time;
-  // matches the home view's window. See /+page.svelte for rationale.
-  const ARRIVALS_WINDOW_MIN = 18 * 60;
+  // Arrivals window owned by DEFAULT_CONFIG (shared with the
+  // Stations / home view). 18 h from any wall-clock time covers
+  // the rest of the GTFS service day.
+  const ARRIVALS_WINDOW_MIN = DEFAULT_CONFIG.arrivalsWindowMin;
 
   const stopId = $derived(Number(page.params.id));
   const stopIdValid = $derived(Number.isFinite(stopId) && stopId > 0);
@@ -62,9 +65,7 @@
           routeFilter = null; // reset on every refresh
           // Fetch shapes for this stop's trips so the composer can
           // run the GPS-derived ETA predictor.
-          const tripIds = result.vehicles
-            .map((v) => v.schedule?.tripId)
-            .filter((x): x is string => !!x);
+          const tripIds = tripIdsFromVehicles(result.vehicles);
           shapes = tripIds.length > 0 ? await repo.getShapesForTrips(tripIds) : {};
         }
       } catch (e) {

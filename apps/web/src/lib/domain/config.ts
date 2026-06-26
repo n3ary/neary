@@ -49,6 +49,15 @@ export interface NearyConfig {
    *  `nearbyRadiusM`. The selector then surfaces the closest stop
    *  within this radius that carries a favorited route. */
   favoriteFallbackRadiusM: number;
+
+  // ── Arrivals window ───────────────────────────────────────────────
+  /** How far into the future the Stations and Station-detail views
+   *  ask the worker for arrivals. 18 h from any wall-clock time
+   *  reaches the typical 04:00 GTFS end-of-service even at 10:00
+   *  AM, so the per-station list never empties out mid-day for
+   *  arbitrary horizon reasons. StationCard caps display to a few
+   *  rows so a generous window is cheap. */
+  arrivalsWindowMin: number;
 }
 
 /** Production defaults. v1 magic numbers ported per spec §7.1. */
@@ -63,4 +72,5 @@ export const DEFAULT_CONFIG: NearyConfig = {
   nearbyRadiusM: 500,
   pairProximityM: 100,
   favoriteFallbackRadiusM: 2000,
+  arrivalsWindowMin: 18 * 60,
 };

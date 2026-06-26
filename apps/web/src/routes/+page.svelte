@@ -19,6 +19,7 @@
   import { assembleLiveBoard, routesFromVehicles } from '$lib/domain/stationBoard';
   import { selectBoardsForView } from '$lib/domain/stationSelection';
   import { DEFAULT_CONFIG } from '$lib/domain/config';
+  import { tripIdsFromVehicles } from '$lib/domain/tripIdsFromVehicles';
   import type { Vehicle } from '$lib/domain/types';
   import { feedsStore } from '$lib/stores/feedsStore.svelte';
   import { liveVehiclesStore } from '$lib/stores/liveVehiclesStore.svelte';
@@ -43,13 +44,11 @@
     DEFAULT_CONFIG.favoriteFallbackRadiusM,
   );
   const MAX_STATIONS = 25;
-  // Cover the rest of the GTFS service day from any wall-clock time:
-  // 18 hours from now reaches past the typical 04:00 end-of-service
-  // even at 10:00 in the morning, and the StationCard's 5-row cap
-  // (lib/domain/stationBoard.ts) trims any overshoot for free. Worth
-  // it so the nearby list shows whatever is still to come instead of
-  // an arbitrary 4-hour horizon that empties out late in the evening.
-  const ARRIVALS_WINDOW_MIN = 18 * 60;
+  // Arrivals window owned by DEFAULT_CONFIG (shared with the
+  // Station-detail view) — 18 h from any wall-clock time covers the
+  // rest of the GTFS service day; StationCard caps display rows so
+  // overshoot is free.
+  const ARRIVALS_WINDOW_MIN = DEFAULT_CONFIG.arrivalsWindowMin;
 
   onMount(() => locationStore.start());
 
@@ -158,9 +157,7 @@
         // composer uses them to derive GPS-based ETAs for reconciled
         // rows at intermediate stops. Worker caches by shape_id so
         // re-fetching across renders is O(1).
-        const tripIds = selection.boards.flatMap(
-          (b) => b.vehicles.map((v) => v.schedule?.tripId).filter((x): x is string => !!x),
-        );
+        const tripIds = selection.boards.flatMap((b) => tripIdsFromVehicles(b.vehicles));
         if (tripIds.length > 0) {
           shapes = await repo.getShapesForTrips(tripIds);
         } else {

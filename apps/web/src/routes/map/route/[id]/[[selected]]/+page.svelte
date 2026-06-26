@@ -31,6 +31,7 @@
   } from '$lib/ui';
   import { getGtfsRepo } from '$lib/data/gtfs/repo';
   import { useOtherDirectionExists } from '$lib/data/gtfs/otherDirectionExists.svelte';
+  import { parseRouteIdWithDirection } from '$lib/data/gtfs/parseRouteIdWithDirection';
   import type { RouteMapView } from '$lib/data/gtfs/types';
   import {
     formatHHMM, isNightRoute, pickContrastingText, vehicleTypeLabel,
@@ -52,13 +53,10 @@
   import { userPrefs } from '$lib/stores/userPrefs.svelte';
 
   // ── URL params ──────────────────────────────────────────────────────
-  // Same `[id]_[dir]` convention the schedule view uses.
+  // Same `[id]_[dir]` convention the schedule view uses — parser
+  // shared via lib/data/gtfs/parseRouteIdWithDirection.
   const idSegment = $derived(page.params.id ?? '');
-  const parsed = $derived.by<{ routeId: string; direction: 0 | 1 | null }>(() => {
-    const m = idSegment.match(/^(.+)_([01])$/);
-    if (m) return { routeId: m[1], direction: Number(m[2]) as 0 | 1 };
-    return { routeId: idSegment, direction: null };
-  });
+  const parsed = $derived(parseRouteIdWithDirection(idSegment));
   const routeId = $derived(parsed.routeId);
   const direction = $derived(parsed.direction);
   const selectedTripId = $derived(page.params.selected ?? null);
