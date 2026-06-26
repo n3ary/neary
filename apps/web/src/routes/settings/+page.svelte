@@ -10,7 +10,7 @@
   import { CheckCheck, Locate, Moon, Sun } from 'lucide-svelte';
   import {
     Box, Button, Card, CardContent, Chip, List, ListItem, ListItemText,
-    Spinner, Stack, Switch, TextField, ToggleGroup, Typography,
+    Spinner, Stack, Switch, ToggleGroup, Typography,
   } from '$lib/ui';
   import { feedsStore } from '$lib/stores/feedsStore.svelte';
   import { userPrefs, type Theme } from '$lib/stores/userPrefs.svelte';
@@ -135,22 +135,6 @@
             aria-label="Show recently departed vehicles"
           />
         </Stack>
-      </Stack>
-    </CardContent>
-  </Card>
-
-  <!-- ===== Live tracking ===== -->
-  <Card>
-    <CardContent>
-      <Stack spacing={1.5}>
-        <Typography variant="h6">Live tracking (optional)</Typography>
-        <TextField
-          label="Tranzy API key"
-          placeholder="Paste your API key to enable live vehicle tracking"
-          value={userPrefs.apiKey ?? ''}
-          oninput={(e) => (userPrefs.apiKey = (e.currentTarget as HTMLInputElement).value || null)}
-          helperText="Optional — without it, the app runs in schedule-only mode."
-        />
       </Stack>
     </CardContent>
   </Card>
