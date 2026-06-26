@@ -185,7 +185,7 @@
               </Typography>
               <Stack spacing={0.5}>
                 {#each group.vehicles as vehicle (vehicle.id)}
-                  <VehicleCard {vehicle} />
+                  <VehicleCard {vehicle} bucket={group.bucket} />
                 {/each}
               </Stack>
             </Box>

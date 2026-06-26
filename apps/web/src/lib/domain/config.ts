@@ -19,6 +19,10 @@ export interface NearyConfig {
   offRouteDistanceM: number;
   /** Future ETA threshold separating "arriving" from "incoming". */
   arrivingThresholdMin: number;
+  /** A future ETA at or below this threshold is rendered with the same
+   *  urgency styling as the `arriving` bucket (bold + accent color). Above
+   *  this, the row stays neutral. Spec §3 calls this "imminent". */
+  imminentEtaThresholdMin: number;
   /** A live vehicle at the stop moving faster than this is "departing"
    *  (otherwise it's "at-station"). */
   departingSpeedKmh: number;
@@ -38,6 +42,7 @@ export const DEFAULT_CONFIG: NearyConfig = {
   proximityAtStationM: 50,
   offRouteDistanceM: 200,
   arrivingThresholdMin: 2,
+  imminentEtaThresholdMin: 5,
   departingSpeedKmh: 5,
   minDwellGapMin: 1,
   predictedDepartureGraceMin: 5,

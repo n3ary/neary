@@ -16,25 +16,34 @@
   import { Calendar, CheckCircle2, Clock, Radio } from 'lucide-svelte';
   import type { Vehicle } from '$lib/domain/types';
   import { formatHHMM } from '$lib/domain/types';
+  import type { ArrivalBucket } from '$lib/domain/buckets';
+  import { DEFAULT_CONFIG } from '$lib/domain/config';
   import RouteBadge from './RouteBadge.svelte';
   import { cn } from './cn';
 
   type Props = {
     vehicle: Vehicle;
+    /** Optional station-view bucket. When provided, the ETA text is
+     *  colored: bold green for arriving / at-station / soon-incoming,
+     *  bold red for departing, neutral otherwise. Map / standalone
+     *  contexts omit it and the row stays neutral. */
+    bucket?: ArrivalBucket;
     onclick?: () => void;
     class?: string;
   };
 
-  let { vehicle, onclick, class: className }: Props = $props();
+  let { vehicle, bucket, onclick, class: className }: Props = $props();
 
-  // Per-kind visuals. Keep this in ONE place so adding a new kind is one edit.
-  // See docs/rebuild-v2/vehicles-and-views.md §2 for the source-of-truth table.
+  // Per-kind visuals. Spec §2 visual-variant table. Schedule-only kinds
+  // (`scheduled` and `predicted`) get the same dashed treatment for now —
+  // they only diverge once the live reconciler can promote a `predicted`
+  // run to `reconciled` (Phase 5). No opacity dimming on either.
   const KIND = $derived({
-    corroborated: { border: 'border-solid',  opacity: '',           icon: CheckCircle2, label: 'Corroborated', iconBg: 'bg-[color:var(--color-success)]' },
-    reconciled:   { border: 'border-solid',  opacity: '',           icon: Calendar,     label: 'Reconciled',   iconBg: 'bg-[color:var(--color-success)]' },
-    live:         { border: 'border-solid',  opacity: '',           icon: Radio,        label: 'Live',         iconBg: 'bg-[color:var(--color-success)]' },
-    predicted:    { border: 'border-dashed', opacity: '',           icon: Clock,        label: 'Predicted',    iconBg: 'bg-[color:var(--color-warning)]' },
-    scheduled:    { border: 'border-dotted', opacity: 'opacity-60', icon: Calendar,     label: 'Scheduled',    iconBg: 'bg-[color:var(--color-fg-muted)]' },
+    corroborated: { border: 'border-solid',  icon: CheckCircle2, label: 'Corroborated', iconBg: 'bg-[color:var(--color-success)]' },
+    reconciled:   { border: 'border-solid',  icon: Calendar,     label: 'Reconciled',   iconBg: 'bg-[color:var(--color-success)]' },
+    live:         { border: 'border-solid',  icon: Radio,        label: 'Live',         iconBg: 'bg-[color:var(--color-success)]' },
+    predicted:    { border: 'border-dashed', icon: Clock,        label: 'Predicted',    iconBg: 'bg-[color:var(--color-warning)]' },
+    scheduled:    { border: 'border-dashed', icon: Calendar,     label: 'Scheduled',    iconBg: 'bg-[color:var(--color-fg-muted)]' },
   }[vehicle.kind]);
 
   const KindIcon = $derived(KIND.icon);
@@ -49,6 +58,30 @@
     }
     if (vehicle.schedule) return `Scheduled ${formatHHMM(vehicle.schedule.scheduledDeparture)}`;
     return 'En route';
+  });
+
+  // Color the ETA text by bucket (when provided) so the most important
+  // piece of information on a row — the time — jumps out.
+  //   departing                    → bold red
+  //   at-station / arriving        → bold green (vehicle is here / right here)
+  //   incoming with eta ≤ threshold → bold green (boardable soon)
+  //   incoming with eta > threshold → neutral
+  //   departed / off-route / none  → neutral
+  const etaClass = $derived.by(() => {
+    if (!bucket) return 'text-[color:var(--color-fg-muted)]';
+    if (bucket === 'departing') {
+      return 'font-bold text-[color:var(--color-danger)]';
+    }
+    if (bucket === 'at-station' || bucket === 'arriving') {
+      return 'font-bold text-[color:var(--color-success)]';
+    }
+    if (bucket === 'incoming') {
+      const m = vehicle.eta?.minutes ?? Infinity;
+      return m <= DEFAULT_CONFIG.imminentEtaThresholdMin
+        ? 'font-bold text-[color:var(--color-success)]'
+        : 'text-[color:var(--color-fg-muted)]';
+    }
+    return 'text-[color:var(--color-fg-muted)]';
   });
 
   const headsign = $derived(
@@ -68,7 +101,6 @@
     'flex items-center gap-3 px-3 py-2 border-2 rounded-md transition-colors',
     'border-[color:var(--color-border)]',
     KIND.border,
-    KIND.opacity,
     interactive && 'cursor-pointer hover:bg-[color:var(--color-border)]/30',
     'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--color-primary)]',
     className,
@@ -78,7 +110,7 @@
 
   <div class="flex-1 min-w-0">
     <div class="text-sm font-medium truncate">{headsign}</div>
-    <div class="text-xs text-[color:var(--color-fg-muted)] truncate">{secondaryLine}</div>
+    <div class={cn('text-xs truncate', etaClass)}>{secondaryLine}</div>
   </div>
 
   {#if vehicle.dropOffOnly}

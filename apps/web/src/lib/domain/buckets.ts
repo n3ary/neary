@@ -44,7 +44,7 @@ export const BUCKET_LABEL: Record<ArrivalBucket, string> = {
   'at-station': 'At station',
   arriving: 'Arriving',
   incoming: 'Incoming',
-  departed: 'Recently departed',
+  departed: 'Departed',
   'off-route': 'Off route',
 };
 

@@ -181,7 +181,7 @@ export interface Vehicle {
 | `reconciled`    | `gps`                        | solid + calendar pip                  |
 | `live`          | `gps`                        | solid                                 |
 | `predicted`     | `predicted-from-schedule`    | dashed                                |
-| `scheduled`     | n/a (no marker on map, list item with calendar icon) | 50 % opacity, calendar icon |
+| `scheduled`     | n/a (no marker on map, list item with calendar icon) | dashed, calendar icon (same as `predicted` until live reconciler lands) |
 
 Schedule-only kinds (`predicted` / `scheduled`) are always shown — they
 are the only data we have when no live source is wired, and the user
@@ -320,6 +320,24 @@ Tie-break: by `eta.minutes` — **ascending** for all forward buckets ("in 3
 min" before "in 7 min"), but **descending** for `departed` so the most
 recent departure comes first ("1 min ago" before "10 min ago"). Final
 tie-break by `vehicle.id`.
+
+### ETA coloring (per bucket)
+
+Time is the single most important piece of information on a vehicle row,
+so `VehicleCard` colors the secondary line by bucket. Threshold for
+"imminent incoming" is `NearyConfig.imminentEtaThresholdMin` (default 5).
+
+| Bucket       | Secondary-line style                                         |
+| ------------ | ------------------------------------------------------------ |
+| `departing`  | bold, danger color (red)                                     |
+| `at-station` | bold, success color (green) — vehicle is right here          |
+| `arriving`   | bold, success color (green) — imminent                       |
+| `incoming`   | bold green when `eta.minutes ≤ imminentEtaThresholdMin`, otherwise muted neutral |
+| `departed`   | muted neutral                                                |
+| `off-route`  | muted neutral (hidden from station boards anyway)            |
+
+When `VehicleCard` is rendered without a bucket (map popup, standalone),
+the secondary line stays muted neutral.
 
 ### Departed collapse (one row per route)
 
