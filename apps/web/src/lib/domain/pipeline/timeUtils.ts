@@ -59,6 +59,18 @@ export function minSinceMidnightInTz(nowMs: number, timeZone: string): number {
   return h * 60 + m;
 }
 
+/** Day-of-week in the given IANA timezone for a Unix ms timestamp.
+ *  Returns 0..6 with 0 = Sunday — same convention as `Date.getDay()`. */
+export function dayOfWeekInTz(nowMs: number, timeZone: string): number {
+  const wd = new Intl.DateTimeFormat('en-US', {
+    timeZone,
+    weekday: 'short',
+  }).format(nowMs);
+  // Intl returns 'Sun' | 'Mon' | … in the en-US locale.
+  const idx = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].indexOf(wd);
+  return idx >= 0 ? idx : 0;
+}
+
 /** A day-window query against the GTFS schedule: which calendar day,
  *  what cutoff (minutes since local midnight), how far ahead to look. */
 export interface ScheduleWindow {

@@ -35,7 +35,7 @@
   import { urgencyClass } from '$lib/ui/urgencyClass';
   import type { ScheduleTrip, ScheduleTripStop, WeeklySchedule } from '$lib/data/gtfs/types';
   import {
-    minSinceMidnightInTz, scheduleWindowFor,
+    dayOfWeekInTz, minSinceMidnightInTz, scheduleWindowFor,
   } from '$lib/domain/pipeline/timeUtils';
   import { feedsStore } from '$lib/stores/feedsStore.svelte';
   import { favoritesStore } from '$lib/stores/favoritesStore.svelte';
@@ -194,6 +194,15 @@
   const originStopName = $derived(focusStops[0]?.stopName ?? null);
   const headsign = $derived(focusStops[focusStops.length - 1]?.stopName ?? null);
   const nowMin = $derived(minSinceMidnightInTz(nowTicker.ms, tz));
+  // Which day-of-week column (Mon–Fri / Saturday / Sunday) corresponds
+  // to 'today' in the feed's timezone. Used by the Week table to keep
+  // today's column full-color and grey the other two.
+  const todayCol = $derived.by<'weekday' | 'saturday' | 'sunday'>(() => {
+    const dow = dayOfWeekInTz(nowTicker.ms, tz);
+    if (dow === 0) return 'sunday';
+    if (dow === 6) return 'saturday';
+    return 'weekday';
+  });
 
   // Tab availability: 'next-trip' needs a direction + a resolved
   // next-trip stop list; otherwise the row would be empty.
@@ -297,9 +306,11 @@
   </Stack>
 {/snippet}
 
-<!-- Weekly schedule view: Mon-Fri / Sat / Sun side by side. Empty
-     columns get a dash so missing service is explicit instead of
-     hidden. Times use formatHHMM (wraps 24h+ for night routes). -->
+<!-- Weekly schedule view: rendered as a true matrix table so a
+     given clock time lines up horizontally across day columns.
+     Today's column stays full-color; the other two are greyed so
+     the user reads 'this is what runs today' at a glance. Within
+     today's column, times that have already passed are also greyed. -->
 {#snippet weekColumns()}
   {#if weekly == null}
     <Stack direction="row" spacing={1} align="center" class="py-2">
@@ -309,30 +320,53 @@
       </Typography>
     </Stack>
   {:else}
-    <div class="grid grid-cols-3 gap-3">
-      {#each [
-        { label: 'Mon–Fri', times: weekly.weekday },
-        { label: 'Saturday', times: weekly.saturday },
-        { label: 'Sunday', times: weekly.sunday },
-      ] as col (col.label)}
-        <Stack spacing={0.5}>
-          <Typography variant="overline" class="uppercase tracking-wide text-[color:var(--color-fg-muted)]">
-            {col.label} {col.times.length > 0 ? `(${col.times.length})` : ''}
-          </Typography>
-          {#if col.times.length === 0}
-            <Typography variant="caption" class="text-[color:var(--color-fg-muted)] py-1">
-              No service
-            </Typography>
-          {:else}
-            {#each col.times as min (min)}
-              <Typography variant="caption" class="font-mono">
-                {formatHHMM(min)}
-              </Typography>
-            {/each}
-          {/if}
-        </Stack>
-      {/each}
-    </div>
+    {@const allTimes = Array.from(new Set([
+      ...weekly.weekday, ...weekly.saturday, ...weekly.sunday,
+    ])).sort((a, b) => a - b)}
+    {@const weekdaySet = new Set(weekly.weekday)}
+    {@const saturdaySet = new Set(weekly.saturday)}
+    {@const sundaySet = new Set(weekly.sunday)}
+    {#if allTimes.length === 0}
+      <Typography variant="caption" class="text-[color:var(--color-fg-muted)] py-2">
+        No service defined for this direction in calendar.txt.
+      </Typography>
+    {:else}
+      <table class="week-table">
+        <thead>
+          <tr>
+            <th class={todayCol === 'weekday' ? 'today' : 'other'}>
+              Mon–Fri
+              <span class="count">({weekly.weekday.length})</span>
+            </th>
+            <th class={todayCol === 'saturday' ? 'today' : 'other'}>
+              Saturday
+              <span class="count">({weekly.saturday.length})</span>
+            </th>
+            <th class={todayCol === 'sunday' ? 'today' : 'other'}>
+              Sunday
+              <span class="count">({weekly.sunday.length})</span>
+            </th>
+          </tr>
+        </thead>
+        <tbody>
+          {#each allTimes as t (t)}
+            <tr>
+              {#each [
+                { col: 'weekday', has: weekdaySet.has(t) },
+                { col: 'saturday', has: saturdaySet.has(t) },
+                { col: 'sunday', has: sundaySet.has(t) },
+              ] as cell (cell.col)}
+                {@const isToday = cell.col === todayCol}
+                {@const isPast = isToday && t < nowMin - 1}
+                <td class={`${isToday ? 'today' : 'other'} ${isPast ? 'past' : ''}`}>
+                  {cell.has ? formatHHMM(t) : '—'}
+                </td>
+              {/each}
+            </tr>
+          {/each}
+        </tbody>
+      </table>
+    {/if}
   {/if}
 {/snippet}
 
@@ -520,9 +554,54 @@
      this project's setup, write the minimum we need inline. */
   .grid { display: grid; }
   .grid-cols-1 { grid-template-columns: 1fr; }
-  .grid-cols-3 { grid-template-columns: 1fr 1fr 1fr; }
   .gap-3 { gap: 0.75rem; }
   @media (min-width: 768px) {
     .md\:grid-cols-2 { grid-template-columns: 1fr 1fr; }
+  }
+
+  /* Weekly schedule matrix table. Rows are unique HH:MM values across
+     all three day-columns; a missing cell shows an em-dash so the
+     pattern reads at a glance. Today's column stays at full opacity
+     and uses the foreground color; the other two columns plus any
+     already-passed time in today's column are muted. */
+  .week-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-variant-numeric: tabular-nums;
+  }
+  .week-table th,
+  .week-table td {
+    text-align: center;
+    padding: 0.25rem 0.5rem;
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: 0.8125rem;
+  }
+  .week-table th {
+    font-weight: 600;
+    border-bottom: 1px solid color-mix(in srgb, var(--color-border) 70%, transparent);
+    position: sticky;
+    top: 0;
+    background: var(--color-surface);
+  }
+  .week-table th .count {
+    color: var(--color-fg-muted);
+    font-weight: 400;
+    margin-left: 0.25rem;
+  }
+  .week-table tbody tr:nth-child(even) td {
+    background: color-mix(in srgb, var(--color-border) 18%, transparent);
+  }
+  .week-table .today {
+    color: var(--color-fg);
+  }
+  .week-table .other {
+    color: var(--color-fg-muted);
+    opacity: 0.55;
+  }
+  .week-table .past {
+    color: var(--color-fg-muted);
+    text-decoration: line-through;
+    text-decoration-color: color-mix(in srgb, var(--color-fg-muted) 50%, transparent);
+    opacity: 0.7;
   }
 </style>
