@@ -626,14 +626,29 @@ Not wired into the build pipeline. Manual `node observe-cluj.mjs --since=… --u
 
 #### C.2 — The analysis pass
 
-A second script, `scripts/analyze-observations.mjs`, that reads the captured snapshots and computes empirical speeds:
+A second script, `scripts/analyze-observations.mjs`, that reads the captured snapshots and computes empirical speeds.
 
-- Project each observation onto its trip's shape (the existing `geo.projectOnPolyline` from P0).
-- Between consecutive same-vehicle observations, compute `distAlongShape_delta / time_delta` = empirical speed for that segment, at that wall-clock time.
-- Bucket by `(route_id, direction_id, segment_idx, hour_of_week)`. Take p60 of the bucket's speed samples (drop ≤5 km/h as before — those are at-stop dwell artefacts, not motion).
-- Drop buckets with fewer than some minimum sample count (e.g. 20) so we don't ship overfit data.
+**Critical:** speed is computed from **subsequent GPS position reports**, NOT from the bus's reported instant `speed` field. The reported speed is a sensor reading at a single instant: noisy, sometimes wrong unit, sometimes absent, fluctuates with brake/accelerator/idle in ways that don't reflect actual progress along the route. Position deltas across two consecutive pings give the true average speed over that interval — which is exactly the quantity we want.
 
-Output: a per-bucket median speed table.
+**The fancy formulas, in order of subtlety:**
+
+1. **Project each observation onto the trip's shape.** `projectOnPolyline` from P0's `geo` module. Discard observations where `perpDistM > 200 m` (off-route — bus on detour, or just bad GPS fix).
+2. **Match consecutive observations of the same `vehicle_id` on the same `trip_id`.** A trip change between two pings invalidates the delta (different shape entirely). Keep only `(O₁, O₂)` pairs where `O₁.trip_id === O₂.trip_id`.
+3. **Require monotone progress.** `O₂.distAlongM >= O₁.distAlongM`. A regression means either a GPS jitter, a bus that turned around, or a stale ping out of order. Discard.
+4. **Reject implausible intervals.** Drop pairs where `Δt > 60 s` (likely a dropout — too much can happen between the samples to assume constant speed) or `Δt < 5 s` (likely a duplicate ping; noise dominates).
+5. **Reject implausible speeds.** Compute `kmh = (Δd_m / Δt_s) × 3.6`. Drop if `kmh < 0.5` (effectively stopped — at a stop or red light) or `kmh > 80` (Cluj bus + outlier; sanity).
+6. **Map to per-segment samples.** This is the bit that takes real care. The pair `(O₁, O₂)` traverses zero, one, or more polyline *segments* — where a "segment" here is `(stop_seq i → stop_seq i+1)`, i.e. one of the inter-stop legs. Three cases:
+   - Both observations fall within the same inter-stop leg → assign the computed speed to that one segment.
+   - Observations span exactly one boundary (between leg N and leg N+1) → assign the speed to *both* legs touched, weighted by the fraction of `Δd` that fell in each. (Yes, the bus could have been faster on leg N than leg N+1 within that interval; we don't try to disentangle that — sub-segment resolution requires sub-15s GPS, which we don't have.)
+   - Observations span two or more boundaries → distribute the speed proportionally across each touched leg, again by `Δd` fraction.
+7. **Filter dwell time before computing speed.** The "drop kmh < 0.5" rule in step 5 catches obvious dwell, but a bus that stops for 25 s mid-interval and then sprints for 35 s through to the next stop produces a deceptively low average. Cleanest fix: within a `(O₁, O₂)` pair, if either observation has `current_status === STOPPED_AT`, drop the pair (it overlaps a stop event, not pure transit). The remaining pairs are pure-transit samples; their speed is the real transit speed on those segments.
+8. **Bucket by `(route_id, direction_id, segment_idx, hour_of_week)`.** `hour_of_week = (day_of_week × 24 + hour_of_day)`, range 0..167. Keeps day-of-week structure (Sat 17:00 traffic ≠ Wed 17:00 traffic in Cluj).
+9. **Take p60 per bucket**, not arithmetic mean. p60 is robust to slow outliers (a bus stuck behind a wrong-place wrong-time delivery van shouldn't drag the median down). Drop ≤ 5 km/h samples first as a final paranoia filter.
+10. **Drop sparse buckets.** Fewer than ~20 samples and the p60 is noise. Better to leave the cell empty and let the cascade fall through to a fallback than ship overfit data.
+
+Output: a per-bucket median speed table with sample counts.
+
+The "fancy formulas" framing is right — step 6 (per-segment distribution of a multi-segment interval) and step 7 (dwell filtering) are where most of the implementation hours will go. The rest is straightforward.
 
 #### C.3 — Ship the empirical data IN THE SAME SQLITE THE CLIENT ALREADY DOWNLOADS
 
@@ -700,6 +715,27 @@ The same `estimateSegmentSpeed` signature handles all of this; the function just
 **Implication for v2.5 design:**
 
 The cascade we ship in v2.5 is *the cold-start version* of this design. Tiers 3–5 in v2.5 ARE tiers 3–5 in the post-C.3 cascade — same constants, same code paths. Tiers 1–2 in v2.5 (raw vehicle speed / fleet average) get reworked into the live-correction multiplier when C.4 lands, but the data they consume is already in place. So the migration from v2.5 to post-C.3 is **adding** layers, not throwing the cascade away.
+
+**Why keep the fallbacks at all once C.3 ships?**
+
+Fair question. For Cluj specifically, once `segment_speeds` has been populated for the full feed (~1 month of capture, all routes, all hours), the fallback tiers (TOD config, city-centre, static) effectively never fire — the empirical baseline answers ~every query. So aren't they dead code?
+
+Three reasons they stay in the codebase, even if Cluj never hits them:
+
+1. **First-day-of-Cluj-observation.** Between `feeds/cluj-napoca/build.js` running for the first time post-C.3 and the next time C.2 produces a fresh `segment_speeds` table, sparse buckets exist. Empirical median for "Thursday 03:00 segment 14 of route 25N" might have 4 samples — below the 20-sample threshold, so it's dropped from the table. That cell's queries fall through to the TOD-config fallback. Few cells, sure, but non-zero.
+2. **New routes / route changes mid-cycle.** When CTP adds a route or changes a shape, the new geometry has zero empirical samples for some weeks. The route still needs ETAs during that window. Fallbacks fire.
+3. **Future expansion to other cities.** Bucharest, Iași, Timișoara — each starts cold. Their first build ships with `segment_speeds` empty. The cascade gives reasonable answers from feed-level TOD config until that city's observation pipeline catches up.
+
+**What changes operationally for Cluj specifically post-C.3:**
+
+The fallback tiers are still in the code, but in practice they almost never fire. We could (and should) instrument:
+
+- A counter in `speedCascade.ts` that increments when each tier fires.
+- A debug logger in dev that warns "Cluj cascade fell to tier ≥ 3 — sparse bucket at (route=…, segment=…, hour=…)".
+
+If post-launch the counter shows tiers 3+ firing on > 5 % of Cluj queries, we know our sample threshold (20 / bucket) is too aggressive and need to either capture more or relax the threshold. If they fire on < 0.1 %, the fallbacks have done their job and we can stop worrying about them.
+
+In short: the fallbacks aren't dead code, they're the **long-tail backstop**. The 80/20 cut on Cluj queries goes to the empirical baseline; the long tail goes through the cascade. Keeping the cascade in place costs near-zero (it's already written, tested, and runs in microseconds) and buys us "the app never refuses to give an ETA, even for an unseen bucket".
 
 #### What this design is NOT
 
@@ -769,3 +805,5 @@ Things this design deliberately does *not* attempt, with reasons:
 - 2026-06-27 — Q.4 revised. Earlier decision was 5 s `nowTicker` everywhere. Reconsidered: that's overkill because predictor inputs only change on the poll cadence (15 s) anyway, and 5 s ticking just re-runs the predictor with identical inputs. New decision: `nowTicker = 15 s`, synchronised with `livePollMs`. Map marker smoothness handled by an RAF interpolation loop on the map page (`pos += vel * dt` per frame, anchor recomputed at each tick) — same pattern the traveling-dots layer already uses. §2.7 cadence comparison fixed (v1 vs v2 vs v2.5 was wrongly framed); §6 P5 description rewritten; §6.5 config table + latency table updated.
 - 2026-06-27 — §6.7 expanded with three Option-C deliverables and a key architectural call: empirical per-segment speeds ship inside the same SQLite database the client already downloads (new `segment_speeds` table). Used at BOTH build time (better stop_times.txt input than per-feed TOD defaults) AND runtime (a new tier 3 in the cascade between fleet-average and per-feed defaults). Same source of truth across both contexts. Refined the bus-lane reasoning: bus lanes don't offer a static advantage; the benefit depends on whether there's traffic to bypass, so the right answer is empirical observation per `(route, time, day-of-week)`. Still deferred from v2.5 (no historical-store as part of initial pipeline); slot in cascade + schema exists so when the script ships, it's a data-only change. Entry-point checklist added at the bottom of §6.7 for picking up tomorrow.
 - 2026-06-27 — §6.7 added C.4 ("What happens to the cascade once C.3 ships"). User insight: with dense empirical data per `(route, dir, segment, hour-of-week)`, most of v2.5's heuristic cascade becomes dead weight. Post-C.3, the cascade collapses from 5–6 tiers to two real layers: empirical baseline (the truth from observation) × live correction multiplier (how this bus is running right now relative to that baseline). Live correction folds today's tier 1 (vehicle's own speed) + tier 2 (fleet average) into a ratio against empirical median; tiers 3–5 (TOD / centre / static) shrink to cold-start + sparse-bucket backstop. The v2.5 cascade is the cold-start version of this design — same data, same code paths — so the migration is additive, not destructive.
+- 2026-06-27 — §6.7 C.2 expanded with the speed-calculation methodology. **Empirical speeds are derived from subsequent GPS position deltas, NOT from the bus's reported instant speed.** Ten-step recipe documented: project both pings onto the shape, require same-trip + monotone-progress + plausible-interval + plausible-speed, distribute multi-segment intervals proportionally across touched legs, filter dwell by dropping pairs that overlap `STOPPED_AT` events, bucket by `(route, dir, segment, hour-of-week)`, take p60 with ≥ 20-sample threshold. Steps 6 (per-segment distribution) and 7 (dwell filtering) are where the implementation hours go.
+- 2026-06-27 — §6.7 C.4 expanded with the "do we still need fallbacks?" question. Short answer: for Cluj post-C.3, fallbacks almost never fire — but they're not dead code. Three real cases keep them in the codebase: (1) sparse cells below the sample threshold; (2) brand-new routes / shape changes mid-cycle; (3) future expansion to other cities that start cold. Operational guidance added: instrument a per-tier-fired counter so we know empirically whether the fallbacks are doing their long-tail job (target: tier ≥ 3 firing on < 1 % of Cluj queries post-C.3).
