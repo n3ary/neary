@@ -68,6 +68,14 @@
   let boards = $state<{ stop: StopWithDistance; vehicles: Vehicle[] }[] | null>(null);
   let boardsError = $state<string | null>(null);
   let expandedStopId = $state<number | null>(null);
+  // Per-stop route filter — click a route badge on a StationCard to scope
+  // its board to that route; click again to clear. Lives in page state
+  // (not in a store) because the spec is: temporary, view-only, cleared
+  // on view-swap (this component remounts) or refresh (we reset below).
+  let routeFilters = $state<Record<number, number | null>>({});
+  function toggleRouteFilter(stopId: number, routeId: number) {
+    routeFilters[stopId] = routeFilters[stopId] === routeId ? null : routeId;
+  }
 
   // Surface GPS state on the global StatusBar instead of a page-level
   // card — the StatusBar already exists for cross-cutting loading info
@@ -124,6 +132,8 @@
         // the data for legacy / terminus / one-off reasons.
         boards = all.filter((b) => b.vehicles.length > 0);
         boardsError = null;
+        // Route filters are view-only: reset on every refresh / re-fetch.
+        routeFilters = {};
         // Auto-expand if there's exactly one station — saves a tap.
         if (boards.length === 1) expandedStopId = boards[0].stop.id;
       } catch (e) {
@@ -218,9 +228,17 @@
       {#each boards as { stop, vehicles } (stop.id)}
         {@const reconciled = reconcileWithLive(vehicles, liveVehiclesStore.observations).vehicles}
         {@const board = assembleStationBoard(reconciled, stop, userPrefs, nowMs)}
+        {@const allRoutes = (() => {
+          const map = new Map<number, typeof reconciled[number]['route']>();
+          for (const v of reconciled) map.set(v.route.id, v.route);
+          return Array.from(map.values());
+        })()}
         <StationCard
           station={{ id: stop.id, name: stop.name, distance: stop.distance, lat: stop.lat, lon: stop.lon }}
           rows={board}
+          {allRoutes}
+          selectedRouteId={routeFilters[stop.id] ?? null}
+          onRouteClick={(rid) => toggleRouteFilter(stop.id, rid)}
           expanded={expandedStopId === stop.id}
           ontoggle={() => (expandedStopId = expandedStopId === stop.id ? null : stop.id)}
         />

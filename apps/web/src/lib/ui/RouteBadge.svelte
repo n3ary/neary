@@ -19,10 +19,22 @@
   import { cn } from './cn';
 
   type Size = 'small' | 'medium' | 'large';
+  /**
+   * 'route'   — use the route's own color (default; used inside
+   *             VehicleCard and anywhere the badge represents a single
+   *             specific vehicle / line).
+   * 'neutral' — use a uniform surface-muted background regardless of
+   *             the route's color. Favorited routes keep `route.color`
+   *             so they pop visually. Used in the StationCard header
+   *             badge row so all lines read as equivalent and the row
+   *             doesn't look like a clown car.
+   */
+  type ColorMode = 'route' | 'neutral';
 
   type Props = {
     route: Route;
     size?: Size;
+    colorMode?: ColorMode;
     isStart?: boolean;
     isEnd?: boolean;
     isFavorite?: boolean;
@@ -36,6 +48,7 @@
   let {
     route,
     size = 'medium',
+    colorMode = 'route',
     isStart = false,
     isEnd = false,
     isFavorite = false,
@@ -45,7 +58,16 @@
     'aria-label': ariaLabel,
   }: Props = $props();
 
-  const fg = $derived(route.textColor ?? pickContrastingText(route.color));
+  // Neutral mode: favorites keep their route color (so they pop in a
+  // long line-up of buses), everything else flattens to a single
+  // surface-muted look. Foreground tracks bg for contrast.
+  const useRouteColor = $derived(colorMode === 'route' || isFavorite);
+  const bg = $derived(useRouteColor ? route.color : 'var(--color-surface-elevated)');
+  const fg = $derived(
+    useRouteColor
+      ? (route.textColor ?? pickContrastingText(route.color))
+      : 'var(--color-fg)',
+  );
 
   const SIZE: Record<Size, string> = {
     small: 'h-6 min-w-6 px-1.5 text-xs',
@@ -62,10 +84,11 @@
   aria-pressed={onclick ? selected : undefined}
   onclick={onclick}
   onkeydown={onclick ? (e) => { if (e.key === 'Enter' || e.key === ' ') onclick(e as unknown as MouseEvent); } : undefined}
-  style={`background:${route.color};color:${fg};`}
+  style={`background:${bg};color:${fg};`}
   class={cn(
     'relative inline-flex items-center justify-center font-bold rounded-md select-none whitespace-nowrap',
     SIZE[size],
+    !useRouteColor && 'border border-[color:var(--color-border)]',
     onclick && 'cursor-pointer',
     selected && 'ring-2 ring-offset-1 ring-offset-[color:var(--color-surface)] ring-[color:var(--color-fg)]',
     className,

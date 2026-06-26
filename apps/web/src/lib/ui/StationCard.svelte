@@ -37,8 +37,14 @@
     /** Bucketed vehicle rows for this station — already filtered + sorted
      *  by the domain layer. StationCard groups them into sections by
      *  bucket; the domain decides what's in / out, the card decides how
-     *  the groups look. Routes serving the station are derived from these. */
+     *  the groups look. Routes serving the station are derived from these
+     *  unless `allRoutes` is supplied. */
     rows: BoardRow[];
+    /** Full route list serving this station (pre-cap, pre-filter). When
+     *  set, drives the header badge row instead of `rows`, so all routes
+     *  through the station are visible even when capped out of the 5-row
+     *  board below. Used by the Stations page. */
+    allRoutes?: Route[];
     expanded: boolean;
     ontoggle: () => void;
     /** When true, station shows a "Drop off only" outlined chip. */
@@ -54,6 +60,7 @@
   let {
     station,
     rows,
+    allRoutes,
     expanded,
     ontoggle,
     dropOffOnly = false,
@@ -68,14 +75,19 @@
     return m < 1000 ? `${Math.round(m)} m` : `${(m / 1000).toFixed(1)} km`;
   }
 
-  // Dedup routes from the rows in a single pass. Numeric short-names sort
-  // numerically; alpha after. Lives here (not in the page) so every
-  // StationCard consumer gets the same badge-row contract for free.
-  // Counts per route are intentionally NOT surfaced on the collapsed card
-  // — the expanded board already shows them in each bucket header.
+  // Dedup routes from `allRoutes` if supplied (so all routes serving the
+  // station show even when capped out of the 5-row board), otherwise
+  // fall back to deriving from the rows that survived filtering + cap.
+  // Numeric short-names sort numerically; alpha after. Lives here (not
+  // in the page) so every StationCard consumer gets the same badge-row
+  // contract for free.
   const routes = $derived.by(() => {
     const map = new Map<number, Route>();
-    for (const r of rows) map.set(r.vehicle.route.id, r.vehicle.route);
+    if (allRoutes && allRoutes.length > 0) {
+      for (const r of allRoutes) map.set(r.id, r);
+    } else {
+      for (const r of rows) map.set(r.vehicle.route.id, r.vehicle.route);
+    }
     return Array.from(map.values()).sort((a, b) => {
       const an = Number(a.shortName);
       const bn = Number(b.shortName);
@@ -141,6 +153,7 @@
                 <RouteBadge
                   {route}
                   size="medium"
+                  colorMode="neutral"
                   selected={selectedRouteId === route.id}
                   isFavorite={favoriteRouteIds?.has(route.id)}
                   onclick={onRouteClick ? () => onRouteClick(route.id) : undefined}
