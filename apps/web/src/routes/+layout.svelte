@@ -58,7 +58,7 @@
       message: `Loading schedule for ${feed.name}…`,
     });
     repo
-      .setFeed(feed)
+      .setFeed($state.snapshot(feed) as typeof feed)
       .then(() => {
         statusBus.push({
           id: 'gtfs-bind',

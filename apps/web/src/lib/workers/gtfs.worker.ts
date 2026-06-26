@@ -25,13 +25,16 @@ import type {
 // ---------------------------------------------------------------------------
 // Source URL resolution per feed.
 //
-// neary-gtfs publishes to the `binaries` branch; jsDelivr fronts it (CORS-
-// open, 12h CDN cache, immune to GitHub raw rate limits). Each feeds.json
-// entry has `files.sqlite_gz` as a path relative to the binaries branch
-// root — we just prepend the jsDelivr origin.
+// neary-gtfs publishes to the `binaries` branch. We fetch raw via
+// raw.githubusercontent.com — CORS-open, stable, and after first fetch
+// the file lives in OPFS so we never re-download. jsDelivr's CF edge
+// (cdn.jsdelivr.net) intermittently 502s on this branch's binary files
+// even when feeds.json is cached fine — see issue tracker. Each
+// feeds.json entry has `files.sqlite_gz` as a path relative to the
+// branch root.
 // ---------------------------------------------------------------------------
 
-const BINARIES_BASE = 'https://cdn.jsdelivr.net/gh/ciotlosm/neary-gtfs@binaries';
+const BINARIES_BASE = 'https://raw.githubusercontent.com/ciotlosm/neary-gtfs/binaries';
 const OPFS_POOL_NAME = 'neary-gtfs';
 
 function seedUrlFor(feed: Feed): string {

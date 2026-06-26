@@ -49,7 +49,7 @@
       const f = feedsStore.byId(DEMO_FEED_ID);
       if (!f) throw new Error(`Feed "${DEMO_FEED_ID}" not in registry`);
       feed = f;
-      await repo.setFeed(f);
+      await repo.setFeed($state.snapshot(f) as typeof f);
       routes = await repo.getRoutes();
       nearby = await repo.getStopsNear(userLat, userLon, 500);
 
