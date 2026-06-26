@@ -122,6 +122,15 @@ export function scanSchedule(inputs: ScheduleScannerInputs): Vehicle[] {
         ? true
         : undefined;
     const etaMinutes = arrivalMin - nowMinSinceMidnight;
+    // Confidence rule:
+    //   At the trip's origin the schedule IS authoritative — the bus is
+    //   parked, no GPS-based ETA is possible before departure. Score
+    //   that as 'medium' so the UI doesn't fade it.
+    //   At intermediate stops a schedule-only row (no live match) is
+    //   inherently low-confidence: it's a wall-clock guess with no GPS
+    //   to back it up.
+    // Reconciler bumps matched rows to 'medium' / 'high' downstream.
+    const confidence = schedule.isAtTripStart ? 'medium' : 'low';
 
     out.push({
       kind: 'scheduled',
@@ -131,11 +140,11 @@ export function scanSchedule(inputs: ScheduleScannerInputs): Vehicle[] {
       schedule,
       headsign: r.trip_headsign ?? undefined,
       dropOffOnly,
-      confidence: 'low',
+      confidence,
       eta: {
         distanceMeters: 0,
         minutes: etaMinutes,
-        confidence: 'low',
+        confidence,
       },
     });
   }

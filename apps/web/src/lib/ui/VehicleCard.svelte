@@ -75,16 +75,15 @@
 
   const interactive = $derived(typeof onclick === 'function');
 
-  // Schedule-only at an intermediate stop = fade. The schedule\u2019s ETA
-  // is a wall-clock estimate with no GPS to back it up; once live data
-  // is configured (Phase 5+) any row left as `kind: 'scheduled'`
-  // mid-route means the reconciler had no live obs claiming the trip.
-  // At the origin stop the schedule IS authoritative (bus parked, not
-  // yet moving), so we keep those rows at full opacity. See spec \u00a72
-  // \u201cCard border, opacity, and anomaly indicator\u201d.
-  const dim = $derived(
-    vehicle.kind === 'scheduled' && vehicle.schedule?.isAtTripStart !== true,
-  );
+  // Low confidence → fade. The domain owns the rule (see scheduleScanner
+  // + reconciler); the UI just reads `vehicle.confidence`. By convention:
+  //   'low'    schedule-only row at an intermediate stop — no GPS, no
+  //            origin anchor; fade.
+  //   'medium' reconciled (GPS-matched) OR scheduled at the trip’s origin
+  //            (schedule authoritative); full opacity.
+  //   'high'   corroborated (≥2 live sources agree); full opacity.
+  // See spec §2 “Card border, opacity, and anomaly indicator”.
+  const dim = $derived(vehicle.confidence === 'low');
 </script>
 
 <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
