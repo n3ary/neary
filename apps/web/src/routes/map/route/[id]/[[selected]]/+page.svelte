@@ -212,12 +212,17 @@
   let resizeObserver: ResizeObserver | null = null;
 
   onMount(async () => {
-    // Only the Leaflet module load happens here. The actual map init
-    // is deferred to the $effect below: the map div lives inside the
-    // `{:else}` branch of the loading guard, so `mapEl` is undefined
-    // at onMount until `view` becomes non-null.
-    L = (await import('leaflet')).default;
-    await import('leaflet/dist/leaflet.css');
+    try {
+      const mod = (await import('leaflet')) as unknown as { default?: LeafletNS };
+      L = (mod.default ?? (mod as unknown as LeafletNS));
+      await import('leaflet/dist/leaflet.css');
+      // eslint-disable-next-line no-console
+      console.debug('[map] leaflet module ready', typeof L?.map);
+    } catch (e) {
+      // eslint-disable-next-line no-console
+      console.error('[map] leaflet import failed', e);
+      error = e instanceof Error ? e.message : String(e);
+    }
   });
 
   // Lazy init the Leaflet instance the first time both the library
@@ -225,38 +230,37 @@
   $effect(() => {
     if (!L || mapInstance || !mapEl || view == null) return;
     const Lref = L;
-    mapInstance = Lref.map(mapEl, {
-      // Native +/- control is moved into the page header alongside
-      // the direction-swap button so all map chrome lives in one
-      // place. Attribution stays on (license requirement).
-      zoomControl: false,
-      attributionControl: true,
-      center: [46.77, 23.6],
-      zoom: 13,
-    });
-    Lref.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-      maxZoom: 19,
-      attribution: '© OpenStreetMap contributors',
-    }).addTo(mapInstance);
-    stopsLayer = Lref.layerGroup().addTo(mapInstance);
-    vehiclesLayer = Lref.layerGroup().addTo(mapInstance);
-
-    // Classic 'blank Leaflet card' guard: `L.map()` measures its
-    // container synchronously and caches that size. If flex layout
-    // hasn't settled in the same frame, Leaflet draws nothing
-    // forever. Two invalidateSize passes (microtask + next frame)
-    // cover both cases.
-    const rect = mapEl.getBoundingClientRect();
-    // eslint-disable-next-line no-console
-    console.debug('[map] init container', rect.width, 'x', rect.height);
-    queueMicrotask(() => mapInstance?.invalidateSize());
-    requestAnimationFrame(() => mapInstance?.invalidateSize());
-
-    // Future viewport changes (rotation, splitscreen, sidebar)
-    // re-invalidate so tiles retile.
-    if (typeof ResizeObserver !== 'undefined') {
-      resizeObserver = new ResizeObserver(() => mapInstance?.invalidateSize());
-      resizeObserver.observe(mapEl);
+    try {
+      const rect = mapEl.getBoundingClientRect();
+      // eslint-disable-next-line no-console
+      console.debug('[map] init container', rect.width, 'x', rect.height,
+        'visible?', rect.width > 0 && rect.height > 0);
+      mapInstance = Lref.map(mapEl, {
+        zoomControl: false,
+        attributionControl: true,
+        center: [46.77, 23.6],
+        zoom: 13,
+      });
+      // Expose for quick console poking. Dev-only — strip later.
+      (window as unknown as { __nearyMap?: import('leaflet').Map }).__nearyMap = mapInstance;
+      Lref.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        maxZoom: 19,
+        attribution: '© OpenStreetMap contributors',
+      }).addTo(mapInstance);
+      stopsLayer = Lref.layerGroup().addTo(mapInstance);
+      vehiclesLayer = Lref.layerGroup().addTo(mapInstance);
+      queueMicrotask(() => mapInstance?.invalidateSize());
+      requestAnimationFrame(() => mapInstance?.invalidateSize());
+      if (typeof ResizeObserver !== 'undefined') {
+        resizeObserver = new ResizeObserver(() => mapInstance?.invalidateSize());
+        resizeObserver.observe(mapEl);
+      }
+      // eslint-disable-next-line no-console
+      console.debug('[map] init done; children', mapEl.children.length);
+    } catch (e) {
+      // eslint-disable-next-line no-console
+      console.error('[map] init failed', e);
+      error = e instanceof Error ? e.message : String(e);
     }
   });
 
@@ -453,11 +457,14 @@
         </CardContent>
       </Card>
 
-      <!-- Map card flexes to fill remaining vertical space. No
-           CardContent wrapper (we want zero padding around the map);
-           overflow-hidden clips the map's tile pyramid to the
-           card's rounded corners. -->
-      <Card class="flex-1 min-h-0 overflow-hidden">
+      <!-- Map card flexes to fill remaining vertical space when the
+           flex chain is intact, but always has a viewport-based
+           min-height as a safety net so the container is never
+           0×0 (Leaflet measures its container synchronously at
+           init and an empty container stays empty forever). The
+           min collapses on tall desktops where flex-1 already
+           hands it more room. -->
+      <Card class="flex-1 min-h-0 overflow-hidden neary-map-card">
         <div bind:this={mapEl} class="neary-map"></div>
       </Card>
     </Stack>
@@ -465,15 +472,22 @@
 </div>
 
 <style>
+  /* Floor: the map card always reserves ~60% of small-viewport
+     height even when the flex chain hands it none. On bigger
+     viewports the flex-1 above wins and the map fills more. */
+  .neary-map-card {
+    min-height: 60svh;
+  }
   .neary-map {
     width: 100%;
     height: 100%;
+    min-height: inherit;
   }
   /* Floor for tiny viewports (e.g. landscape phone): the map gets
      a usable minimum even if flex math would otherwise hand it
      near-zero height. */
   @media (max-height: 480px) {
-    .neary-map {
+    .neary-map-card {
       min-height: 220px;
     }
   }
