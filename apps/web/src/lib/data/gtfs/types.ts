@@ -161,6 +161,20 @@ export interface GtfsRepo {
    * view to render the stop strip + estimated arrival per stop.
    */
   getStopsAlongTrip(tripId: string): Promise<ScheduleTripStop[]>;
+
+  /**
+   * Departure times at the trip origin grouped by day-of-week
+   * pattern: weekday (any Mon–Fri), saturday, sunday. Each list is
+   * minutes-since-midnight, sorted ascending, deduped. Drives the
+   * "Week" tab on the schedule view. Only `calendar.txt` rows are
+   * considered; calendar_dates exceptions (one-off cancels / adds)
+   * intentionally don't move the table since the user is reading a
+   * recurring pattern, not a specific date.
+   */
+  getWeeklySchedule(
+    routeId: number,
+    directionId: 0 | 1,
+  ): Promise<WeeklySchedule>;
 }
 
 /** One trip on a route+direction, surfaced by getRouteSchedule. */
@@ -174,6 +188,15 @@ export interface ScheduleTrip {
    *  through-the-night services (single service spanning past
    *  midnight) once the night-route handling lands. */
   serviceId: string;
+}
+
+/** Trip-origin departure times for a route+direction, bucketed by
+ *  recurring weekly pattern. Each entry is minutes-since-midnight. */
+export interface WeeklySchedule {
+  /** Departures that run on any of Mon–Fri (per calendar.txt). */
+  weekday: number[];
+  saturday: number[];
+  sunday: number[];
 }
 
 /** One stop on a single trip's stop_times. */

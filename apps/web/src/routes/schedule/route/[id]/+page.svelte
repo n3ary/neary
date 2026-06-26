@@ -32,7 +32,7 @@
   } from '$lib/domain/types';
   import { scheduleUrgency } from '$lib/domain/buckets';
   import { urgencyClass } from '$lib/ui/urgencyClass';
-  import type { ScheduleTrip, ScheduleTripStop } from '$lib/data/gtfs/types';
+  import type { ScheduleTrip, ScheduleTripStop, WeeklySchedule } from '$lib/data/gtfs/types';
   import {
     minSinceMidnightInTz, scheduleWindowFor,
   } from '$lib/domain/pipeline/timeUtils';
@@ -61,10 +61,10 @@
 
   const focusTripId = $derived(page.url.searchParams.get('trip'));
 
-  type View = 'this-trip' | 'today' | 'tomorrow';
+  type View = 'this-trip' | 'today' | 'tomorrow' | 'week';
   const view = $derived.by<View>(() => {
     const v = page.url.searchParams.get('view');
-    if (v === 'today' || v === 'tomorrow' || v === 'this-trip') return v;
+    if (v === 'today' || v === 'tomorrow' || v === 'this-trip' || v === 'week') return v;
     // Default: 'this-trip' if a trip is pinned, otherwise 'today'.
     return focusTripId ? 'this-trip' : 'today';
   });
@@ -81,6 +81,12 @@
   // Which row is open in the Today/Tomorrow accordion. Seeded from
   // ?trip= so deep-links auto-expand.
   let expandedTripId = $state<string | null>(null);
+  // Weekly pattern (Mon-Fri / Sat / Sun). Fetched on demand the first
+  // time the user opens the Week tab for a given direction. Keyed by
+  // direction so swapping direction triggers a refetch.
+  let weekly = $state<WeeklySchedule | null>(null);
+  let weeklyDirection = $state<0 | 1 | null>(null);
+  let weeklyLoading = $state(false);
   let error = $state<string | null>(null);
 
   const tz = $derived(feedsStore.activeTimezone);
@@ -91,9 +97,16 @@
 
   // Departures window for the currently-selected view's day.
   // Logic owned by `scheduleWindowFor` so this view is pure markup +
-  // reactive glue.
+  // reactive glue. The Week tab uses its own dedicated query and
+  // doesn't need a window — fall back to 'today' so the effect that
+  // populates Today/Tomorrow keeps the list warm for fast tab swaps.
   const queryParams = $derived(
-    scheduleWindowFor({ view, isNight: nightRoute, nowMs: nowTicker.ms, timeZone: tz }),
+    scheduleWindowFor({
+      view: view === 'week' ? 'today' : view,
+      isNight: nightRoute,
+      nowMs: nowTicker.ms,
+      timeZone: tz,
+    }),
   );
 
   $effect(() => {
@@ -157,6 +170,31 @@
     loadTripStops(tripId);
   }
 
+  // Lazy-load the weekly pattern on first Week-tab open or on
+  // direction change. Direction is captured in `weeklyDirection`
+  // so we know when to invalidate.
+  $effect(() => {
+    if (view !== 'week') return;
+    if (direction == null) return;
+    if (weeklyDirection === direction && weekly != null) return;
+    if (weeklyLoading) return;
+    weeklyLoading = true;
+    weekly = null;
+    weeklyDirection = direction;
+    const rid = routeId;
+    const dir = direction;
+    (async () => {
+      try {
+        const repo = getGtfsRepo();
+        weekly = await repo.getWeeklySchedule(rid, dir);
+      } catch (e) {
+        error = e instanceof Error ? e.message : String(e);
+      } finally {
+        weeklyLoading = false;
+      }
+    })();
+  });
+
   // ── Derived view-model ──────────────────────────────────────────────
   const trips = $derived(
     direction === 0 ? tripsByDir[0]
@@ -186,10 +224,12 @@
           { value: 'this-trip', label: thisTripLabel },
           { value: 'today', label: 'Today' },
           { value: 'tomorrow', label: 'Tomorrow' },
+          { value: 'week', label: 'Week' },
         ]
       : [
           { value: 'today', label: 'Today' },
           { value: 'tomorrow', label: 'Tomorrow' },
+          { value: 'week', label: 'Week' },
         ],
   );
 
@@ -271,14 +311,14 @@
         >
           {s.stopName}
         </Typography>
+        {#if isOrigin}
+          <Typography variant="caption" class={`font-mono shrink-0 ${relClass(s.arrivalMin)}`}>
+            {relText(s.arrivalMin)}
+          </Typography>
+        {/if}
         <Typography variant="caption" class="text-[color:var(--color-fg-muted)] font-mono shrink-0">
           {isOrigin ? 'dep' : 'arr'} {formatHHMM(s.arrivalMin)}
         </Typography>
-        {#if isOrigin}
-          <Typography variant="caption" class={`font-mono shrink-0 ${relClass(s.arrivalMin)}`}>
-            · {relText(s.arrivalMin)}
-          </Typography>
-        {/if}
         <IconButton
           aria-label={`Open station ${s.stopName}`}
           onclick={() => goto(`/station/${s.stopId}`)}
@@ -288,6 +328,45 @@
       </Stack>
     {/each}
   </Stack>
+{/snippet}
+
+<!-- Weekly schedule view: Mon-Fri / Sat / Sun side by side. Empty
+     columns get a dash so missing service is explicit instead of
+     hidden. Times use formatHHMM (wraps 24h+ for night routes). -->
+{#snippet weekColumns()}
+  {#if weekly == null}
+    <Stack direction="row" spacing={1} align="center" class="py-2">
+      <Spinner size={14} />
+      <Typography variant="caption" class="text-[color:var(--color-fg-muted)]">
+        Loading weekly schedule…
+      </Typography>
+    </Stack>
+  {:else}
+    <div class="grid grid-cols-3 gap-3">
+      {#each [
+        { label: 'Mon–Fri', times: weekly.weekday },
+        { label: 'Saturday', times: weekly.saturday },
+        { label: 'Sunday', times: weekly.sunday },
+      ] as col (col.label)}
+        <Stack spacing={0.5}>
+          <Typography variant="overline" class="uppercase tracking-wide text-[color:var(--color-fg-muted)]">
+            {col.label} {col.times.length > 0 ? `(${col.times.length})` : ''}
+          </Typography>
+          {#if col.times.length === 0}
+            <Typography variant="caption" class="text-[color:var(--color-fg-muted)] py-1">
+              No service
+            </Typography>
+          {:else}
+            {#each col.times as min (min)}
+              <Typography variant="caption" class="font-mono">
+                {formatHHMM(min)}
+              </Typography>
+            {/each}
+          {/if}
+        </Stack>
+      {/each}
+    </div>
+  {/if}
 {/snippet}
 
 <div class="mx-auto max-w-5xl px-4 py-6">
@@ -359,6 +438,13 @@
             {#if view === 'this-trip' && focusStops.length > 0}
               <!-- The anchor stop the user came from is the focal point. -->
               {@render tripTimeline(focusStops, anchorStopId)}
+            {:else if view === 'week'}
+              <!-- Weekly pattern: three columns for Mon–Fri / Sat / Sun
+                   showing every scheduled departure from the origin in
+                   the selected direction. Recurring pattern, not a
+                   specific date — calendar_dates exceptions are
+                   ignored by design. -->
+              {@render weekColumns()}
             {:else}
               <!-- Today / Tomorrow: one row per trip, click to expand
                    the stop timeline below the row. Tomorrow gets a
@@ -372,9 +458,9 @@
                 {:else}
                   {#if view === 'tomorrow'}
                     <Typography variant="caption" class="text-[color:var(--color-fg-muted)] pb-1">
+                      Showing morning only (until 12:00) ·
                       {trips.length} departure{trips.length === 1 ? '' : 's'} ·
-                      first {formatHHMM(trips[0].tripStartMin)} ·
-                      last {formatHHMM(trips[trips.length - 1].tripStartMin)}
+                      {formatHHMM(trips[0].tripStartMin)}–{formatHHMM(trips[trips.length - 1].tripStartMin)}
                     </Typography>
                   {/if}
                   {#each trips as t (t.tripId)}
@@ -467,6 +553,7 @@
      this project's setup, write the minimum we need inline. */
   .grid { display: grid; }
   .grid-cols-1 { grid-template-columns: 1fr; }
+  .grid-cols-3 { grid-template-columns: 1fr 1fr 1fr; }
   .gap-3 { gap: 0.75rem; }
   @media (min-width: 768px) {
     .md\:grid-cols-2 { grid-template-columns: 1fr 1fr; }

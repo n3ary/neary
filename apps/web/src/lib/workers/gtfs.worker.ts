@@ -608,6 +608,62 @@ const api: GtfsRepo = {
       stopSequence: r.stop_sequence,
     }));
   },
+
+  async getWeeklySchedule(routeId, directionId) {
+    // For each trip on (routeId, directionId), pick its origin
+    // departure time and the day-flags of its service_id (from
+    // calendar.txt). One trip with a Mon-Fri service contributes its
+    // origin time to the weekday column; same trip + Sat-only service
+    // would land in Saturday. Deduped + sorted per column.
+    //
+    // We intentionally ignore calendar_dates exceptions here — the
+    // weekly table is a recurring-pattern view, not a what-runs-on-
+    // a-specific-day view.
+    const db = await ensureDb();
+    type Row = {
+      departure_time: string;
+      monday: number;
+      tuesday: number;
+      wednesday: number;
+      thursday: number;
+      friday: number;
+      saturday: number;
+      sunday: number;
+    };
+    const rows = selectAll<Row>(
+      db,
+      `SELECT
+         (SELECT departure_time FROM stop_times
+            WHERE trip_id = t.trip_id
+            ORDER BY stop_sequence ASC LIMIT 1) AS departure_time,
+         c.monday, c.tuesday, c.wednesday, c.thursday, c.friday,
+         c.saturday, c.sunday
+       FROM trips t
+       JOIN calendar c ON c.service_id = t.service_id
+       WHERE t.route_id = ? AND t.direction_id = ?;`,
+      [routeId, directionId],
+    );
+
+    const weekday = new Set<number>();
+    const saturday = new Set<number>();
+    const sunday = new Set<number>();
+    for (const r of rows) {
+      if (!r.departure_time) continue;
+      const m = timeToMinutes(r.departure_time);
+      if (!Number.isFinite(m)) continue;
+      if (r.monday || r.tuesday || r.wednesday || r.thursday || r.friday) {
+        weekday.add(m);
+      }
+      if (r.saturday) saturday.add(m);
+      if (r.sunday) sunday.add(m);
+    }
+    const sorted = (s: Set<number>) => Array.from(s).sort((a, b) => a - b);
+    return {
+      weekday: sorted(weekday),
+      saturday: sorted(saturday),
+      sunday: sorted(sunday),
+    };
+  },
 };
 
 // Shape cache lives at module scope so it survives across method
