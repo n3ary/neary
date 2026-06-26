@@ -117,8 +117,26 @@
        column. The headsign + ETA columns to the right then align
        across rows. min-w-14 ≈ 56 px fits four glyphs at the
        medium badge text size; longer ids grow the badge but stay
-       centered. -->
-  <RouteBadge route={vehicle.route} size="medium" class="min-w-14" />
+       centered.
+
+       Wrapped in an <a> that deep-links to the route map, with the
+       current trip (when known) pre-selected. The map link uses the
+       same `_dir` URL convention as the schedule view. Card-level
+       onclick (when provided) ignores clicks bubbling from this
+       anchor, so the parent action and link navigation don't fight. -->
+  {#if vehicle.schedule}
+    <a
+      href={`/map/route/${vehicle.route.id}_${vehicle.schedule.directionId ?? 0}${
+        vehicle.schedule.tripId ? `/${encodeURIComponent(vehicle.schedule.tripId)}` : ''
+      }`}
+      aria-label={`Open ${vehicle.route.shortName} on the map`}
+      class="shrink-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--color-primary)] rounded-md"
+    >
+      <RouteBadge route={vehicle.route} size="medium" class="min-w-14" />
+    </a>
+  {:else}
+    <RouteBadge route={vehicle.route} size="medium" class="min-w-14" />
+  {/if}
 
   <div class="flex-1 min-w-0">
     <div class="text-sm font-medium truncate flex items-center gap-1">

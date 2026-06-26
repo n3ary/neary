@@ -20,7 +20,7 @@ import type { Feed } from '$lib/data/feeds';
 import type { Route, Station, Vehicle } from '$lib/domain/types';
 import { vehicleTypeFromGtfs } from '$lib/domain/types';
 import type {
-  GtfsRepo, StopWithDistance, UpcomingDeparture,
+  GtfsRepo, RouteMapTrip, ScheduleTripStop, StopWithDistance, UpcomingDeparture,
 } from '$lib/data/gtfs/types';
 import { scanSchedule, type ScheduleRow } from '$lib/domain/pipeline/scheduleScanner';
 import { dateKeyInTz, minSinceMidnightInTz } from '$lib/domain/pipeline/timeUtils';
@@ -663,6 +663,149 @@ const api: GtfsRepo = {
       saturday: sorted(saturday),
       sunday: sorted(sunday),
     };
+  },
+
+  async getRouteMapView(routeId, directionId, localDate, localMin, lookbackMin, lookaheadMin) {
+    const db = await ensureDb();
+    const services = activeServicesOn(db, localDate);
+    if (services.length === 0) return null;
+
+    type RouteRow = {
+      route_id: string;
+      route_short_name: string;
+      route_color: string | null;
+      route_text_color: string | null;
+      route_type: number | null;
+    };
+    const routeRows = selectAll<RouteRow>(
+      db,
+      `SELECT route_id, route_short_name, route_color, route_text_color, route_type
+       FROM routes WHERE route_id = ?;`,
+      [routeId],
+    );
+    if (routeRows.length === 0) return null;
+    const r = routeRows[0];
+    const route = {
+      id: String(r.route_id),
+      shortName: r.route_short_name,
+      color: r.route_color ? `#${r.route_color}` : '#666666',
+      textColor: r.route_text_color ? `#${r.route_text_color}` : undefined,
+      type: vehicleTypeFromGtfs(r.route_type),
+    };
+
+    // 1) Active trips on (route, direction). Origin departure within
+    // [localMin - lookbackMin, localMin + lookaheadMin], AND not yet
+    // past the terminus.
+    const placeholders = services.map(() => '?').join(',');
+    type TripRow = {
+      trip_id: string;
+      trip_headsign: string | null;
+      shape_id: string | null;
+      trip_start_time: string;
+      trip_end_time: string;
+    };
+    const tripRows = selectAll<TripRow>(
+      db,
+      `SELECT t.trip_id, t.trip_headsign, t.shape_id,
+              (SELECT departure_time FROM stop_times WHERE trip_id = t.trip_id
+               ORDER BY stop_sequence ASC LIMIT 1) AS trip_start_time,
+              (SELECT arrival_time FROM stop_times WHERE trip_id = t.trip_id
+               ORDER BY stop_sequence DESC LIMIT 1) AS trip_end_time
+       FROM trips t
+       WHERE t.route_id = ?
+         AND t.direction_id = ?
+         AND t.service_id IN (${placeholders});`,
+      [routeId, directionId, ...services],
+    );
+
+    const lowerMin = localMin - lookbackMin;
+    const upperMin = localMin + lookaheadMin;
+    const activeTripRows = tripRows
+      .map((row) => ({
+        ...row,
+        tripStartMin: timeToMinutes(row.trip_start_time),
+        tripEndMin: timeToMinutes(row.trip_end_time),
+      }))
+      .filter((row) => row.tripStartMin >= lowerMin && row.tripStartMin <= upperMin && row.tripEndMin >= localMin)
+      .sort((a, b) => a.tripStartMin - b.tripStartMin);
+
+    if (activeTripRows.length === 0) {
+      return { route, shape: [], stops: [], trips: [] };
+    }
+
+    // 2) Stops for every active trip, in one query. We get back a
+    // flat list and group by trip_id in JS — cheaper than N queries.
+    const tripIds = activeTripRows.map((t) => t.trip_id);
+    const tripPh = tripIds.map(() => '?').join(',');
+    type StopRow = {
+      trip_id: string;
+      stop_id: number;
+      stop_name: string;
+      stop_lat: number;
+      stop_lon: number;
+      arrival_time: string;
+      stop_sequence: number;
+    };
+    const stopRows = selectAll<StopRow>(
+      db,
+      `SELECT st.trip_id, s.stop_id, s.stop_name, s.stop_lat, s.stop_lon,
+              st.arrival_time, st.stop_sequence
+       FROM stop_times st
+       JOIN stops s ON s.stop_id = st.stop_id
+       WHERE st.trip_id IN (${tripPh})
+       ORDER BY st.trip_id, st.stop_sequence ASC;`,
+      tripIds,
+    );
+    const stopsByTrip = new Map<string, ScheduleTripStop[]>();
+    for (const sr of stopRows) {
+      const list = stopsByTrip.get(sr.trip_id) ?? [];
+      list.push({
+        stopId: sr.stop_id,
+        stopName: sr.stop_name,
+        lat: sr.stop_lat,
+        lon: sr.stop_lon,
+        arrivalTime: sr.arrival_time,
+        arrivalMin: timeToMinutes(sr.arrival_time),
+        stopSequence: sr.stop_sequence,
+      });
+      stopsByTrip.set(sr.trip_id, list);
+    }
+
+    const trips: RouteMapTrip[] = activeTripRows.map((t) => ({
+      tripId: t.trip_id,
+      headsign: t.trip_headsign,
+      tripStartMin: t.tripStartMin,
+      tripEndMin: t.tripEndMin,
+      stops: stopsByTrip.get(t.trip_id) ?? [],
+    }));
+
+    // 3) Representative shape: the first active trip's shape_id (if
+    // any). Reuse the shapeCache populated by getShapesForTrips.
+    const repShapeId = activeTripRows.find((t) => !!t.shape_id)?.shape_id ?? null;
+    let shape: Array<{ lat: number; lon: number }> = [];
+    if (repShapeId) {
+      const cached = shapeCache.get(repShapeId);
+      if (cached) {
+        shape = cached;
+      } else {
+        type ShapeRow = { shape_pt_lat: number; shape_pt_lon: number };
+        const shapePts = selectAll<ShapeRow>(
+          db,
+          `SELECT shape_pt_lat, shape_pt_lon FROM shapes
+           WHERE shape_id = ? ORDER BY shape_pt_sequence;`,
+          [repShapeId],
+        );
+        shape = shapePts.map((p) => ({ lat: p.shape_pt_lat, lon: p.shape_pt_lon }));
+        shapeCache.set(repShapeId, shape);
+      }
+    }
+
+    // 4) Representative stop list = the first trip's stops. Other
+    // trips on the same direction usually share the stop list; minor
+    // variants (e.g. a shortened evening run) don't move the markers.
+    const repStops = trips[0].stops;
+
+    return { route, shape, stops: repStops, trips };
   },
 };
 

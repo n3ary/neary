@@ -175,6 +175,32 @@ export interface GtfsRepo {
     routeId: string,
     directionId: 0 | 1,
   ): Promise<WeeklySchedule>;
+
+  /**
+   * One round-trip payload for the route-map view: every trip
+   * currently active on (routeId, directionId) plus a representative
+   * shape polyline for the direction.
+   *
+   * "Active" means a trip whose origin departure is in the window
+   * `[localMin - lookbackMin, localMin + lookaheadMin]` AND that
+   * isn't already past its terminus arrival. Each trip carries its
+   * full ordered stop_times so the UI can predict the bus's current
+   * position by interpolating between consecutive stops.
+   *
+   * The shape comes from the first matching trip — feeds whose
+   * trips share a shape per direction (the common case) get a
+   * single polyline; feeds with multiple shape variants per
+   * direction render whichever variant the first trip uses, which
+   * is good enough for the v2 cut.
+   */
+  getRouteMapView(
+    routeId: string,
+    directionId: 0 | 1,
+    localDate: string,
+    localMin: number,
+    lookbackMin: number,
+    lookaheadMin: number,
+  ): Promise<RouteMapView | null>;
 }
 
 /** One trip on a route+direction, surfaced by getRouteSchedule. */
@@ -211,4 +237,32 @@ export interface ScheduleTripStop {
   arrivalMin: number;
   /** 1-based stop_sequence as in GTFS. */
   stopSequence: number;
+}
+
+/** One active trip in the map-view payload. */
+export interface RouteMapTrip {
+  tripId: string;
+  headsign: string | null;
+  /** Origin departure minute (the first stop's arrivalMin). */
+  tripStartMin: number;
+  /** Terminus arrival minute (the last stop's arrivalMin). */
+  tripEndMin: number;
+  /** Full ordered stop_times for the trip. */
+  stops: ScheduleTripStop[];
+}
+
+/** One round-trip payload backing the route-map view. */
+export interface RouteMapView {
+  /** The route as `Route` (same shape served elsewhere). */
+  route: import('$lib/domain/types').Route;
+  /** Representative polyline for the direction. May be empty if the
+   *  feed doesn't carry shapes.txt for this route. */
+  shape: Array<{ lat: number; lon: number }>;
+  /** Stops in shape order (deduped + sorted by their stop_sequence on
+   *  the representative trip). Used both for stop markers on the map
+   *  and for fitting the initial viewport. */
+  stops: ScheduleTripStop[];
+  /** Active trips on (routeId, directionId), sorted by tripStartMin
+   *  ascending. */
+  trips: RouteMapTrip[];
 }
