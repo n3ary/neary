@@ -82,6 +82,13 @@ export interface ScheduledRun {
   /** GTFS `trips.direction_id` (0 or 1). Used by the reconciler as part
    *  of the live-match key. -1 if the feed doesn't populate direction. */
   directionId?: 0 | 1 | -1;
+  /** True when this scheduled row represents the trip's origin stop
+   *  (stop_sequence === first_seq). UI uses this to keep the row at
+   *  full opacity even when there's no live match — at the origin the
+   *  schedule IS authoritative (the bus hasn't started moving yet, so
+   *  there can never be a GPS match before scheduled departure). At
+   *  intermediate stops a scheduled (no-GPS) row is faded. */
+  isAtTripStart?: boolean;
   /** Minutes since local midnight at the trip's FIRST stop (origin
    *  departure time). Used by the reconciler to match live observations
    *  to scheduled trips by `(routeId, directionId, tripStartMin)` with

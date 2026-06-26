@@ -312,7 +312,12 @@ const api: GtfsRepo = {
     const placeholders = services.map(() => '?').join(',');
     const rows = selectAll<ScheduleRow>(
       db,
-      // Three correlated subqueries per row:
+      // Four correlated subqueries per row:
+      //   first_seq         — trip's origin index. Used to flag the
+      //                       row as "this stop is the trip's start"
+      //                       so the UI can render it at full opacity
+      //                       (schedule is authoritative there) while
+      //                       fading intermediate-stop scheduled rows.
       //   last_seq          — trip's terminus index, used to detect
       //                       drop-off-only terminus arrivals.
       //   trip_end_time     — arrival_time at that terminus, used to keep
@@ -325,10 +330,11 @@ const api: GtfsRepo = {
       //                       (route, direction, start_time) instead of
       //                       trip_id (trip_ids drift between static GTFS
       //                       and GTFS-RT feeds in some operators).
-      // All three are cheap thanks to stop_times_trip_seq_idx (trip_id, stop_sequence).
+      // All four are cheap thanks to stop_times_trip_seq_idx (trip_id, stop_sequence).
       `SELECT st.trip_id, st.arrival_time, st.departure_time, st.pickup_type,
               st.stop_sequence,
               t.direction_id,
+              (SELECT MIN(stop_sequence) FROM stop_times WHERE trip_id = st.trip_id) AS first_seq,
               (SELECT MAX(stop_sequence) FROM stop_times WHERE trip_id = st.trip_id) AS last_seq,
               (SELECT arrival_time FROM stop_times WHERE trip_id = st.trip_id
                ORDER BY stop_sequence DESC LIMIT 1) AS trip_end_time,

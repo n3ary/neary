@@ -33,6 +33,11 @@ export interface ScheduleRow {
   pickup_type: number | null;  // 1 = drop-off only
   /** Position of this stop within the trip's stop_times. */
   stop_sequence: number;
+  /** Min stop_sequence for the same trip — i.e. the origin index.
+   *  When `stop_sequence === first_seq` this row is the trip's start,
+   *  which means schedule is authoritative for the displayed ETA
+   *  (no GPS-based prediction is possible before departure). */
+  first_seq: number;
   /** Max stop_sequence for the same trip — i.e. the terminus index.
    *  When `stop_sequence === last_seq` this row is the trip's terminus
    *  arrival, which we treat as drop-off-only regardless of what
@@ -110,6 +115,7 @@ export function scanSchedule(inputs: ScheduleScannerInputs): Vehicle[] {
       headsign: r.trip_headsign ?? undefined,
       directionId: r.direction_id === 0 || r.direction_id === 1 ? r.direction_id : -1,
       tripStartMin: timeToMinutes(r.trip_start_time),
+      isAtTripStart: r.stop_sequence === r.first_seq,
     };
     const dropOffOnly =
       Number(r.pickup_type) === 1 || r.stop_sequence === r.last_seq

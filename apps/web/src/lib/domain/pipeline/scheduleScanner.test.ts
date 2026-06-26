@@ -15,6 +15,7 @@ const row = (overrides: Partial<ScheduleRow> = {}): ScheduleRow => ({
   // can override per-trip when they want a specific origin time.
   trip_start_time: '09:00:00',
   direction_id: 0,
+  first_seq: 1,
   route_id: '24',
   route_short_name: '24',
   route_color: 'ff0000',
@@ -139,6 +140,30 @@ describe('scanSchedule', () => {
       windowMinutes: 60,
     });
     expect(out[0].dropOffOnly).toBeUndefined();
+  });
+
+  it('flags isAtTripStart when stop_sequence === first_seq', () => {
+    const out = scanSchedule({
+      rows: [row({
+        arrival_time: '09:10:00',
+        stop_sequence: 1,
+        first_seq: 1,
+      })],
+      nowMinSinceMidnight: now,
+      nowMs,
+      windowMinutes: 60,
+    });
+    expect(out[0].schedule?.isAtTripStart).toBe(true);
+  });
+
+  it('does NOT flag isAtTripStart at intermediate stops', () => {
+    const out = scanSchedule({
+      rows: [row({ arrival_time: '09:10:00', stop_sequence: 3, first_seq: 1 })],
+      nowMinSinceMidnight: now,
+      nowMs,
+      windowMinutes: 60,
+    });
+    expect(out[0].schedule?.isAtTripStart).toBe(false);
   });
 
 });
