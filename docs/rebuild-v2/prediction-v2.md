@@ -296,17 +296,28 @@ Same three bands as v1 (HEALTHY < 3 min, STALE < 5 min, VERY_STALE ≥ 5 min). *
 
 ## 6. Implementation plan (phased)
 
-Each phase is independently shippable. None of them is "the big bang".
+Each phase is independently shippable. None of them is "the big bang". P0 is foundational — no user-visible change — but everything later depends on it.
 
-### Phase P0 — measurement
+### Phase P0 — Foundation: shared cascade + geo math
 
-Before changing anything, capture a week of `VehiclePositions` for Cluj and dump per-segment empirical speeds. We need this baseline to:
+One pure module per repo, byte-identical, mirrored from a single source of truth. No UI, no DOM, no IO. Heavily unit-tested. Doesn't ship to users — sits in the codebase as a building block.
 
-- Set realistic defaults for `kmh_peak / kmh_offpeak / kmh_night` (not 18 km/h flat).
-- Pick the time-of-day bucket boundaries empirically rather than guess.
-- Quantify "how wrong is the current schedule" so the v2.5 changes have a benchmark.
+**Contents (~260 lines of pure logic):**
 
-Lives outside the app. Can be a small Node script in `neary-gtfs/scripts/`.
+- `geo.{js,ts}` — `haversineMeters`, `projectOnPolyline`, `pointAtDistance`, `bearingAtDistance`. Already exist in `apps/web/src/lib/domain/shapeProjection.ts`; this phase ports them to the shared shape.
+- `timeOfDay.{js,ts}` — `clockToBucket(localMs, tz, profile): 'peak' | 'offpeak' | 'night'`. Reads `peak_windows` + `night_window` from feed config.
+- `speedCascade.{js,ts}` — `estimateSegmentSpeed(args): SpeedSample`. Implements all four tiers from §5.C.1. Tiers 1–2 take optional live-data inputs; when `undefined`, they short-circuit and the cascade falls through to TOD → centre → static. **Same function used at build time (tiers 3–4 only) and at runtime (all four available when GPS is present).** That's how we avoid duplicating the per-segment speed math between the two repos.
+- `dwell.{js,ts}` — `dwellSecondsFor(stop): number`. Today a constant 20 s (Q.2 still open); abstracted so per-class lookup is a one-file change.
+
+**Cross-repo sharing strategy (see §6.6 for details):** vendor + mirror, low ceremony. `apps/web/src/lib/domain/prediction-core/` is the source of truth; `neary-gtfs/src/pipeline/lib/prediction-core/` is a mirrored copy as plain ESM `.js`. A `scripts/check-mirror.{sh,mjs}` step diffs the two in CI so drift is impossible to merge.
+
+**Acceptance:**
+
+- Both repos import their `prediction-core/` modules and unit tests pass in both.
+- The CI mirror-check rejects a PR that touches one copy without the other.
+- `estimateSegmentSpeed` test corpus: a small canned set of (segment, feedConfig, optional liveData) inputs with known expected outputs, identical in both repos.
+
+No user-visible change. Strictly preparation for P1.
 
 ### Phase P1 — `neary-gtfs` interpolation upgrade
 
@@ -316,16 +327,40 @@ Only the **Cluj** path changes — feeds that ship full operator `stop_times.txt
 
 **P1 deliverables, in order:**
 
-1. **Shape-aware segment distance.** For each consecutive `(stop[i], stop[i+1])` on a trip, distance is `distAlongShape(stop[i+1]) − distAlongShape(stop[i])` using the projection math already in `apps/web/src/lib/domain/shapeProjection.ts` (port to JS in `neary-gtfs/src/pipeline/lib/`). Falls back to haversine only when the trip has no `shape_id`. This alone fixes any route that crosses the Someș with a one-way bridge detour today's haversine misses.
-2. **Time-of-day speed profile, per-feed.** Three numbers in `feeds/<id>/config.json` (Q.1 decided). Cluj defaults pending the P0 measurement; reasonable seed values: `kmh_peak: 12`, `kmh_offpeak: 22`, `kmh_night: 30`. The bucket for a given segment is decided by the segment's *start* time (which we compute as we walk the trip forward), not the trip's start time — so a long route that starts off-peak and rolls into peak hits both speeds correctly.
+1. **Shape-aware segment distance.** For each consecutive `(stop[i], stop[i+1])` on a trip, distance is `distAlongShape(stop[i+1]) − distAlongShape(stop[i])` using `projectOnPolyline` from P0's shared `geo` module. Falls back to haversine only when the trip has no `shape_id`. This alone fixes any route that crosses the Someș with a one-way bridge detour today's haversine misses.
+2. **Per-segment travel time via the shared cascade.** Call `estimateSegmentSpeed` from P0 once per segment, with `vehicleSpeed` and `nearbyVehicles` both `undefined` (no live data at build time). The cascade short-circuits to its TOD → centre → static tiers, all of which are deterministic from the segment's start time + feed config. **No build-time speed code lives in `neary-gtfs`** — the function is imported from `prediction-core/`. Per-feed config (see seed values for Cluj below) lives in `feeds/<id>/config.json` and is read in once per trip.
 3. **Per-stop dwell, with proper arrival/departure split.** Today's Cluj build sets `arrival_time === departure_time` for every stop. With dwell, intermediate stops get:
    ```
    intermediate.arrival_time   = previous.departure_time + segment_travel
    intermediate.departure_time = intermediate.arrival_time + dwell
    ```
-   Origin: `arrival_time = departure_time = operator-published value` (no upstream dwell to model; the published time IS the departure). Terminus: `arrival_time = previous.departure_time + segment_travel`, `departure_time = arrival_time` (no continuation). Dwell default: **20 s** for intermediate stops (Q.2 still open; flat 20 s ships first, per-class is a follow-up).
-4. **`shape_dist_traveled` populated** on every `stop_times` row using the projection from step 1. Single biggest perf win for the web app — eliminates the per-route `buildTripShapePlan` projection cost at runtime (Phase P2 consumes this; P1 just produces it).
+   Origin: `arrival_time = departure_time = operator-published value` (no upstream dwell to model; the published time IS the departure). Terminus: `arrival_time = previous.departure_time + segment_travel`, `departure_time = arrival_time` (no continuation). `dwellSecondsFor` is the P0 helper; default **20 s** for intermediate stops (Q.2 still open).
+4. **`shape_dist_traveled` populated** on every `stop_times` row using the projection from step 1. Single biggest perf win for the web app — eliminates the per-route `buildTripShapePlan` projection cost at runtime (Phase P3 consumes this; P1 just produces it).
 5. **Drop the min/max-per-stop clamp.** If the speed profile says a route takes 18 min, let it. The clamps in today's `interpolateStopTimes` mostly mask bad input rather than guard against it.
+
+**Seed feed config for Cluj** (`neary-gtfs/feeds/cluj-napoca/config.json`):
+
+```json
+{
+  "speed": {
+    "kmh_peak": 12,
+    "kmh_offpeak": 22,
+    "kmh_night": 30,
+    "kmh_min_city_centre": 15,
+    "kmh_max_outskirts": 45,
+    "centre_radius_km": 20
+  },
+  "peak_windows": [
+    { "days": "mon-fri", "from": "07:00", "to": "09:00" },
+    { "days": "mon-fri", "from": "17:00", "to": "19:00" }
+  ],
+  "night_window": { "from": "22:00", "to": "05:00" },
+  "dwell_intermediate_sec": 20,
+  "city_centre": { "lat": 46.7712, "lon": 23.6236 }
+}
+```
+
+These are seed values from lived experience of Cluj traffic, not from any measurement pipeline (explicitly **not** building a historical store — see §8 anti-goals). Tune by riding the bus and editing the file; rebuild the feed; next reload shows the new times.
 
 **Worked example** (Cluj 25N, peak hour, 4 hypothetical stops):
 
@@ -354,43 +389,92 @@ Same trip today (haversine + 18 km/h + 0 dwell): all rows would compress, termin
 
 ### Phase P2 — `shape_dist_traveled` round-trip
 
-Populate at build time, consume in `apps/web/src/lib/workers/gtfs.worker.ts`'s `getRouteMapView`, drop the runtime `projectOnPolyline` call in `buildTripShapePlan`. Cuts a measurable chunk of per-route-load CPU. Shippable independently of P1.
+Populate at build time (already done in P1), consume in `apps/web/src/lib/workers/gtfs.worker.ts`'s `getRouteMapView`, drop the runtime `projectOnPolyline` call in `buildTripShapePlan`. Cuts a measurable chunk of per-route-load CPU. Shippable independently of later phases.
 
-### Phase P3 — `speedEstimator.ts` domain module
+### Phase P3 — `predictArrivalAlongShape.ts`
 
-Pure TS, no UI, no DOM. Heavily unit-tested. Doesn't ship to users — sits in the codebase as a building block.
+Replace today's `predictEta.ts`. Update `assembleLiveBoard` to call the new module. The Stations board's ETAs start using the cascade per segment, with all four tiers available now that we have live observations. Map view unchanged at this phase. Shippable behind a feature flag if we want to A/B against today's single-tier ETA.
 
-### Phase P4 — `predictArrivalAlongShape.ts`
+P3 has no new pure-logic of its own — it composes P0's `estimateSegmentSpeed` with the shape walk from P2. New file just orchestrates.
 
-Replace today's `predictEta.ts`. Update `assembleLiveBoard` to call the new module. The Stations board's ETAs start using the cascade per segment. Map view unchanged at this phase. Shippable behind a feature flag if we want to A/B against v1-ETA-style.
+### Phase P4 — continuous position rendering for every vehicle
 
-### Phase P5 — continuous position rendering for every vehicle
-
-The big one. `predictPositionOnShape` consumes the live observation when present and dead-reckons; when no live observation exists, the same function interpolates the schedule-only position from `nowMs` + stop lat/lon. Either way **every marker moves continuously**, because the 5 s `nowTicker` (from P6) re-runs the predictor for every visible vehicle.
+The big one. `predictPositionOnShape` consumes the live observation when present and dead-reckons; when no live observation exists, the same function interpolates the schedule-only position from `nowMs` + stop lat/lon. Either way **every marker moves continuously**, because the 15 s `nowTicker` (from P5) re-runs the predictor for every visible vehicle.
 
 The behavioural shift vs today is twofold:
 
 1. GPS-equipped vehicles stop being snapped to scheduled stop times — they track where the bus actually is, anchored to the last GPS sample and extrapolated forward.
-2. Schedule-only vehicles stop being frozen between `nowTicker` ticks — they slide smoothly between their scheduled stops on the same 5 s cadence.
+2. Schedule-only vehicles stop being frozen between `nowTicker` ticks — they slide smoothly between their scheduled stops on the same 15 s cadence (with RAF interpolation in between, see P5).
 
-This is the phase where the user's "GPS as spine" wish lands for live-GPS vehicles, while schedule-only vehicles also benefit from the smoother UI cadence. Cannot ship before P3 (no speed estimator) and P4 (no per-segment ArrivalPlan to anchor against).
+This is the phase where the user's "GPS as spine" wish lands for live-GPS vehicles, while schedule-only vehicles also benefit from the smoother UI cadence. Cannot ship before P0 (no speed estimator) and P3 (no per-segment ArrivalPlan to anchor against).
 
-### Phase P6 — tick alignment + the refresh-button contract
+### Phase P5 — tick alignment + the refresh-button contract
 
 **DECIDED 2026-06-27, REVISED 2026-06-27 (Q.4): drop `nowTicker` to 15 s globally, synchronised with `livePollMs`.** Earlier draft proposed 5 s; thinking it through, 5 s is overkill because the predictor inputs only change in two ways:
 
 1. **Fresh GPS arrives** — happens on the poll cadence, which is 15 s. Ticking faster than the poll just re-runs the predictor with identical inputs.
 2. **Wall-clock time advances** — affects only what's visible to the user (ETA labels, urgency colours, dead-reckoned marker positions). For the Stations board, a 15 s display lag on a minute-resolution label is invisible. For the Map view, smooth marker movement is the only real motivation — and that's better handled by RAF interpolation between ticks (next bullet).
 
-**Smooth marker animation comes from RAF, not from a fast global tick.** Same pattern the traveling-dots layer already uses. Each marker stores its current `(predictedPos, predictedVel)` pair at the last `nowTicker` tick; an RAF loop on the map page interpolates `pos += vel * dt` every frame between ticks. At the next tick the predictor recomputes the anchor and the RAF picks up the new vel. Markers slide smoothly at 60 fps without the cost of running the predictor 60 times a second.
+**Smooth marker animation comes from RAF, not from a fast global tick.** Same pattern the traveling-dots layer already uses. Each marker stores its current `(predictedPos, predictedVel)` pair at the last `nowTicker` tick; an RAF loop on the map page interpolates `pos += vel * dt` every frame between ticks. At the next tick the predictor recomputes the anchor and the RAF picks up the new vel. Markers slide smoothly at 30 fps without the cost of running the predictor 30 times a second.
 
 Reasons to keep it at 15 s instead of 5 s:
 
 - **Matches the poll cadence** — one frequency to reason about, no "why did the predictor run when nothing changed".
-- **3× less work** — 6 ticks/min vs 12. Predictor + every dependent `$derived` runs that much less.
+- **3× less work** — 4 ticks/min vs 12. Predictor + every dependent `$derived` runs that much less.
 - **Refresh button still snaps to ~150 ms** — cadence doesn't determine refresh responsiveness; the `nowTicker.bump()` in the handler does. See §6.5.
 
-Also in P6: wire the refresh button so it produces an immediate fresh prediction in one beat. See §6.5 below for the full mechanics.
+Also in P5: wire the refresh button so it produces an immediate fresh prediction in one beat. See §6.5 below for the full mechanics.
+
+---
+
+## 6.6 — Cross-repo sharing for the prediction core
+
+P0's modules need to be byte-identical in both repos. The repos are separate, so we need a discipline. Three options considered:
+
+| Option | Cost | When to use |
+|---|---|---|
+| **A. Vendor + mirror, low ceremony** | ~30 min setup, near-zero maintenance | When the math is ~hundreds of lines and stabilises after the initial port. **This is our choice.** |
+| B. Private NPM package | Real infra: registry, versioning, release process | When a third consumer appears or the math churns weekly |
+| C. Git submodule / subtree | Mid-cost, tends to confuse contributors | Almost never — skip |
+
+### Mirror layout
+
+- **Source of truth:** `apps/web/src/lib/domain/prediction-core/` (TypeScript).
+  - `geo.ts`, `timeOfDay.ts`, `speedCascade.ts`, `dwell.ts` + their `*.test.ts` files.
+  - Stays inside the SvelteKit app so the existing test runner + import graph keep working.
+- **Mirror:** `neary-gtfs/src/pipeline/lib/prediction-core/` (plain ESM JS).
+  - Same filenames, same exports, same logic.
+  - Header comment in each file: `// MIRRORED from neary/apps/web/src/lib/domain/prediction-core/<file>.ts. Do not edit — run scripts/sync-prediction-core.mjs instead.`
+
+### The sync script
+
+`scripts/sync-prediction-core.mjs` (lives in `neary-gtfs`):
+
+1. Reads each `.ts` source from a configured path (env var or local checkout of the `neary` repo).
+2. Strips type annotations using `esbuild`'s `transform` API (which is already a `neary-gtfs` dependency for the build pipeline).
+3. Writes the resulting `.js` next to the original filename.
+4. Verifies test corpus passes locally.
+
+Running the script is idempotent. PRs that touch `prediction-core` in `neary-gtfs` without running the script are rejected by:
+
+### The CI mirror-check
+
+`scripts/check-mirror.mjs` runs in CI in both repos:
+
+- In `neary-gtfs` CI: re-runs `sync-prediction-core.mjs` against a pinned `neary` git ref and `git diff --exit-code`. If anything changes, fail the build with "Mirror is stale; run `npm run sync-prediction-core` and commit."
+- In `neary` CI: smoke test that the `.ts` source compiles to JS equivalent to what the sync script would produce.
+
+### When to graduate to Option B
+
+If within the first six months any of the following happen, promote `prediction-core` to a private NPM package:
+
+- A third repo wants to consume it (a back-office analytics tool, a different app surface).
+- We start tweaking it more than monthly.
+- We add a fourth language target (Python for analysis, Go for a backend).
+
+Until then, vendor-and-mirror is the lowest-friction path. The contract is enforced by CI, not by humans remembering.
+
+---
 
 ---
 
@@ -403,7 +487,7 @@ This is the part that's confusing today and gets worse if we don't write it down
 | # | Loop | Owns | Cadence | What it does |
 |---|---|---|---|---|
 | L1 | **Live GPS poll** | `liveVehiclesStore.poll()` | every 15 s (`livePollMs`) | fetches `/api/rt/<feed>/vehiclePositions`, parses, writes `observations` to the store |
-| L2 | **UI / time tick** | `nowTicker.ms` | every **5 s** (post-P6; 30 s today) | a reactive `$state` representing "the now we use for display" — drives every `$derived` that depends on time |
+| L2 | **UI / time tick** | `nowTicker.ms` | every **15 s** (post-P5; 30 s today) | a reactive `$state` representing "the now we use for display" — drives every `$derived` that depends on time |
 | L3 | **Manual data refresh** | `refreshBus.tick` | on user tap | wakes effects that gate on it to re-fetch *static* data (schedules, route lists) from the SQLite worker |
 
 They are **fully decoupled by design**:
@@ -436,9 +520,9 @@ What it *doesn't* do:
 - It doesn't advance `nowTicker.ms`. So time-only-derived values (ETA labels, urgency colors, bucketing) still wait for the next L2 tick.
 - (Today) it doesn't matter for `markers` on the Map view because `markers` only depends on `nowMin` and the static schedule — not on live observations. So an "immediate fresh GPS" doesn't help.
 
-### The refresh contract (post-P5)
+### The refresh contract (post-P4)
 
-After P5 the dependencies are right; the refresh button needs one tiny addition to deliver the freshest prediction in one beat:
+After P4 the dependencies are right; the refresh button needs one tiny addition to deliver the freshest prediction in one beat:
 
 ```ts
 function onrefresh() {
@@ -457,7 +541,7 @@ function onrefresh() {
 
 End-to-end: **~150 ms from tap to fresh prediction on screen**, vs today's "up to 30 s" worst case waiting for the next L2 tick.
 
-### Recommended config (post-P5/P6)
+### Recommended config (post-P4/P5)
 
 | Setting | Value | Why |
 |---|---|---|
@@ -477,11 +561,11 @@ All of these (except the RAF rate, which is map-local) live in `DEFAULT_CONFIG` 
 - **Don't trigger predictions inside the L1 callback.** Same reason — keep prediction purely a function of `(now, observations, static)`. The reactive graph does the rest.
 - **Don't bump `nowTicker` from inside L1.** That would mean every GPS poll forces a UI re-render of every nowTicker subscriber. Wasteful and conflates two concerns. Only the refresh button bumps; the poll just updates the store and lets Svelte wake the right derived nodes.
 
-### End-to-end latency, post-P5/P6
+### End-to-end latency, post-P4/P5
 
 Compared to the current ~25 s typical / 55 s worst case (see §1.4):
 
-| Path | Today | After P5+P6 |
+| Path | Today | After P4+P5 |
 |---|---|---|
 | GPS reports → marker moves (auto) | 0–55 s | 0–30 s (15 s poll + 15 s tick worst case; markers also RAF-interpolate between ticks) |
 | Refresh tap → marker moves | 30 s waiting for `nowTicker` | ~150 ms |
@@ -498,7 +582,7 @@ Decisions needed before P1 starts. None of them block writing the v1 port module
 - **Q.1 — Where does the speed profile live?** ~~Per-feed config in `neary-gtfs/feeds/<id>/config.json`, or per-feed-per-route, or derived from observation (P0 output)?~~ **DECIDED 2026-06-27: per-feed.** Per-route is overkill — in the city centre many routes overlap with essentially the same traffic profile.
 - **Q.2 — Per-stop dwell.** Flat 20 s, or per-stop based on observed headway / boarding volume, or per-stop-class (terminal vs through-stop vs request-only)? Recommendation: flat 20 s ship, per-class once we have observed data. *Open.*
 - **Q.3 — City-centre tier from v1.** ~~Do we keep it?~~ **DECIDED 2026-06-27: keep v1's city-centre tier for now.** Sits between the time-of-day profile and the static fallback. Centroid computed once at build time per feed.
-- **Q.4 — Map liveness vs battery.** ~~Drop `nowTicker` to 5 s globally, or only the map page (P6)?~~ **DECIDED 2026-06-27, REVISED 2026-06-27: nowTicker at 15 s globally, synchronised with `livePollMs`.** Smooth map marker animation comes from RAF interpolation between ticks, not from a faster global tick. See §6 P6 + §6.5 for the full reasoning.
+- **Q.4 — Map liveness vs battery.** ~~Drop `nowTicker` to 5 s globally, or only the map page (P6)?~~ **DECIDED 2026-06-27, REVISED 2026-06-27: nowTicker at 15 s globally, synchronised with `livePollMs`.** Smooth map marker animation comes from RAF interpolation between ticks, not from a faster global tick. See §6 P5 + §6.5 for the full reasoning.
 - **Q.5 — Should reconciliation use GPS position?** The position-aware tie-break in §5 fixes same-time crossings but adds a per-candidate projection call. Cheap, but worth being explicit. Recommendation: yes, with a fallback to timing-only when no GPS is available for the candidate. *Open.*
 - **Q.6 — What does the Map view do when GPS is VERY_STALE?** ~~v1 dropped the vehicle. v2-today renders the schedule position regardless.~~ **DECIDED 2026-06-27: freeze at last known position with a yellow border, no dead-reckoning forward.** Vehicle stays visible so the user still knows where it was last seen.
 - **Q.7 — Test corpus.** We don't have one yet for prediction quality. Recommendation: P0 captures a week of vehicle pings; a CSV of `(tripId, stopId, scheduled_arrival, observed_arrival)` triples becomes the regression input. Each predictor is scored on MAE against it. *Open.*
@@ -509,12 +593,14 @@ Decisions needed before P1 starts. None of them block writing the v1 port module
 
 Things this design deliberately does *not* attempt, with reasons:
 
+- **No historical speed pipeline / measurement poller.** The original P0 was "capture a week of GTFS-RT and dump empirical speeds". Rejected on the same grounds as the Kalman/ML approaches: real infrastructure, real maintenance, and the cascade gives a defensible answer from per-feed config alone. Seed values come from lived experience; tune by riding the bus and editing the config.
 - **No Kalman filter / state-space model.** Tunable per-feed parameters are a real ops burden; the cascade gives 80 % of the win with 10 % of the complexity.
 - **No historical speed database.** OneBusAway-style per-segment learned models need a backend. We don't have one, and the project is still a static PWA.
 - **No machine-learning ETA.** Same reason. Plus accountability matters here — a heuristic cascade is debuggable line by line.
 - **No prediction storage / replay.** Predictions are ephemeral per tick. Tests run on canned inputs.
 - **No multi-feed merging at runtime.** Each feed's predictor uses only its own GPS + its own schedule. If two feeds share a route (rare), they get two predictions.
 - **No bypass of the worker.** All SQLite access stays in `gtfs.worker.ts`; the predictor modules are pure functions called from the page-level `$derived`s.
+- **No two implementations of the cascade.** The `prediction-core` module is mirrored byte-for-byte between repos and CI-enforced (see §6.6). Anyone tempted to write a second copy in either repo should be told to import from `prediction-core` instead.
 
 ---
 
@@ -534,4 +620,5 @@ Things this design deliberately does *not* attempt, with reasons:
 - 2026-06-27 — Q.1 decided **per-feed** (not per-route). Q.3 decided **keep v1's city-centre tier** as a 4th step in the cascade. Q.4 decided **drop `nowTicker` to 5 s globally** (no per-page split). Q.6 decided **freeze at last known position with yellow border** on VERY_STALE GPS. §6.5 added: explainer of the three loops (live poll / nowTicker / refreshBus), recommended config, and the refresh-button contract. Q.2 / Q.5 / Q.7 still open.
 - 2026-06-27 — P5 scope clarified: the map moves *every* visible vehicle on each `nowTicker` tick, not just live-GPS ones. Schedule-only vehicles interpolate continuously between their scheduled stops; live-GPS vehicles dead-reckon from their last sample. Source determines confidence + reckoning rules, not whether the marker animates. §5.C.3 + Phase P5 description rewritten.
 - 2026-06-27 — P1 scope spelled out in full instead of "Stage A from §5". Five explicit deliverables: shape-aware segment distance, per-feed time-of-day speed profile, per-stop dwell with proper arrival/departure split, `shape_dist_traveled` populated, drop the min/max clamp. Worked example added showing today's haversine+18 km/h+0 dwell vs the new formula on a 4-stop trip. Acceptance criteria added. Only the Cluj path changes; feeds with operator-provided `stop_times.txt` keep using those as authoritative.
-- 2026-06-27 — Q.4 revised. Earlier decision was 5 s `nowTicker` everywhere. Reconsidered: that's overkill because predictor inputs only change on the poll cadence (15 s) anyway, and 5 s ticking just re-runs the predictor with identical inputs. New decision: `nowTicker = 15 s`, synchronised with `livePollMs`. Map marker smoothness handled by an RAF interpolation loop on the map page (`pos += vel * dt` per frame, anchor recomputed at each tick) — same pattern the traveling-dots layer already uses. §2.7 cadence comparison fixed (v1 vs v2 vs v2.5 was wrongly framed); §6 P6 description rewritten; §6.5 config table + latency table updated.
+- 2026-06-27 — P0 ("measurement") deleted. User confirmed no historical-speed pipeline; seed defaults come from lived experience instead. New P0 ("Foundation") replaces it: shared `prediction-core` module (geo math + TOD bucket + speed cascade + dwell), byte-mirrored between the two repos with CI enforcement. §6.6 added explaining the vendor-and-mirror strategy, the sync script, and when to graduate to a private NPM package. P1–P6 renumbered to P1–P5 (the old P3 "speedEstimator domain module" is absorbed into P0 since it's the same shared cascade). Anti-goals section updated to call out the absence of a measurement pipeline.
+- 2026-06-27 — Q.4 revised. Earlier decision was 5 s `nowTicker` everywhere. Reconsidered: that's overkill because predictor inputs only change on the poll cadence (15 s) anyway, and 5 s ticking just re-runs the predictor with identical inputs. New decision: `nowTicker = 15 s`, synchronised with `livePollMs`. Map marker smoothness handled by an RAF interpolation loop on the map page (`pos += vel * dt` per frame, anchor recomputed at each tick) — same pattern the traveling-dots layer already uses. §2.7 cadence comparison fixed (v1 vs v2 vs v2.5 was wrongly framed); §6 P5 description rewritten; §6.5 config table + latency table updated.
