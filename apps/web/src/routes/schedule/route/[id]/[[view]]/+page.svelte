@@ -83,6 +83,14 @@
   // means "no data fetched yet" OR "no service today" — both render
   // the same empty-state row.
   let tripsByDir = $state<{ 0: ScheduleTrip[]; 1: ScheduleTrip[] }>({ 0: [], 1: [] });
+  // Which view's window the trips above came from. Lets the
+  // auto-swap effect tell 'today returned empty' apart from
+  // 'fetch hasn't run yet'. Reset to null on each new request,
+  // set to the view at the end of the IIFE.
+  let fetchedView = $state<View | null>(null);
+  // One-shot guard so the auto-redirect doesn't fight the user if
+  // they manually navigate back to today after we swapped them.
+  let autoSwapped = $state(false);
   // Per-trip stop timelines. Drives the 'Next trip' tab AND the
   // inline row expansion in Today/Tomorrow.
   let tripStops = $state<Map<string, ScheduleTripStop[]>>(new Map());
@@ -124,6 +132,8 @@
     const rid = routeId;
     const dir = direction;
     const qp = queryParams;
+    const v = view;
+    fetchedView = null;
     (async () => {
       try {
         const repo = getGtfsRepo();
@@ -146,11 +156,29 @@
           const stopsTripId = trips[0]?.tripId ?? null;
           if (stopsTripId) await loadTripStops(stopsTripId);
         }
+        fetchedView = v;
         error = null;
       } catch (e) {
         error = e instanceof Error ? e.message : String(e);
       }
     })();
+  });
+
+  // Smart default: when the user lands without an explicit ?view in
+  // the URL AND today returned no remaining departures, swap them
+  // to tomorrow once. Skips when the user explicitly chose 'today'
+  // (page.params.view !== undefined) so we don't override an
+  // intentional click. One-shot via `autoSwapped` so a later manual
+  // navigation back to today is respected.
+  $effect(() => {
+    if (autoSwapped) return;
+    if (direction == null) return;
+    if (page.params.view != null) return;
+    if (view !== 'today') return;
+    if (fetchedView !== 'today') return; // wait for today's fetch
+    if (tripsByDir[direction].length > 0) return;
+    autoSwapped = true;
+    goto(`/schedule/route/${routeId}_${direction}/tomorrow`, { replaceState: true });
   });
 
   async function loadTripStops(tripId: string) {
@@ -219,11 +247,13 @@
     return 'weekday';
   });
 
-  // Tab availability: 'next-trip' needs a direction + a resolved
-  // next-trip stop list; otherwise the row would be empty.
-  const canShowNextTrip = $derived(direction != null && focusStops.length > 0);
+  // Tab availability: Next trip is offered whenever a direction is
+  // set, even if there are no more trips today — the tab content
+  // then shows an empty state with a one-tap shortcut to Tomorrow.
+  // Hiding the tab on transient empty data would make it vanish
+  // mid-interaction.
   const tabItems = $derived(
-    canShowNextTrip
+    direction != null
       ? [
           { value: 'next-trip', label: 'Next trip' },
           { value: 'today', label: 'Today' },
@@ -455,6 +485,22 @@
             {#if view === 'next-trip' && focusStops.length > 0}
               <!-- Stop timeline for the next upcoming trip. -->
               {@render tripTimeline(focusStops)}
+            {:else if view === 'next-trip'}
+              <!-- No more trips today: tell the user, give them a
+                   one-tap shortcut to tomorrow so the empty state
+                   isn't a dead end. -->
+              <Stack spacing={1}>
+                <Typography variant="body2" class="text-[color:var(--color-fg-muted)]">
+                  No more trips today on this direction.
+                </Typography>
+                <button
+                  type="button"
+                  onclick={() => pickView('tomorrow')}
+                  class="text-sm underline text-[color:var(--color-primary)] hover:text-[color:var(--color-fg)] self-start"
+                >
+                  Show tomorrow's schedule →
+                </button>
+              </Stack>
             {:else if view === 'week'}
               <!-- Weekly pattern: three columns for Mon–Fri / Sat / Sun
                    showing every scheduled departure from the origin in
