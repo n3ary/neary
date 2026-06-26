@@ -104,7 +104,14 @@
   {@const type = route.type ?? 'unknown'}
   {@const typeLabel = vehicleTypeLabel(type)}
   <Stack direction="row" spacing={1} align="center" class="px-1 py-1 rounded-md hover:bg-[color:var(--color-border)]/30">
-    <RouteBadge {route} size="medium" isFavorite={isFav} />
+    <!-- Tap the badge to jump to the route's schedule. Direction 0 is
+         the default landing direction; the schedule view's own swap
+         control lets the user flip without coming back here. min-w-14
+         matches VehicleCard so badges read as a tidy left column even
+         next to short 1-digit shortNames. -->
+    <a href={`/schedule/route/${route.id}_0`} aria-label={`Open schedule for ${typeLabel.toLowerCase()} ${route.shortName}`}>
+      <RouteBadge {route} size="medium" isFavorite={isFav} class="min-w-14" />
+    </a>
     <Typography variant="body2" class="flex-1 truncate">
       <span style={`color:${route.color}`} class="font-semibold">{typeLabel}</span>
       <span class="text-[color:var(--color-fg-muted)]">{route.shortName}</span>
