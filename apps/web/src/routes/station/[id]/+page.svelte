@@ -23,7 +23,9 @@
   import { refreshBus } from '$lib/stores/refreshBus.svelte';
   import { userPrefs } from '$lib/stores/userPrefs.svelte';
 
-  const ARRIVALS_WINDOW_MIN = 240;
+  // Cover the rest of the GTFS service day from any wall-clock time;
+  // matches the home view's window. See /+page.svelte for rationale.
+  const ARRIVALS_WINDOW_MIN = 18 * 60;
 
   const stopId = $derived(Number(page.params.id));
   const stopIdValid = $derived(Number.isFinite(stopId) && stopId > 0);

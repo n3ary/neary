@@ -43,13 +43,13 @@
     DEFAULT_CONFIG.favoriteFallbackRadiusM,
   );
   const MAX_STATIONS = 25;
-  // Query a generous future window so the 5-row cap on the StationCard
-  // always has enough to pick from, even at sparse stops where service
-  // runs only every 30 min. The cap (lib/domain/stationBoard.ts) trims
-  // down to 5; everything past that just sits in memory as
-  // overflow-incoming we never render. Volume is fine — ~120 trips at a
-  // very busy stop x 8 stops = small kB-range JSON over Comlink.
-  const ARRIVALS_WINDOW_MIN = 240;
+  // Cover the rest of the GTFS service day from any wall-clock time:
+  // 18 hours from now reaches past the typical 04:00 end-of-service
+  // even at 10:00 in the morning, and the StationCard's 5-row cap
+  // (lib/domain/stationBoard.ts) trims any overshoot for free. Worth
+  // it so the nearby list shows whatever is still to come instead of
+  // an arbitrary 4-hour horizon that empties out late in the evening.
+  const ARRIVALS_WINDOW_MIN = 18 * 60;
 
   onMount(() => locationStore.start());
 
@@ -232,16 +232,7 @@
         }).length,
         0,
       )}
-      {#if rawTotal === 0}
-        <Box class="px-2 py-1 text-xs text-[color:var(--color-warning)]">
-          No upcoming vehicles found in any of the {boards.length} nearby
-          stations within the next {ARRIVALS_WINDOW_MIN} min. This usually
-          means the GTFS calendar has no active service for today, or your
-          system clock disagrees with the feed timezone — check
-          <a href="/data-test" class="underline">/data-test</a> for a raw
-          query against a known stop.
-        </Box>
-      {:else if filteredTotal === 0}
+      {#if rawTotal > 0 && filteredTotal === 0}
         <Box class="px-2 py-1 text-xs text-[color:var(--color-warning)]">
           {rawTotal} vehicles found but all hidden by your filters
           (check Settings → Display: drop-off-only, schedule-only,

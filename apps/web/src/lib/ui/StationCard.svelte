@@ -203,7 +203,7 @@
     <Collapsible in={expanded} class="mt-2">
       {#if isEmpty}
         <Box class="px-3 py-3 text-sm text-[color:var(--color-fg-muted)]">
-          No vehicles right now.
+          No more departures today.
         </Box>
       {:else}
         <Stack spacing={1.5} class="pt-1">
