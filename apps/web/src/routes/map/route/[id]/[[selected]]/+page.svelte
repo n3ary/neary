@@ -160,9 +160,20 @@
   });
 
   // ── Title / subtitle ───────────────────────────────────────────────
-  const headsign = $derived(view?.trips[0]?.headsign ?? null);
+  // Mirrors the schedule view: title is the origin station name
+  // (i.e. 'departures from here'), subtitle is the headsign —
+  // operator-published when available, falling back to the
+  // terminus stop name. The route badge on the left already
+  // carries route identity; repeating 'Bus 40' as the title was
+  // redundant.
+  const originStopName = $derived(view?.stops[0]?.stopName ?? null);
+  const terminusStopName = $derived(
+    view ? view.stops[view.stops.length - 1]?.stopName ?? null : null,
+  );
+  const headsign = $derived(view?.trips[0]?.headsign ?? terminusStopName);
   const headerTitle = $derived(
-    route ? `${vehicleTypeLabel(route.type ?? 'unknown')} ${route.shortName}` : '',
+    originStopName
+    ?? (route ? `${vehicleTypeLabel(route.type ?? 'unknown')} ${route.shortName}` : ''),
   );
   const headerSubtitle = $derived(headsign ? `→ ${headsign}` : null);
 
