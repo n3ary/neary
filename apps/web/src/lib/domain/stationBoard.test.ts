@@ -26,6 +26,7 @@ function scheduled(tripId: string, route: Route, etaMinutes: number): Vehicle {
 const allowAll = {
   showDepartedVehicles: true,
   showDropOffOnly: true,
+  showOffRouteVehicles: false,
 };
 
 const nowMs = new Date(2026, 5, 26, 9, 0, 0).getTime(); // 09:00 local

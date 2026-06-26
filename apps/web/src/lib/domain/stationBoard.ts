@@ -27,6 +27,8 @@ export interface BoardRow {
 export interface BoardPrefs {
   showDepartedVehicles: boolean;
   showDropOffOnly: boolean;
+  /** Advanced: include vehicles bucketed as `off-route` in the board. */
+  showOffRouteVehicles: boolean;
 }
 
 /** Minutes since local midnight for a UNIX ms timestamp. */

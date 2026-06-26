@@ -155,14 +155,27 @@
     </CardContent>
   </Card>
 
-  <!-- ===== Advanced placeholder ===== -->
+  <!-- ===== Advanced ===== -->
   <Card>
     <CardContent>
-      <Stack spacing={1}>
+      <Stack spacing={2}>
         <Typography variant="h6">Advanced</Typography>
+
+        <Stack direction="row" align="center" justify="between">
+          <Box class="flex-1 min-w-0">
+            <Typography variant="body2">Show off-route vehicles</Typography>
+            <Typography variant="caption">Diagnostic: include vehicles the reconciler couldn't match to the route shape (stale GPS, off the line). Not relevant in schedule-only mode; lights up once a live source is configured.</Typography>
+          </Box>
+          <Switch
+            checked={userPrefs.showOffRouteVehicles}
+            onchange={(v) => (userPrefs.showOffRouteVehicles = v)}
+            aria-label="Show off-route vehicles"
+          />
+        </Stack>
+
         <Typography variant="caption">
           Storage breakdown, data freshness, force schedule reload, app version,
-          and debug toggles live here in a separate view (lands with Phase 7).
+          and more debug toggles land in a separate view in Phase 7.
         </Typography>
       </Stack>
     </CardContent>

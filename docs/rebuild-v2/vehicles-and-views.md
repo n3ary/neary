@@ -407,17 +407,16 @@ it consumes the raw `Vehicle[]` directly, showing every en-route bus.
 
 ### Station-view filters (`filterForStationView`)
 
-Two user-tunable filters apply **before** the board renders. Map view
-ignores both and always shows every vehicle.
+Three user-tunable filters apply **before** the board renders. Map view
+ignores all of them and always shows every vehicle.
 
 | `userPrefs` flag             | Default | Effect on station view                                                |
 | ---------------------------- | ------- | --------------------------------------------------------------------- |
 | `showDropOffOnly`            | `true`  | When `false`, drop vehicles with `vehicle.dropOffOnly === true` from the **future** buckets (incoming / arriving / at-station / departing). Set by `scheduleScanner` when either GTFS `stop_times.pickup_type = 1` OR the stop is the trip's terminus (operators routinely leave `pickup_type` null at the last stop, so the structural fallback catches those). The `departed` bucket ignores this flag — past vehicles aren't boardable anyway, so the question is moot. When `true`, the row is shown with a small "Drop off" chip. |
 | `showDepartedVehicles`       | `false` | When `false`, drop the `departed` bucket entirely. When `true`, show vehicles that have passed this stop and are still en route to their trip's terminus (no artificial recency cap — the scheduleScanner gates on `trip_end_time > now`). The `dropOffOnly` filter does NOT apply here; you can't board a past vehicle anyway. |
+| `showOffRouteVehicles`       | `false` | **Advanced** (under Settings → Advanced). When `false`, drop the `off-route` bucket entirely. When `true`, include vehicles the reconciler bucketed off-route — typically stale GPS or position off the route shape. No row reaches this bucket in Phase 4 (only live vehicles can go off-route); the toggle is a no-op until Phase 5 wires live data. |
 
 Schedule-only kinds (`predicted` / `scheduled`) are always shown.
-`off-route` is always hidden from station boards; it only surfaces in the
-debug view.
 
 ---
 

@@ -23,6 +23,11 @@ class UserPrefs {
    *  window) on station boards. Map view always shows them. Defaults off:
    *  most users only care about what's still coming. */
   showDepartedVehicles = $state(false);
+  /** Advanced — show vehicles the reconciler couldn't pin to the route
+   *  shape (off-route bucket). Diagnostic; default off. Phase 4 never
+   *  emits off-route (only live vehicles can), so this is a no-op now
+   *  but reserves the contract for Phase 5+. */
+  showOffRouteVehicles = $state(false);
   /** User's optional Tranzy API key — when set, live data layer activates. */
   apiKey = $state<string | null>(null);
 
@@ -36,12 +41,14 @@ class UserPrefs {
         feedId: string | null;
         showDropOffOnly: boolean;
         showDepartedVehicles: boolean;
+        showOffRouteVehicles: boolean;
         apiKey: string | null;
       }>;
       if (o.theme === 'auto' || o.theme === 'light' || o.theme === 'dark') this.theme = o.theme;
       if (typeof o.feedId === 'string' || o.feedId === null) this.feedId = o.feedId;
       if (typeof o.showDropOffOnly === 'boolean') this.showDropOffOnly = o.showDropOffOnly;
       if (typeof o.showDepartedVehicles === 'boolean') this.showDepartedVehicles = o.showDepartedVehicles;
+      if (typeof o.showOffRouteVehicles === 'boolean') this.showOffRouteVehicles = o.showOffRouteVehicles;
       if (typeof o.apiKey === 'string' || o.apiKey === null) this.apiKey = o.apiKey;
     } catch {
       // Corrupt or unreadable storage — fall back to defaults silently.
@@ -55,6 +62,7 @@ class UserPrefs {
       feedId: this.feedId,
       showDropOffOnly: this.showDropOffOnly,
       showDepartedVehicles: this.showDepartedVehicles,
+      showOffRouteVehicles: this.showOffRouteVehicles,
       apiKey: this.apiKey,
     };
   }

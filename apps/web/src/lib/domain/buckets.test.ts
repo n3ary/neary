@@ -212,14 +212,23 @@ describe('filterForStationView', () => {
   const allowAll = {
     showDepartedVehicles: true,
     showDropOffOnly: true,
+    showOffRouteVehicles: true,
   };
 
-  it('always drops off-route', () => {
+  it('drops off-route by default (showOffRouteVehicles=false)', () => {
+    const out = filterForStationView(
+      [base('off-route'), base('incoming')],
+      { ...allowAll, showOffRouteVehicles: false },
+    );
+    expect(out.map((e) => e.bucket)).toEqual(['incoming']);
+  });
+
+  it('keeps off-route when the advanced toggle is on', () => {
     const out = filterForStationView(
       [base('off-route'), base('incoming')],
       allowAll,
     );
-    expect(out.map((e) => e.bucket)).toEqual(['incoming']);
+    expect(out.map((e) => e.bucket)).toEqual(['off-route', 'incoming']);
   });
 
   it('drops departed when showDepartedVehicles is off', () => {
