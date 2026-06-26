@@ -34,6 +34,21 @@ export interface NearyConfig {
   /** Poll cadence for GTFS-RT VehiclePositions, in ms. The upstream feed
    *  typically updates every ≈10–20 s. */
   livePollMs: number;
+
+  // ── Station selection (Stations view) ───────────────────────────────
+  /** Primary "nearby" search radius from the user's location. Only stops
+   *  within this distance are considered for the closest+2nd-closest
+   *  pair rule. */
+  nearbyRadiusM: number;
+  /** A second stop joins the closest one ONLY when its distance to the
+   *  user differs from the closest by at most this many meters. Keeps
+   *  the view to the actual pair the user is standing between, never
+   *  surfacing a far-second-best when the closest is unambiguous. */
+  pairProximityM: number;
+  /** Fallback search radius used only when nothing is within
+   *  `nearbyRadiusM`. The selector then surfaces the closest stop
+   *  within this radius that carries a favorited route. */
+  favoriteFallbackRadiusM: number;
 }
 
 /** Production defaults. v1 magic numbers ported per spec §7.1. */
@@ -45,4 +60,7 @@ export const DEFAULT_CONFIG: NearyConfig = {
   departingSpeedKmh: 5,
   minDwellGapMin: 1,
   livePollMs: 15_000,
+  nearbyRadiusM: 500,
+  pairProximityM: 100,
+  favoriteFallbackRadiusM: 2000,
 };

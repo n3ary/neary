@@ -18,6 +18,8 @@
   import { getGtfsRepo } from '$lib/data/gtfs/repo';
   import type { StopWithDistance } from '$lib/data/gtfs/types';
   import { assembleLiveBoard, routesFromVehicles } from '$lib/domain/stationBoard';
+  import { selectBoardsForView } from '$lib/domain/stationSelection';
+  import { DEFAULT_CONFIG } from '$lib/domain/config';
   import type { Vehicle } from '$lib/domain/types';
   import { feedsStore } from '$lib/stores/feedsStore.svelte';
   import { liveVehiclesStore } from '$lib/stores/liveVehiclesStore.svelte';
@@ -31,8 +33,15 @@
   // offline / before the location prompt is accepted.
   const FALLBACK_LAT = 46.7712;
   const FALLBACK_LON = 23.6236;
-  const SEARCH_RADIUS_M = 500;
-  const MAX_STATIONS = 8;
+  // Query a single, wide radius that covers BOTH the primary nearby
+  // search and the favorite-route fallback. The domain selector then
+  // narrows to 1–2 stops per the rules in lib/domain/stationSelection.
+  // KISS: one round-trip; the selector handles which to show.
+  const SEARCH_RADIUS_M = Math.max(
+    DEFAULT_CONFIG.nearbyRadiusM,
+    DEFAULT_CONFIG.favoriteFallbackRadiusM,
+  );
+  const MAX_STATIONS = 25;
   // Query a generous future window so the 5-row cap on the StationCard
   // always has enough to pick from, even at sparse stops where service
   // runs only every 30 min. The cap (lib/domain/stationBoard.ts) trims
@@ -131,18 +140,27 @@
     (async () => {
       try {
         const repo = getGtfsRepo();
-        const all = await repo.getStationBoardsNear(
+        const candidates = await repo.getStationBoardsNear(
           lat, lon, SEARCH_RADIUS_M, MAX_STATIONS, Date.now(), ARRIVALS_WINDOW_MIN,
         );
-        // Hide stops with no routes serving them today — they'd render
-        // as empty cards otherwise. Common for GTFS stops that exist in
-        // the data for legacy / terminus / one-off reasons.
-        boards = all.filter((b) => b.vehicles.length > 0);
+        // Hide candidates with no routes serving them today — they'd
+        // pollute the selector's favorite-fallback search and waste a
+        // slot in the primary pair. Common for GTFS stops that exist
+        // in the data for legacy / terminus / one-off reasons.
+        const withService = candidates.filter((b) => b.vehicles.length > 0);
+        // TODO(favorites): replace null with favoritesStore.routeIds once
+        // the store lands. Selector is a no-op for the fallback step
+        // until then — same call, no rewrite later.
+        const selection = selectBoardsForView({
+          candidates: withService,
+          config: DEFAULT_CONFIG,
+          favoriteRouteIds: null,
+        });
+        boards = selection.boards;
         boardsError = null;
         // Route filters are view-only: reset on every refresh / re-fetch.
         routeFilters = {};
-        // Auto-expand if there's exactly one station — saves a tap.
-        if (boards.length === 1) expandedStopId = boards[0].stop.id;
+        expandedStopId = selection.expandedStopId;
       } catch (e) {
         boardsError = e instanceof Error ? e.message : String(e);
       }
@@ -195,7 +213,7 @@
         <Stack spacing={1}>
           <Typography variant="h6">No nearby stations</Typography>
           <Typography variant="caption">
-            No stops within {SEARCH_RADIUS_M} m of {gpsState === 'available' ? 'your current position' : 'the fallback location'}.
+            No stops within {DEFAULT_CONFIG.nearbyRadiusM} m of {gpsState === 'available' ? 'your current position' : 'the fallback location'}.
             Try moving closer to a transit corridor or enabling location.
           </Typography>
         </Stack>
