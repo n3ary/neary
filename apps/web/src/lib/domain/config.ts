@@ -72,5 +72,5 @@ export const DEFAULT_CONFIG: NearyConfig = {
   nearbyRadiusM: 500,
   pairProximityM: 100,
   favoriteFallbackRadiusM: 2000,
-  arrivalsWindowMin: 18 * 60,
+  arrivalsWindowMin: 24 * 60,
 };

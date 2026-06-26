@@ -8,7 +8,7 @@
   shows hearts on favorited badges as visual reinforcement.
 -->
 <script lang="ts">
-  import { Heart } from 'lucide-svelte';
+  import { Calendar, Heart, Map as MapIcon } from 'lucide-svelte';
   import {
     Card, CardContent, IconButton, NoFeedState, RouteBadge, Spinner, Stack,
     Typography, TypeBadge,
@@ -98,24 +98,38 @@
 </script>
 
 <!-- One row-renderer shared by both cards so the layout stays identical
-     between favorited and other routes. KISS / DRY. -->
+     between favorited and other routes. KISS / DRY.
+
+     Layout: [Badge] [Type · shortName] [Map] [Schedule] [Heart]
+     The badge is identity-only (consistent with VehicleCard) —
+     navigation goes through the dedicated map / schedule icons so
+     a user learns one affordance per destination across the app. -->
 {#snippet routeRow(route: Route)}
   {@const isFav = favoritesStore.has(route.id)}
   {@const type = route.type ?? 'unknown'}
   {@const typeLabel = vehicleTypeLabel(type)}
   <Stack direction="row" spacing={1} align="center" class="px-1 py-1 rounded-md hover:bg-[color:var(--color-border)]/30">
-    <!-- Tap the badge to jump to the route's schedule. Direction 0 is
-         the default landing direction; the schedule view's own swap
-         control lets the user flip without coming back here. min-w-14
-         matches VehicleCard so badges read as a tidy left column even
-         next to short 1-digit shortNames. -->
-    <a href={`/schedule/route/${route.id}_0`} aria-label={`Open schedule for ${typeLabel.toLowerCase()} ${route.shortName}`}>
-      <RouteBadge {route} size="medium" isFavorite={isFav} class="min-w-14" />
-    </a>
+    <RouteBadge {route} size="medium" isFavorite={isFav} class="min-w-14" />
     <Typography variant="body2" class="flex-1 truncate">
       <span style={`color:${route.color}`} class="font-semibold">{typeLabel}</span>
       <span class="text-[color:var(--color-fg-muted)]">{route.shortName}</span>
     </Typography>
+    <a
+      href={`/map/route/${route.id}_0`}
+      aria-label={`Open map for ${typeLabel.toLowerCase()} ${route.shortName}`}
+      title="Open route map"
+      class="inline-flex items-center justify-center w-10 h-10 rounded-full text-current hover:bg-current/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--color-primary)] transition-colors"
+    >
+      <MapIcon size={18} />
+    </a>
+    <a
+      href={`/schedule/route/${route.id}_0`}
+      aria-label={`Open schedule for ${typeLabel.toLowerCase()} ${route.shortName}`}
+      title="Open route schedule"
+      class="inline-flex items-center justify-center w-10 h-10 rounded-full text-current hover:bg-current/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--color-primary)] transition-colors"
+    >
+      <Calendar size={18} />
+    </a>
     <IconButton
       aria-label={`${isFav ? 'Unfavorite' : 'Favorite'} ${typeLabel.toLowerCase()} ${route.shortName}`}
       aria-pressed={isFav}

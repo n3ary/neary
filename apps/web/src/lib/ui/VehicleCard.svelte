@@ -13,7 +13,7 @@
   union; this component reads it.
 -->
 <script lang="ts">
-  import { ArrowRight, Calendar, CheckCircle2, Clock, Radio } from 'lucide-svelte';
+  import { ArrowRight, Calendar, CheckCircle2, Clock, Map as MapIcon, Radio } from 'lucide-svelte';
   import type { Vehicle } from '$lib/domain/types';
   import { formatHHMM, formatRelativeMin } from '$lib/domain/types';
   import type { Urgency } from '$lib/domain/buckets';
@@ -32,10 +32,15 @@
      *  Keeping URL-knowledge out of the component lets each consumer
      *  decide what the icon should navigate to (or omit it). */
     scheduleHref?: string;
+    /** When set, renders a separate map-icon button that opens the
+     *  route map (with this trip pre-selected when the URL includes
+     *  the trip id). The consumer composes the href so this card
+     *  stays free of route-URL convention knowledge. */
+    mapHref?: string;
     class?: string;
   };
 
-  let { vehicle, urgency, onclick, scheduleHref, class: className }: Props = $props();
+  let { vehicle, urgency, onclick, scheduleHref, mapHref, class: className }: Props = $props();
 
   // Per-kind visuals. Spec §2 visual-variant table. The kind only drives
   // the badge icon and color now — every row gets the same solid border.
@@ -119,24 +124,10 @@
        medium badge text size; longer ids grow the badge but stay
        centered.
 
-       Wrapped in an <a> that deep-links to the route map, with the
-       current trip (when known) pre-selected. The map link uses the
-       same `_dir` URL convention as the schedule view. Card-level
-       onclick (when provided) ignores clicks bubbling from this
-       anchor, so the parent action and link navigation don't fight. -->
-  {#if vehicle.schedule}
-    <a
-      href={`/map/route/${vehicle.route.id}_${vehicle.schedule.directionId ?? 0}${
-        vehicle.schedule.tripId ? `/${encodeURIComponent(vehicle.schedule.tripId)}` : ''
-      }`}
-      aria-label={`Open ${vehicle.route.shortName} on the map`}
-      class="shrink-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--color-primary)] rounded-md"
-    >
-      <RouteBadge route={vehicle.route} size="medium" class="min-w-14" />
-    </a>
-  {:else}
-    <RouteBadge route={vehicle.route} size="medium" class="min-w-14" />
-  {/if}
+       Badge is identity-only — navigation lives on the dedicated
+       map / schedule icon buttons to the right so users learn one
+       affordance per destination (consistent with favorites). -->
+  <RouteBadge route={vehicle.route} size="medium" class="min-w-14" />
 
   <div class="flex-1 min-w-0">
     <div class="text-sm font-medium truncate flex items-center gap-1">
@@ -161,6 +152,17 @@
     >
       Drop off
     </span>
+  {/if}
+
+  {#if mapHref}
+    <a
+      href={mapHref}
+      title="Open route map"
+      aria-label={`Open ${vehicle.route.shortName} on the map`}
+      class="inline-flex items-center justify-center w-6 h-6 rounded-full text-[color:var(--color-fg-muted)] hover:text-[color:var(--color-fg)] hover:bg-[color:var(--color-border)]/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--color-primary)] shrink-0"
+    >
+      <MapIcon size={14} strokeWidth={2.25} />
+    </a>
   {/if}
 
   {#if scheduleHref}
