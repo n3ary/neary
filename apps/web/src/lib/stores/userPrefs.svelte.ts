@@ -19,8 +19,10 @@ class UserPrefs {
   feedId = $state<string | null>(null);
   /** Show "Drop off only" indicators on station / vehicle cards. */
   showDropOffOnly = $state(true);
-  /** Show ghost vehicles (scheduled run, GPS missing) in lists. */
-  showGhostVehicles = $state(true);
+  /** Show schedule-only vehicles (kind: 'predicted' or 'scheduled') in
+   *  station boards and maps. Pre-rename name was `showGhostVehicles`;
+   *  legacy values auto-migrate on read. */
+  showScheduleOnlyVehicles = $state(true);
   /** User's optional Tranzy API key — when set, live data layer activates. */
   apiKey = $state<string | null>(null);
 
@@ -33,13 +35,19 @@ class UserPrefs {
         theme: Theme;
         feedId: string | null;
         showDropOffOnly: boolean;
+        showScheduleOnlyVehicles: boolean;
+        /** Legacy key, migrated to showScheduleOnlyVehicles. */
         showGhostVehicles: boolean;
         apiKey: string | null;
       }>;
       if (o.theme === 'auto' || o.theme === 'light' || o.theme === 'dark') this.theme = o.theme;
       if (typeof o.feedId === 'string' || o.feedId === null) this.feedId = o.feedId;
       if (typeof o.showDropOffOnly === 'boolean') this.showDropOffOnly = o.showDropOffOnly;
-      if (typeof o.showGhostVehicles === 'boolean') this.showGhostVehicles = o.showGhostVehicles;
+      if (typeof o.showScheduleOnlyVehicles === 'boolean') {
+        this.showScheduleOnlyVehicles = o.showScheduleOnlyVehicles;
+      } else if (typeof o.showGhostVehicles === 'boolean') {
+        this.showScheduleOnlyVehicles = o.showGhostVehicles;
+      }
       if (typeof o.apiKey === 'string' || o.apiKey === null) this.apiKey = o.apiKey;
     } catch {
       // Corrupt or unreadable storage — fall back to defaults silently.
@@ -52,7 +60,7 @@ class UserPrefs {
       theme: this.theme,
       feedId: this.feedId,
       showDropOffOnly: this.showDropOffOnly,
-      showGhostVehicles: this.showGhostVehicles,
+      showScheduleOnlyVehicles: this.showScheduleOnlyVehicles,
       apiKey: this.apiKey,
     };
   }

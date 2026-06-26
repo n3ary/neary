@@ -1,12 +1,17 @@
 /*
- * Domain types — minimal UI-facing shapes used by the composite primitives
- * (RouteBadge, VehicleCard, StationCard) so they don't depend on the real
- * GTFS / Tranzy data layer yet.
+ * Domain types — UI-facing shapes used by the composite primitives
+ * (RouteBadge, VehicleCard, StationCard) and by the upcoming domain layer
+ * (prediction, reconciler, buckets).
  *
- * These are intentionally narrow: only the fields the UI renders. The real
- * domain layer (Phase 4) will expose richer entities and adapt them down to
- * these shapes via mappers, so component code never changes when the source
- * shape moves.
+ * Vehicle model follows docs/rebuild-v2/vehicles-and-views.md §2. Five kinds
+ * describing the *source of position knowledge*:
+ *
+ *   scheduled     trip in schedule, not yet active, no position yet
+ *   predicted     trip should be running per schedule, no live GPS — position
+ *                 is interpolated from schedule
+ *   live          live GPS, no schedule trip matched
+ *   reconciled    live GPS + matched scheduled trip (1 live source)
+ *   corroborated  live GPS + matched scheduled trip + ≥2 live sources agree
  */
 
 /** A single transit route as the UI sees it. */
@@ -30,7 +35,7 @@ export interface Station {
   lon?: number;
 }
 
-/** GPS fix snapshot. */
+/** GPS fix snapshot — used historically; kept for compat. */
 export interface GpsFix {
   lat: number;
   lon: number;
@@ -38,29 +43,97 @@ export interface GpsFix {
   observedAt: number;
 }
 
-/** A scheduled run on a route, used to attach schedule context to a vehicle. */
+/** Which live feed produced an observation. */
+export type LiveSource = 'gtfs-rt' | 'tranzy';
+
+/** Confidence in the vehicle's stated position / match. Derived strictly
+ *  from kind + liveSources by the reconciler. */
+export type Confidence = 'high' | 'medium' | 'low';
+
+/** Vehicle position with provenance, so the UI can choose how much to
+ *  trust it without re-deriving from kind. */
+export interface VehiclePosition {
+  lat: number;
+  lon: number;
+  /** Where this position came from. */
+  source: 'gps' | 'predicted-from-schedule' | 'predicted-from-gps';
+  /** Unix ms — GPS fix time for `source=gps`, prediction time otherwise. */
+  asOf: number;
+}
+
+/** ETA at the *target* stop for a given view. Negative minutes = already
+ *  passed (departed bucket). */
+export interface VehicleEta {
+  distanceMeters: number;
+  minutes: number;
+  confidence: Confidence;
+}
+
+/** A scheduled run on a route, attached to a vehicle. Departure/arrival
+ *  times are expressed as minutes since local midnight at the *target stop*
+ *  the vehicle is rendered for (station view) — never the trip start time. */
 export interface ScheduledRun {
   tripId: string;
-  /** Minutes since local midnight. */
+  /** Minutes since local midnight at the target stop. */
   scheduledDeparture: number;
+  /** Arrival time at the target stop, if distinct from departure. Same units. */
+  scheduledArrival?: number;
   headsign?: string;
 }
 
-/**
- * Discriminated union for vehicle taxonomy (plan §3). Every view uses the same
- * union, so the visual encoding (border, opacity, badge) lives in exactly one
- * place (VehicleCard) and rendering consistency is structural.
- *
- *   live          GPS visible, no schedule match (or none possible).
- *   live-matched  GPS visible AND matched to a scheduled run.
- *   ghost         Scheduled run is current, but GPS is missing.
- *   scheduled     Schedule-only (no live data, or live not enabled).
- */
+interface VehicleBase {
+  id: string;
+  route: Route;
+  /** Final headsign for display; reconciler resolves from schedule or live. */
+  headsign?: string;
+  eta?: VehicleEta;
+  confidence: Confidence;
+  /** True if this stop is marked drop-off-only for this trip (GTFS
+   *  `stop_times.pickup_type = 1`). UI hides by default unless
+   *  `userPrefs.showDropOffOnly`. Only meaningful in station-view context. */
+  dropOffOnly?: boolean;
+}
+
 export type Vehicle =
-  | { kind: 'live'; id: string; route: Route; gps: GpsFix; eta?: number; headsign?: string }
-  | { kind: 'live-matched'; id: string; route: Route; gps: GpsFix; schedule: ScheduledRun; eta?: number; headsign?: string }
-  | { kind: 'ghost'; id: string; route: Route; schedule: ScheduledRun; lastSeenGps?: GpsFix; headsign?: string }
-  | { kind: 'scheduled'; id: string; route: Route; schedule: ScheduledRun; headsign?: string };
+  | (VehicleBase & {
+      kind: 'scheduled';
+      schedule: ScheduledRun;
+      /** Scheduled vehicles have no position until they go predicted/live. */
+      position?: undefined;
+      liveSources?: never;
+    })
+  | (VehicleBase & {
+      kind: 'predicted';
+      schedule: ScheduledRun;
+      /** Always present and always `predicted-from-schedule`. */
+      position: VehiclePosition;
+      liveSources?: never;
+      /** Which live sources were polled and did NOT see this trip. */
+      checkedSources: LiveSource[];
+    })
+  | (VehicleBase & {
+      kind: 'live';
+      /** Always present and always `gps`. */
+      position: VehiclePosition;
+      /** Pure live vehicles have no schedule match yet. */
+      schedule?: ScheduledRun;
+      /** Always at least one source. */
+      liveSources: LiveSource[];
+    })
+  | (VehicleBase & {
+      kind: 'reconciled';
+      position: VehiclePosition;
+      schedule: ScheduledRun;
+      /** Exactly one source. */
+      liveSources: LiveSource[];
+    })
+  | (VehicleBase & {
+      kind: 'corroborated';
+      position: VehiclePosition;
+      schedule: ScheduledRun;
+      /** Two or more sources, all agreeing on the matched trip. */
+      liveSources: LiveSource[];
+    });
 
 /**
  * Pick a foreground color (black or white) that has enough contrast against a

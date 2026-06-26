@@ -13,11 +13,10 @@
   union; this component reads it.
 -->
 <script lang="ts">
-  import { Calendar, EyeOff, Radio } from 'lucide-svelte';
+  import { Calendar, CheckCircle2, Clock, Radio } from 'lucide-svelte';
   import type { Vehicle } from '$lib/domain/types';
   import { formatHHMM } from '$lib/domain/types';
   import RouteBadge from './RouteBadge.svelte';
-  import Chip from './Chip.svelte';
   import { cn } from './cn';
 
   type Props = {
@@ -29,29 +28,31 @@
   let { vehicle, onclick, class: className }: Props = $props();
 
   // Per-kind visuals. Keep this in ONE place so adding a new kind is one edit.
+  // See docs/rebuild-v2/vehicles-and-views.md §2 for the source-of-truth table.
   const KIND = $derived({
-    'live':         { border: 'border-solid',  opacity: '',            icon: Radio,    label: 'Live',     iconBg: 'bg-[color:var(--color-success)]' },
-    'live-matched': { border: 'border-solid',  opacity: '',            icon: Calendar, label: 'Matched',  iconBg: 'bg-[color:var(--color-success)]' },
-    'ghost':        { border: 'border-dashed', opacity: '',            icon: EyeOff,   label: 'Ghost',    iconBg: 'bg-[color:var(--color-warning)]' },
-    'scheduled':    { border: 'border-dotted', opacity: 'opacity-60',  icon: Calendar, label: 'Scheduled', iconBg: 'bg-[color:var(--color-fg-muted)]' },
+    corroborated: { border: 'border-solid',  opacity: '',           icon: CheckCircle2, label: 'Corroborated', iconBg: 'bg-[color:var(--color-success)]' },
+    reconciled:   { border: 'border-solid',  opacity: '',           icon: Calendar,     label: 'Reconciled',   iconBg: 'bg-[color:var(--color-success)]' },
+    live:         { border: 'border-solid',  opacity: '',           icon: Radio,        label: 'Live',         iconBg: 'bg-[color:var(--color-success)]' },
+    predicted:    { border: 'border-dashed', opacity: '',           icon: Clock,        label: 'Predicted',    iconBg: 'bg-[color:var(--color-warning)]' },
+    scheduled:    { border: 'border-dotted', opacity: 'opacity-60', icon: Calendar,     label: 'Scheduled',    iconBg: 'bg-[color:var(--color-fg-muted)]' },
   }[vehicle.kind]);
 
   const KindIcon = $derived(KIND.icon);
 
   // ETA / scheduled-time secondary line.
   const secondaryLine = $derived.by(() => {
-    if (vehicle.kind === 'live' || vehicle.kind === 'live-matched') {
-      return typeof vehicle.eta === 'number' ? `${vehicle.eta} min` : 'En route';
+    if (vehicle.eta) {
+      const m = vehicle.eta.minutes;
+      if (m < 0) return `${-m} min ago`;
+      if (m === 0) return 'Now';
+      return `${m} min`;
     }
-    return `Scheduled ${formatHHMM(vehicle.schedule.scheduledDeparture)}`;
+    if (vehicle.schedule) return `Scheduled ${formatHHMM(vehicle.schedule.scheduledDeparture)}`;
+    return 'En route';
   });
 
   const headsign = $derived(
-    vehicle.headsign
-      ?? (vehicle.kind !== 'live' && vehicle.kind !== 'live-matched'
-          ? vehicle.schedule.headsign
-          : undefined)
-      ?? '—',
+    vehicle.headsign ?? vehicle.schedule?.headsign ?? '—',
   );
 
   const interactive = $derived(typeof onclick === 'function');

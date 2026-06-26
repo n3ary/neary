@@ -126,13 +126,13 @@
 
         <Stack direction="row" align="center" justify="between">
           <Box class="flex-1 min-w-0">
-            <Typography variant="body2">Show ghost vehicles</Typography>
-            <Typography variant="caption">Scheduled runs whose GPS is currently missing.</Typography>
+            <Typography variant="body2">Show schedule-only vehicles</Typography>
+            <Typography variant="caption">Scheduled runs that don't (yet) have a live GPS feed.</Typography>
           </Box>
           <Switch
-            checked={userPrefs.showGhostVehicles}
-            onchange={(v) => (userPrefs.showGhostVehicles = v)}
-            aria-label="Show ghost vehicles"
+            checked={userPrefs.showScheduleOnlyVehicles}
+            onchange={(v) => (userPrefs.showScheduleOnlyVehicles = v)}
+            aria-label="Show schedule-only vehicles"
           />
         </Stack>
       </Stack>
