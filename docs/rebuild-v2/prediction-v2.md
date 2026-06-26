@@ -199,7 +199,7 @@ Lives in `neary-gtfs`. One job: produce per-stop times that are realistic enough
 4. **Populate `shape_dist_traveled`** on every `stop_times` row using the projection. This is the single biggest win for runtime cost: the web app can then derive `TripShapePlan.legs[i].distAlongM` for free instead of projecting per stop per route view.
 5. **Don't lie at the bounds.** Drop the `numStops * 60` / `numStops * 300` clamp; if the speed profile says a route takes 18 min, let it. The clamps mostly mask bad input — they shouldn't be a load-bearing safety net.
 
-**Open question O.1:** should the speed profile be per-feed (`feeds/cluj-napoca/config.json`) or per-route? Cluj-specific data suggests Express routes are 20 % faster than local routes at all hours.
+**Open question O.1:** ~~should the speed profile be per-feed or per-route?~~ **DECIDED 2026-06-27 — per-feed.** Per-route is overkill; in the city centre many routes overlap with essentially the same traffic profile. Lives in `neary-gtfs/feeds/<id>/config.json` as three numbers (`kmh_peak`, `kmh_offpeak`, `kmh_night`).
 
 **Open question O.2:** can we *learn* the profile from past GTFS-RT VehiclePositions if we capture them for a week? That's a separate "build a tiny historical store" project — answer is probably "yes, eventually" but not in this design.
 
@@ -232,12 +232,13 @@ estimateSegmentSpeed(args: {
 }): SpeedSample
 ```
 
-Cascade rules — v1's, with the three fixes from §2.8:
+Cascade rules — v1's, with the three fixes from §2.8. **DECIDED 2026-06-27 (Q.3): keep v1's city-centre tier as well**, sitting between the time-of-day profile and the static fallback. The cascade is therefore five-tier per segment:
 
 1. **Current segment + the next one (distance < 500 m):** use `vehicle.speed` if `> 5 km/h`, else go to step 2.
 2. **2–5 segments out (500 m – 2 km):** p60 of `nearbyVehicles[].speed`, after dropping speeds ≤ 5 km/h and after filtering by same `direction_id`. If fewer than 2 samples, go to step 3.
-3. **Far segments (> 2 km) OR cascade hit a wall:** time-of-day profile (Stage A defaults), with the *expected* speed for the segment's location (peak/off-peak/night). If somehow no profile is configured, fall through to step 4.
-4. **Static fallback:** `kmh_offpeak` from feed defaults, marked `very-low`.
+3. **Far segments (> 2 km) OR cascade hit a wall:** time-of-day profile (Stage A, per-feed defaults), with the *expected* speed for the segment's clock band (peak/off-peak/night).
+4. **City-centre tier (v1 port):** linear interpolation `15 + 30 × (1 − dist / 20 km)` km/h on `dist = haversine(segmentMidpoint, feedCentroid)`. Same formula as v1; the centroid is computed once at build time per feed and shipped in the SQLite metadata so the runtime predictor doesn't recompute it. Cluj is roughly radial; for non-radial cities this tier still gives a *floor* better than the static fallback while degrading gracefully.
+5. **Static fallback:** `kmh_offpeak` from feed defaults, marked `very-low`.
 
 Critically: **the cascade runs per segment**, not per vehicle. A bus stuck in central traffic still gets fast far-segment estimates if the city is empty at the route's outer end. This is the v1-Pro upgrade the user asked for.
 
@@ -266,7 +267,7 @@ Output: an `ArrivalPlan` per stop the caller asked about, with `{etaMin, source,
 
 Same signature, same return shape. Internally it now consults Stage C.1 for the *current* segment's speed and dead-reckons forward using `(nowMs − vehicle.asOfMs)` — i.e. the dot on the map shows where the bus *should be right now*, not where the schedule says it should be at the next 30 s grid mark. Falls back to schedule-only when no GPS exists.
 
-This is the big behavioural change. It needs the `nowTicker` cadence to drop to ~5 s for the map to feel live (Q.4 below).
+This is the big behavioural change. It needs the `nowTicker` cadence to drop to ~5 s (Q.4 below).
 
 ### Reconciliation
 
@@ -278,7 +279,11 @@ Mostly the v1 contract, with one addition:
 
 ### Stale GPS
 
-Same three bands as v1 (HEALTHY < 3 min, STALE < 5 min, VERY_STALE ≥ 5 min). At STALE, the position predictor keeps dead-reckoning but the ArrivalPlan source downgrades to `schedule` and confidence drops one band. At VERY_STALE, the vehicle disappears from the live layer entirely — better to look unknown than wrong.
+Same three bands as v1 (HEALTHY < 3 min, STALE < 5 min, VERY_STALE ≥ 5 min). **DECIDED 2026-06-27 (Q.6):**
+
+- **HEALTHY:** position dead-reckons normally; ArrivalPlan source `gps`.
+- **STALE:** position dead-reckons from the last good speed estimate; ArrivalPlan source downgrades to `schedule` with one band of confidence loss.
+- **VERY_STALE:** position freezes at the last known projected `distAlongM` — *no dead-reckoning forward*. Marker stays at last known location with a **yellow border** to flag uncertainty. ArrivalPlan source = `schedule` at minimum confidence. Vehicle does NOT disappear (v1 dropped it; v2.5 keeps showing it so the user still knows where the bus was last seen).
 
 ---
 
@@ -320,9 +325,111 @@ The big one. `predictPositionOnShape` consumes the live observation and dead-rec
 
 This is the phase where the user's "GPS as spine" wish lands. Cannot ship before P3 (no speed) and P4 (no per-segment ArrivalPlan to read from).
 
-### Phase P6 — fast tick + battery dance
+### Phase P6 — fast tick + the refresh-button contract
 
-The 30 s `nowTicker` becomes a hard ceiling on map liveness. Likely answer: keep 30 s for the Stations board's ETA bucketing (where second-by-second changes don't matter), introduce a separate 5 s map ticker that *only* runs while the map page is visible. Page Visibility API gates it. No effect on battery for users who never open the map.
+**DECIDED 2026-06-27 (Q.4): drop `nowTicker` to 5 s globally.** Single timer in the app, no per-page gating. Reasons:
+
+- The Stations board's ETA bucket changes at minute boundaries anyway; ticking at 5 s instead of 30 s just makes a stale display invisible faster.
+- Single global timer is simpler to reason about than two timers + page-visibility gating.
+- Battery impact: 6× more derived runs per minute, but each is O(visible vehicles) and visible vehicles is tens. Negligible.
+
+Also in P6: wire the refresh button so it produces an immediate fresh prediction in one beat. See §6.5 below for the full mechanics.
+
+---
+
+## 6.5 — The three loops + the refresh button (explainer)
+
+This is the part that's confusing today and gets worse if we don't write it down. There are three distinct loops, and the refresh button has to talk to all of them.
+
+### The three loops
+
+| # | Loop | Owns | Cadence | What it does |
+|---|---|---|---|---|
+| L1 | **Live GPS poll** | `liveVehiclesStore.poll()` | every 15 s (`livePollMs`) | fetches `/api/rt/<feed>/vehiclePositions`, parses, writes `observations` to the store |
+| L2 | **UI / time tick** | `nowTicker.ms` | every **5 s** (post-P6; 30 s today) | a reactive `$state` representing "the now we use for display" — drives every `$derived` that depends on time |
+| L3 | **Manual data refresh** | `refreshBus.tick` | on user tap | wakes effects that gate on it to re-fetch *static* data (schedules, route lists) from the SQLite worker |
+
+They are **fully decoupled by design**:
+
+- L1 doesn't trigger UI by itself. The store's `observations` is a `$state`; whichever `$derived` reads it re-runs when it changes. That happens *naturally* per Svelte reactivity — no timer involved.
+- L2 doesn't fetch anything. It only advances a clock value. Pure UI cadence knob.
+- L3 doesn't predict anything. It re-runs the worker queries that loaded the schedule and routes for the current page.
+
+### Where prediction happens in this picture
+
+After Phases P3–P5, the predictor inputs are `(nowMs, observations, route_static_data)`. Anything that *changes* those inputs re-runs the predictor — because Svelte's reactivity tracks the read graph automatically. So:
+
+- L1 fires → fresh `observations` → predictor re-runs immediately.
+- L2 ticks → fresh `nowMs` → predictor re-runs immediately.
+- L3 fires + worker returns → fresh `route_static_data` → predictor re-runs immediately.
+
+The bug today is that `markers` on the Map view doesn't actually read `liveVehiclesStore.observations` (because v2 uses schedule as the spine — see §1.2), so L1 doesn't wake it. That's a v2 limitation P5 fixes.
+
+### What the refresh button does today
+
+[`+layout.svelte`](apps/web/src/routes/+layout.svelte) `onrefresh`:
+
+```ts
+refreshBus.fire();           // L3 — wake schedule re-fetch
+liveVehiclesStore.refresh(); // L1 — immediate poll, skip the 15 s wait
+```
+
+What it *doesn't* do:
+
+- It doesn't advance `nowTicker.ms`. So time-only-derived values (ETA labels, urgency colors, bucketing) still wait for the next L2 tick.
+- (Today) it doesn't matter for `markers` on the Map view because `markers` only depends on `nowMin` and the static schedule — not on live observations. So an "immediate fresh GPS" doesn't help.
+
+### The refresh contract (post-P5)
+
+After P5 the dependencies are right; the refresh button needs one tiny addition to deliver the freshest prediction in one beat:
+
+```ts
+function onrefresh() {
+  refreshBus.fire();           // L3: re-fetch static data
+  liveVehiclesStore.refresh(); // L1: immediate GPS poll
+  nowTicker.bump();            // L2: force now to wall-clock right now
+}
+```
+
+`nowTicker.bump()` sets `ms = Date.now()` and resets the interval. After this:
+
+1. The L1 poll completes in ~100 ms — observations update.
+2. `nowTicker.bump()` fires synchronously — `nowMs` advances.
+3. Both wake the same `$derived`s simultaneously; predictor runs once (Svelte batches the dependency changes within a microtask).
+4. UI re-renders.
+
+End-to-end: **~150 ms from tap to fresh prediction on screen**, vs today's "up to 30 s" worst case waiting for the next L2 tick.
+
+### Recommended config (post-P5/P6)
+
+| Setting | Value | Why |
+|---|---|---|
+| `livePollMs` | **15 000 ms** | unchanged; bounded by upstream feed cadence (Cluj GTFS-RT publishes ~every 10 s) |
+| `nowTickerMs` | **5 000 ms** | balances liveness for the map vs cost; Q.4 decided |
+| `refreshDebounceMs` | **2 000 ms** | prevents the refresh button from triggering more than one poll cycle by spam-tapping |
+| `gpsHealthyMs` | **180 000 ms** (3 min) | unchanged from v1 |
+| `gpsStaleMs` | **300 000 ms** (5 min) | unchanged from v1 |
+
+All of these live in `DEFAULT_CONFIG` in [`lib/domain/config.ts`](apps/web/src/lib/domain/config.ts), keeping one source of truth.
+
+### What NOT to do
+
+- **Don't fold L1 and L2 into one timer.** They have different concerns. Bundling them means you can't tune liveness without changing API load, and vice versa.
+- **Don't have the predictor subscribe to its own timer.** That's a fourth loop. Predictors should be `$derived`s; their re-runs are caused by their inputs changing, not by a tick of their own.
+- **Don't trigger predictions inside the L1 callback.** Same reason — keep prediction purely a function of `(now, observations, static)`. The reactive graph does the rest.
+- **Don't bump `nowTicker` from inside L1.** That would mean every GPS poll forces a UI re-render of every nowTicker subscriber. Wasteful and conflates two concerns. Only the refresh button bumps; the poll just updates the store and lets Svelte wake the right derived nodes.
+
+### End-to-end latency, post-P5/P6
+
+Compared to the current ~25 s typical / 55 s worst case (see §1.4):
+
+| Path | Today | After P5+P6 |
+|---|---|---|
+| GPS reports → marker moves (auto) | 0–55 s | 0–20 s (15 s poll + 5 s tick) |
+| Refresh tap → marker moves | 30 s waiting for `nowTicker` | ~150 ms |
+| ETA label flips a minute (auto) | 0–30 s | 0–5 s |
+
+The win on refresh is the user-facing one: tapping the button is finally meaningful.
 
 ---
 
@@ -330,13 +437,13 @@ The 30 s `nowTicker` becomes a hard ceiling on map liveness. Likely answer: keep
 
 Decisions needed before P1 starts. None of them block writing the v1 port modules (those are pure).
 
-- **Q.1 — Where does the speed profile live?** Per-feed config in `neary-gtfs/feeds/<id>/config.json`, or per-feed-per-route, or derived from observation (P0 output)? Recommendation: per-feed at first (one row of three numbers), per-route as a Phase P1+ if we see Express routes need it.
-- **Q.2 — Per-stop dwell.** Flat 20 s, or per-stop based on observed headway / boarding volume, or per-stop-class (terminal vs through-stop vs request-only)? Recommendation: flat 20 s ship, per-class once we have observed data.
-- **Q.3 — City-centre tier from v1.** Do we keep it? It worked for Cluj because Cluj is roughly radial; the centroid-of-stops heuristic is fragile elsewhere. Recommendation: *drop* it in favour of the time-of-day profile. Same idea (slower in dense areas, faster outside) but parameterised by clock rather than geometry, which is easier to verify and per-feed-tune.
-- **Q.4 — Map liveness vs battery.** Drop `nowTicker` to 5 s globally, or only the map page (P6)? Recommendation: only the map page, gated on Page Visibility. Stations board keeps its 30 s grid.
-- **Q.5 — Should reconciliation use GPS position?** The position-aware tie-break in §5 fixes same-time crossings but adds a per-candidate projection call. Cheap, but worth being explicit. Recommendation: yes, with a fallback to timing-only when no GPS is available for the candidate.
-- **Q.6 — What does the Map view do when GPS is VERY_STALE?** v1 dropped the vehicle. v2-today renders the schedule position regardless. Recommendation: split the difference — show the *stale* vehicle dimly with a clear "GPS X min old" badge on its popup, but stop dead-reckoning it forward.
-- **Q.7 — Test corpus.** We don't have one yet for prediction quality. Recommendation: P0 captures a week of vehicle pings; a CSV of `(tripId, stopId, scheduled_arrival, observed_arrival)` triples becomes the regression input. Each predictor is scored on MAE against it.
+- **Q.1 — Where does the speed profile live?** ~~Per-feed config in `neary-gtfs/feeds/<id>/config.json`, or per-feed-per-route, or derived from observation (P0 output)?~~ **DECIDED 2026-06-27: per-feed.** Per-route is overkill — in the city centre many routes overlap with essentially the same traffic profile.
+- **Q.2 — Per-stop dwell.** Flat 20 s, or per-stop based on observed headway / boarding volume, or per-stop-class (terminal vs through-stop vs request-only)? Recommendation: flat 20 s ship, per-class once we have observed data. *Open.*
+- **Q.3 — City-centre tier from v1.** ~~Do we keep it?~~ **DECIDED 2026-06-27: keep v1's city-centre tier for now.** Sits between the time-of-day profile and the static fallback. Centroid computed once at build time per feed.
+- **Q.4 — Map liveness vs battery.** ~~Drop `nowTicker` to 5 s globally, or only the map page (P6)?~~ **DECIDED 2026-06-27: drop to 5 s globally.** Single timer; no per-page gating.
+- **Q.5 — Should reconciliation use GPS position?** The position-aware tie-break in §5 fixes same-time crossings but adds a per-candidate projection call. Cheap, but worth being explicit. Recommendation: yes, with a fallback to timing-only when no GPS is available for the candidate. *Open.*
+- **Q.6 — What does the Map view do when GPS is VERY_STALE?** ~~v1 dropped the vehicle. v2-today renders the schedule position regardless.~~ **DECIDED 2026-06-27: freeze at last known position with a yellow border, no dead-reckoning forward.** Vehicle stays visible so the user still knows where it was last seen.
+- **Q.7 — Test corpus.** We don't have one yet for prediction quality. Recommendation: P0 captures a week of vehicle pings; a CSV of `(tripId, stopId, scheduled_arrival, observed_arrival)` triples becomes the regression input. Each predictor is scored on MAE against it. *Open.*
 
 ---
 
@@ -366,3 +473,4 @@ Things this design deliberately does *not* attempt, with reasons:
 ## 10. Decision log (this doc only)
 
 - 2026-06-27 — draft created. Sources: v1 deep-dive (Explore subagent), `neary-gtfs` interpolation validation (Explore subagent), current-v2 pipeline trace (earlier audit), industry context (OTP / OneBusAway / GTFS-RT TripUpdates). Awaiting decisions on Q.1–Q.7.
+- 2026-06-27 — Q.1 decided **per-feed** (not per-route). Q.3 decided **keep v1's city-centre tier** as a 4th step in the cascade. Q.4 decided **drop `nowTicker` to 5 s globally** (no per-page split). Q.6 decided **freeze at last known position with yellow border** on VERY_STALE GPS. §6.5 added: explainer of the three loops (live poll / nowTicker / refreshBus), recommended config, and the refresh-button contract. Q.2 / Q.5 / Q.7 still open.
