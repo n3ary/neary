@@ -171,6 +171,44 @@
     return out;
   });
 
+  /** Active stop-to-stop segments per vehicle: the leg between the
+   *  stop a vehicle just passed and the one it's heading to next.
+   *  The traveling-dots animation rides these segments so the flow
+   *  hints at where each vehicle is currently going \u2014 instead of an
+   *  ambient pulse along the whole route that's unrelated to live
+   *  positions. Only shape-aware (planned) trips contribute; the
+   *  no-shape fallback skips the trail since we can't translate
+   *  stops to polyline distances without a projection. */
+  type VehicleTrail = { fromDistM: number; toDistM: number };
+  const vehicleTrails = $derived.by<VehicleTrail[]>(() => {
+    if (!view || !measuredShape) return [];
+    void nowMin; // declare dependency so trails refresh per tick
+    const trails: VehicleTrail[] = [];
+    for (const t of view.trips) {
+      const plan = tripPlans.get(t.tripId);
+      if (!plan) continue;
+      const { legs } = plan;
+      if (legs.length < 2) continue;
+      // Skip not-yet-started and finished trips \u2014 no active leg.
+      if (nowMin < legs[0].arrivalMin) continue;
+      if (nowMin >= legs[legs.length - 1].arrivalMin) continue;
+      for (let i = 0; i < legs.length - 1; i++) {
+        if (nowMin >= legs[i].arrivalMin && nowMin <= legs[i + 1].arrivalMin) {
+          const fromDistM = legs[i].distAlongM;
+          const toDistM = legs[i + 1].distAlongM;
+          // Drop segments that are degenerate on the shape (out-and-
+          // back projections or near-coincident stops) \u2014 a dot
+          // hovering in place reads as a glitch.
+          if (Math.abs(toDistM - fromDistM) >= 20) {
+            trails.push({ fromDistM, toDistM });
+          }
+          break;
+        }
+      }
+    }
+    return trails;
+  });
+
   // ── Title / subtitle ───────────────────────────────────────────────
   // Mirrors the schedule view: title is the origin station name
   // (i.e. 'departures from here'), subtitle is the headsign —
@@ -403,56 +441,66 @@
     }
   });
 
-  // Traveling dots along the route shape: a steady flock of small
-  // route-coloured circles cycle from origin to terminus, evenly
-  // staggered so the line reads like current flowing through a wire.
-  // Each dot fades in, peaks brightness around the middle of the
-  // route, and fades back out before looping — sin(πp) envelope —
-  // so endpoints feel like the source and sink rather than hard
-  // pop-in/pop-out. Subtle by design (peak opacity ~0.35) so it
-  // hints at direction without competing with stops or vehicles.
-  //
-  // Cost: ~6 setLatLng + setStyle calls per RAF frame. Negligible.
-  // Cleanup cancels the RAF and clears the layer.
-  const DOT_COUNT = 6;
-  const DOT_CYCLE_MS = 12000;
-  const DOT_PEAK_OPACITY = 0.85;
+  // Traveling dots, scoped per-vehicle: each active stop-to-stop
+  // segment gets one dot that slides from the previous station to
+  // the next, fades in / out across the cycle, then loops. So the
+  // dots actually mean something live — they trace where buses are
+  // moving right now — instead of a generic ambient pulse along
+  // the full route. Quiet by design: 1 dot per vehicle, small,
+  // peak opacity ~0.4. Cleanup cancels the RAF and clears the
+  // layer; the effect re-runs whenever vehicleTrails changes
+  // (i.e. when a vehicle advances to the next stop).
+  const DOTS_PER_TRAIL = 3;
+  const DOT_CYCLE_MS = 3000;
+  const DOT_PEAK_OPACITY = 0.45;
   $effect(() => {
     if (!L || !mapInstance || !arrowsLayer) return;
     arrowsLayer.clearLayers();
-    if (!measuredShape || measuredShape.totalDistM === 0) return;
+    if (!measuredShape || vehicleTrails.length === 0) return;
     const Lref = L;
     const layer = arrowsLayer;
     const measured = measuredShape;
-    // Dots ride their own SVG renderer pinned to the high-z
-    // 'nearyDots' pane so they paint above the polyline (see init).
-    // Solid white, no border — single colour reads on any route
-    // colour without the two-tone fill/stroke fighting with the
-    // stop markers (which use that exact recipe).
+    const trails = vehicleTrails;
     const renderer = Lref.svg({ pane: 'nearyDots' });
-    const dots = Array.from({ length: DOT_COUNT }, () =>
-      Lref.circleMarker([measured.points[0].lat, measured.points[0].lon], {
-        renderer,
-        radius: 3.5,
-        stroke: false,
-        fillColor: '#fff',
-        fillOpacity: 0,
-        interactive: false,
-      }).addTo(layer),
-    );
+    type Dot = {
+      marker: import('leaflet').CircleMarker;
+      fromDistM: number;
+      toDistM: number;
+      phaseOffset: number;
+    };
+    const dots: Dot[] = [];
+    for (const trail of trails) {
+      for (let i = 0; i < DOTS_PER_TRAIL; i++) {
+        const marker = Lref.circleMarker(
+          [measured.points[0].lat, measured.points[0].lon],
+          {
+            renderer,
+            radius: 2.5,
+            stroke: false,
+            fillColor: '#fff',
+            fillOpacity: 0,
+            interactive: false,
+          },
+        ).addTo(layer);
+        dots.push({
+          marker,
+          fromDistM: trail.fromDistM,
+          toDistM: trail.toDistM,
+          phaseOffset: i / DOTS_PER_TRAIL,
+        });
+      }
+    }
     const start = performance.now();
     let rafId = 0;
     const tick = (t: number) => {
       const elapsed = (t - start) / DOT_CYCLE_MS;
-      for (let i = 0; i < DOT_COUNT; i++) {
-        const p = (elapsed + i / DOT_COUNT) % 1;
-        const dist = p * measured.totalDistM;
-        // sin(πp): 0 → 1 → 0 across the cycle. Looks like a soft
-        // current pulse riding the wire from origin to terminus.
+      for (const d of dots) {
+        const p = (elapsed + d.phaseOffset) % 1;
+        const dist = d.fromDistM + p * (d.toDistM - d.fromDistM);
         const opacity = Math.sin(p * Math.PI) * DOT_PEAK_OPACITY;
         const pt = pointAtDistance(measured, dist);
-        dots[i].setLatLng([pt.lat, pt.lon]);
-        dots[i].setStyle({ fillOpacity: opacity });
+        d.marker.setLatLng([pt.lat, pt.lon]);
+        d.marker.setStyle({ fillOpacity: opacity });
       }
       rafId = requestAnimationFrame(tick);
     };
