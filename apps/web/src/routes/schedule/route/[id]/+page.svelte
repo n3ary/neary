@@ -197,10 +197,23 @@
   }
 
   const isFav = $derived(route ? favoritesStore.has(route.id) : false);
-  const headerTitle = $derived(
-    route ? `${vehicleTypeLabel(route.type ?? 'unknown')} ${route.shortName}` : '',
+  // Headsign for the focused trip, falling back to the most-common
+  // headsign on the chosen direction's trip list. When direction is
+  // set we always have something to display (the route IS going
+  // somewhere); when direction is null (multi-direction mode) the
+  // title stays bare — each per-direction card carries its own.
+  const focusHeadsign = $derived(
+    focusTrip?.headsign
+    ?? (direction != null
+         ? (direction === 0 ? tripsByDir[0] : tripsByDir[1])[0]?.headsign
+         : null)
+    ?? null,
   );
-  const headerSubtitle = $derived(focusTrip?.headsign ?? '');
+  const headerTitle = $derived.by(() => {
+    if (!route) return '';
+    const base = `${vehicleTypeLabel(route.type ?? 'unknown')} ${route.shortName}`;
+    return direction != null && focusHeadsign ? `${base} → ${focusHeadsign}` : base;
+  });
 </script>
 
 <div class="mx-auto max-w-5xl px-4 py-6">
@@ -245,11 +258,6 @@
                   </Chip>
                 {/if}
               </Stack>
-              {#if headerSubtitle}
-                <Typography variant="caption" class="text-[color:var(--color-fg-muted)] truncate">
-                  → {headerSubtitle}
-                </Typography>
-              {/if}
             </Stack>
             <ToggleGroup
               value={dayMode}
@@ -367,17 +375,14 @@
               <CardContent>
                 <Stack spacing={0.5}>
                   <Stack direction="row" spacing={1} align="center" justify="between">
-                    <Stack spacing={0.5}>
-                      <Typography variant="overline" class="uppercase tracking-wide text-[color:var(--color-fg-muted)]">
-                        Direction {dir}
+                    <Stack spacing={0.5} class="flex-1 min-w-0">
+                      <Typography variant="h6" class="truncate">
+                        {sampleHeadsign ? `→ ${sampleHeadsign}` : `Direction ${dir}`}
                       </Typography>
-                      {#if sampleHeadsign}
-                        <Typography variant="body2" class="truncate font-medium">→ {sampleHeadsign}</Typography>
-                      {/if}
                     </Stack>
                     <a
                       href={`/schedule/route/${routeId}?dir=${dir}${dayMode === 'tomorrow' ? '&day=tomorrow' : ''}`}
-                      class="text-xs underline text-[color:var(--color-fg-muted)] hover:text-[color:var(--color-fg)]"
+                      class="text-xs underline text-[color:var(--color-fg-muted)] hover:text-[color:var(--color-fg)] shrink-0"
                     >
                       Full view
                     </a>
