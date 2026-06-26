@@ -124,7 +124,7 @@ v1 categorised GPS freshness in three bands: HEALTHY (< 3 min), STALE (< 5 min),
 - Prediction-only re-run: every 15 s (no API hit; just re-projects with elapsed time).
 - Auto refresh of full state: every 120 s.
 
-That's a tighter inner loop than today's v2 (live every 15 s, predictor every 30 s) — but v1's heavier per-tick work (full speed cascade + per-vehicle predict) doesn't run in a worker, which is the v2 advantage.
+v2 today polls **4× faster** than v1 (15 s vs 60 s) thanks to the worker offloading the parse cost. The thing v1 had that v2 lost is the *predictor* running at 15 s — today's v2 predictor only runs every 30 s on the `nowTicker`, so even fresh GPS sits unused for up to 30 s. Matching the v2.5 predictor cadence to the poll cadence (15 s for both) restores v1's inner-loop frequency on cheap modern hardware. See §6.5 for why 15 s is the right number and how marker smoothness is handled on the map.
 
 ### 2.8 v1 things to NOT port
 
@@ -375,13 +375,20 @@ The behavioural shift vs today is twofold:
 
 This is the phase where the user's "GPS as spine" wish lands for live-GPS vehicles, while schedule-only vehicles also benefit from the smoother UI cadence. Cannot ship before P3 (no speed estimator) and P4 (no per-segment ArrivalPlan to anchor against).
 
-### Phase P6 — fast tick + the refresh-button contract
+### Phase P6 — tick alignment + the refresh-button contract
 
-**DECIDED 2026-06-27 (Q.4): drop `nowTicker` to 5 s globally.** Single timer in the app, no per-page gating. Reasons:
+**DECIDED 2026-06-27, REVISED 2026-06-27 (Q.4): drop `nowTicker` to 15 s globally, synchronised with `livePollMs`.** Earlier draft proposed 5 s; thinking it through, 5 s is overkill because the predictor inputs only change in two ways:
 
-- The Stations board's ETA bucket changes at minute boundaries anyway; ticking at 5 s instead of 30 s just makes a stale display invisible faster.
-- Single global timer is simpler to reason about than two timers + page-visibility gating.
-- Battery impact: 6× more derived runs per minute, but each is O(visible vehicles) and visible vehicles is tens. Negligible.
+1. **Fresh GPS arrives** — happens on the poll cadence, which is 15 s. Ticking faster than the poll just re-runs the predictor with identical inputs.
+2. **Wall-clock time advances** — affects only what's visible to the user (ETA labels, urgency colours, dead-reckoned marker positions). For the Stations board, a 15 s display lag on a minute-resolution label is invisible. For the Map view, smooth marker movement is the only real motivation — and that's better handled by RAF interpolation between ticks (next bullet).
+
+**Smooth marker animation comes from RAF, not from a fast global tick.** Same pattern the traveling-dots layer already uses. Each marker stores its current `(predictedPos, predictedVel)` pair at the last `nowTicker` tick; an RAF loop on the map page interpolates `pos += vel * dt` every frame between ticks. At the next tick the predictor recomputes the anchor and the RAF picks up the new vel. Markers slide smoothly at 60 fps without the cost of running the predictor 60 times a second.
+
+Reasons to keep it at 15 s instead of 5 s:
+
+- **Matches the poll cadence** — one frequency to reason about, no "why did the predictor run when nothing changed".
+- **3× less work** — 6 ticks/min vs 12. Predictor + every dependent `$derived` runs that much less.
+- **Refresh button still snaps to ~150 ms** — cadence doesn't determine refresh responsiveness; the `nowTicker.bump()` in the handler does. See §6.5.
 
 Also in P6: wire the refresh button so it produces an immediate fresh prediction in one beat. See §6.5 below for the full mechanics.
 
@@ -455,12 +462,13 @@ End-to-end: **~150 ms from tap to fresh prediction on screen**, vs today's "up t
 | Setting | Value | Why |
 |---|---|---|
 | `livePollMs` | **15 000 ms** | unchanged; bounded by upstream feed cadence (Cluj GTFS-RT publishes ~every 10 s) |
-| `nowTickerMs` | **5 000 ms** | balances liveness for the map vs cost; Q.4 decided |
+| `nowTickerMs` | **15 000 ms** | matches `livePollMs` so predictor inputs change in one beat; smoothness on the map comes from RAF interpolation, not from a faster tick |
+| `mapAnimationFps` | **30** | RAF loop on the map page tweens markers between `nowTicker` ticks using each marker's last predicted velocity. Same pattern as the existing traveling-dots layer. 30 fps is the visible-smoothness threshold and is half the cost of 60 fps. |
 | `refreshDebounceMs` | **2 000 ms** | prevents the refresh button from triggering more than one poll cycle by spam-tapping |
 | `gpsHealthyMs` | **180 000 ms** (3 min) | unchanged from v1 |
 | `gpsStaleMs` | **300 000 ms** (5 min) | unchanged from v1 |
 
-All of these live in `DEFAULT_CONFIG` in [`lib/domain/config.ts`](apps/web/src/lib/domain/config.ts), keeping one source of truth.
+All of these (except the RAF rate, which is map-local) live in `DEFAULT_CONFIG` in [`lib/domain/config.ts`](apps/web/src/lib/domain/config.ts), keeping one source of truth.
 
 ### What NOT to do
 
@@ -475,9 +483,9 @@ Compared to the current ~25 s typical / 55 s worst case (see §1.4):
 
 | Path | Today | After P5+P6 |
 |---|---|---|
-| GPS reports → marker moves (auto) | 0–55 s | 0–20 s (15 s poll + 5 s tick) |
+| GPS reports → marker moves (auto) | 0–55 s | 0–30 s (15 s poll + 15 s tick worst case; markers also RAF-interpolate between ticks) |
 | Refresh tap → marker moves | 30 s waiting for `nowTicker` | ~150 ms |
-| ETA label flips a minute (auto) | 0–30 s | 0–5 s |
+| ETA label flips a minute (auto) | 0–30 s | 0–15 s |
 
 The win on refresh is the user-facing one: tapping the button is finally meaningful.
 
@@ -490,7 +498,7 @@ Decisions needed before P1 starts. None of them block writing the v1 port module
 - **Q.1 — Where does the speed profile live?** ~~Per-feed config in `neary-gtfs/feeds/<id>/config.json`, or per-feed-per-route, or derived from observation (P0 output)?~~ **DECIDED 2026-06-27: per-feed.** Per-route is overkill — in the city centre many routes overlap with essentially the same traffic profile.
 - **Q.2 — Per-stop dwell.** Flat 20 s, or per-stop based on observed headway / boarding volume, or per-stop-class (terminal vs through-stop vs request-only)? Recommendation: flat 20 s ship, per-class once we have observed data. *Open.*
 - **Q.3 — City-centre tier from v1.** ~~Do we keep it?~~ **DECIDED 2026-06-27: keep v1's city-centre tier for now.** Sits between the time-of-day profile and the static fallback. Centroid computed once at build time per feed.
-- **Q.4 — Map liveness vs battery.** ~~Drop `nowTicker` to 5 s globally, or only the map page (P6)?~~ **DECIDED 2026-06-27: drop to 5 s globally.** Single timer; no per-page gating.
+- **Q.4 — Map liveness vs battery.** ~~Drop `nowTicker` to 5 s globally, or only the map page (P6)?~~ **DECIDED 2026-06-27, REVISED 2026-06-27: nowTicker at 15 s globally, synchronised with `livePollMs`.** Smooth map marker animation comes from RAF interpolation between ticks, not from a faster global tick. See §6 P6 + §6.5 for the full reasoning.
 - **Q.5 — Should reconciliation use GPS position?** The position-aware tie-break in §5 fixes same-time crossings but adds a per-candidate projection call. Cheap, but worth being explicit. Recommendation: yes, with a fallback to timing-only when no GPS is available for the candidate. *Open.*
 - **Q.6 — What does the Map view do when GPS is VERY_STALE?** ~~v1 dropped the vehicle. v2-today renders the schedule position regardless.~~ **DECIDED 2026-06-27: freeze at last known position with a yellow border, no dead-reckoning forward.** Vehicle stays visible so the user still knows where it was last seen.
 - **Q.7 — Test corpus.** We don't have one yet for prediction quality. Recommendation: P0 captures a week of vehicle pings; a CSV of `(tripId, stopId, scheduled_arrival, observed_arrival)` triples becomes the regression input. Each predictor is scored on MAE against it. *Open.*
@@ -526,3 +534,4 @@ Things this design deliberately does *not* attempt, with reasons:
 - 2026-06-27 — Q.1 decided **per-feed** (not per-route). Q.3 decided **keep v1's city-centre tier** as a 4th step in the cascade. Q.4 decided **drop `nowTicker` to 5 s globally** (no per-page split). Q.6 decided **freeze at last known position with yellow border** on VERY_STALE GPS. §6.5 added: explainer of the three loops (live poll / nowTicker / refreshBus), recommended config, and the refresh-button contract. Q.2 / Q.5 / Q.7 still open.
 - 2026-06-27 — P5 scope clarified: the map moves *every* visible vehicle on each `nowTicker` tick, not just live-GPS ones. Schedule-only vehicles interpolate continuously between their scheduled stops; live-GPS vehicles dead-reckon from their last sample. Source determines confidence + reckoning rules, not whether the marker animates. §5.C.3 + Phase P5 description rewritten.
 - 2026-06-27 — P1 scope spelled out in full instead of "Stage A from §5". Five explicit deliverables: shape-aware segment distance, per-feed time-of-day speed profile, per-stop dwell with proper arrival/departure split, `shape_dist_traveled` populated, drop the min/max clamp. Worked example added showing today's haversine+18 km/h+0 dwell vs the new formula on a 4-stop trip. Acceptance criteria added. Only the Cluj path changes; feeds with operator-provided `stop_times.txt` keep using those as authoritative.
+- 2026-06-27 — Q.4 revised. Earlier decision was 5 s `nowTicker` everywhere. Reconsidered: that's overkill because predictor inputs only change on the poll cadence (15 s) anyway, and 5 s ticking just re-runs the predictor with identical inputs. New decision: `nowTicker = 15 s`, synchronised with `livePollMs`. Map marker smoothness handled by an RAF interpolation loop on the map page (`pos += vel * dt` per frame, anchor recomputed at each tick) — same pattern the traveling-dots layer already uses. §2.7 cadence comparison fixed (v1 vs v2 vs v2.5 was wrongly framed); §6 P6 description rewritten; §6.5 config table + latency table updated.
