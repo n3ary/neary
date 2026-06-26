@@ -316,8 +316,21 @@ Within a station's arrivals board:
 5. `departed` → 4 (hidden by default — see filters below)
 6. `off-route` → hidden by default
 
-Tie-break: ascending `eta.minutes` (so "incoming in 3 min" beats "incoming in
-7 min"), then by `vehicle.id`.
+Tie-break: by `eta.minutes` — **ascending** for all forward buckets ("in 3
+min" before "in 7 min"), but **descending** for `departed` so the most
+recent departure comes first ("1 min ago" before "10 min ago"). Final
+tie-break by `vehicle.id`.
+
+### Departed collapse (one row per route)
+
+Even after the trip-end gate, an active route running every few minutes can
+produce many recently-departed rows. The board collapses the `departed`
+bucket to **the most-recent row per route** in
+[`assembleStationBoard`](../../apps/web/src/lib/domain/stationBoard.ts) via
+the helper `collapseDepartedByRoute`. The user sees one departed entry per
+route ("you just missed the 24 a minute ago") instead of a 20-row history.
+The map view bypasses this — it consumes the raw `Vehicle[]` directly,
+showing every still-en-route bus.
 
 ### Station-view filters (`filterForStationView`)
 

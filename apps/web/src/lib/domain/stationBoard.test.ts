@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { assembleStationBoard, dedupRoutes } from './stationBoard';
+import { assembleStationBoard, collapseDepartedByRoute, dedupRoutes } from './stationBoard';
+import type { BoardRow } from './stationBoard';
 import type { Route, Vehicle } from './types';
 
 const r24: Route = { id: 24, shortName: '24', color: '#ff0000' };
@@ -54,6 +55,47 @@ describe('assembleStationBoard', () => {
   it('returns the expected bucket for an arriving vehicle', () => {
     const board = assembleStationBoard([scheduled('a', r24, 1)], allowAll, nowMs);
     expect(board[0].bucket).toBe('arriving');
+  });
+
+  it('collapses departed bucket to the most-recent row per route', () => {
+    // Two departed runs of route 24 (-1 and -8 min) + one of route 35 (-3).
+    // After assembly we expect only the most recent of each route.
+    const vehicles = [
+      scheduled('a', r24, -1),
+      scheduled('b', r24, -8),
+      scheduled('c', r35, -3),
+    ];
+    const board = assembleStationBoard(vehicles, allowAll, nowMs);
+    const departed = board.filter((r) => r.bucket === 'departed');
+    expect(departed.map((r) => r.vehicle.schedule?.tripId)).toEqual(['a', 'c']);
+  });
+});
+
+describe('collapseDepartedByRoute', () => {
+  it('keeps only the most-recent departed per route, preserves order', () => {
+    const rows: BoardRow[] = [
+      { vehicle: scheduled('a', r24, -1), bucket: 'departed', etaMinutes: -1 },
+      { vehicle: scheduled('b', r24, -8), bucket: 'departed', etaMinutes: -8 },
+      { vehicle: scheduled('c', r35, -3), bucket: 'departed', etaMinutes: -3 },
+      { vehicle: scheduled('d', r35, -15), bucket: 'departed', etaMinutes: -15 },
+    ];
+    const out = collapseDepartedByRoute(rows);
+    expect(out.map((r) => r.vehicle.schedule?.tripId)).toEqual(['a', 'c']);
+  });
+
+  it('passes through non-departed buckets untouched', () => {
+    const rows: BoardRow[] = [
+      { vehicle: scheduled('a', r24, 3), bucket: 'incoming', etaMinutes: 3 },
+      { vehicle: scheduled('b', r24, 5), bucket: 'incoming', etaMinutes: 5 },
+      { vehicle: scheduled('c', r24, -1), bucket: 'departed', etaMinutes: -1 },
+      { vehicle: scheduled('d', r24, -3), bucket: 'departed', etaMinutes: -3 },
+    ];
+    const out = collapseDepartedByRoute(rows);
+    expect(out.map((r) => `${r.bucket}:${r.vehicle.schedule?.tripId}`)).toEqual([
+      'incoming:a',
+      'incoming:b',
+      'departed:c',
+    ]);
   });
 });
 

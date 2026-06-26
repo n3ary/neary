@@ -162,15 +162,19 @@ export function bucketOf(
   return 'departed';
 }
 
-/** Sort comparator: bucket display order, then ascending eta minutes,
- *  then vehicle id for stability. */
+/** Sort comparator: bucket display order, then by eta. Within the
+ *  `departed` bucket eta is inverted (most-recent first, e.g. -1 before
+ *  -10), which is what a transit user expects to read. For every other
+ *  bucket eta is ascending (nearest first). Final tie-break by id. */
 export function compareForBoard(
   a: { vehicle: Vehicle; bucket: ArrivalBucket; etaMinutes: number },
   b: { vehicle: Vehicle; bucket: ArrivalBucket; etaMinutes: number },
 ): number {
   const byBucket = BUCKET_ORDER[a.bucket] - BUCKET_ORDER[b.bucket];
   if (byBucket !== 0) return byBucket;
-  const byEta = a.etaMinutes - b.etaMinutes;
+  const aEta = a.bucket === 'departed' ? -a.etaMinutes : a.etaMinutes;
+  const bEta = b.bucket === 'departed' ? -b.etaMinutes : b.etaMinutes;
+  const byEta = aEta - bEta;
   if (byEta !== 0) return byEta;
   return a.vehicle.id.localeCompare(b.vehicle.id);
 }

@@ -36,7 +36,9 @@ function nowMinSinceMidnight(nowMs: number): number {
 }
 
 /** Assemble the bucketed, filtered, sorted board for one station's
- *  worth of vehicles. Pure. */
+ *  worth of vehicles. Pure. The `departed` bucket is collapsed to one
+ *  row per route (the most-recent departure) so it doesn't dominate
+ *  the board with 20+ minutes of past trips when the user opts in. */
 export function assembleStationBoard(
   vehicles: Vehicle[],
   prefs: BoardPrefs,
@@ -54,7 +56,25 @@ export function assembleStationBoard(
     }),
     etaMinutes: v.eta?.minutes ?? 0,
   }));
-  return filterForStationView(rows, prefs).sort(compareForBoard);
+  const sorted = filterForStationView(rows, prefs).sort(compareForBoard);
+  return collapseDepartedByRoute(sorted);
+}
+
+/** Within the `departed` bucket, keep only the most-recent row per route.
+ *  Other buckets pass through untouched. Sort order is assumed to already
+ *  have most-recent-first inside `departed` (see compareForBoard).
+ *  Pulled out as its own helper for testability. */
+export function collapseDepartedByRoute(rows: BoardRow[]): BoardRow[] {
+  const seen = new Set<number>();
+  const out: BoardRow[] = [];
+  for (const r of rows) {
+    if (r.bucket === 'departed') {
+      if (seen.has(r.vehicle.route.id)) continue;
+      seen.add(r.vehicle.route.id);
+    }
+    out.push(r);
+  }
+  return out;
 }
 
 /** Deduplicated, naturally-sorted list of routes from a `Vehicle[]`.

@@ -155,6 +155,16 @@ describe('compareForBoard', () => {
     items.sort(compareForBoard);
     expect(items.map((i) => i.vehicle.id)).toEqual(['d', 'a', 'b', 'c', 'z']);
   });
+
+  it('sorts departed by most-recent first (smallest |eta|)', () => {
+    const items = [
+      { vehicle: v('a'), bucket: 'departed' as ArrivalBucket, etaMinutes: -10 },
+      { vehicle: v('b'), bucket: 'departed' as ArrivalBucket, etaMinutes: -1 },
+      { vehicle: v('c'), bucket: 'departed' as ArrivalBucket, etaMinutes: -5 },
+    ];
+    items.sort(compareForBoard);
+    expect(items.map((i) => i.vehicle.id)).toEqual(['b', 'c', 'a']);
+  });
 });
 
 describe('bucketCounts', () => {
