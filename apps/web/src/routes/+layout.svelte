@@ -7,7 +7,7 @@
 <script lang="ts">
   import '$lib/styles/app.css';
   import { goto } from '$app/navigation';
-  import { page } from '$app/state';
+  import { page, updated } from '$app/state';
   import { Heart, Home, MapPin, Settings } from 'lucide-svelte';
   import { AppLayout, type HeaderHealth } from '$lib/ui';
   import { connectionStore } from '$lib/stores/connectionStore.svelte';
@@ -21,6 +21,18 @@
   import { getGtfsRepo } from '$lib/data/gtfs/repo';
 
   let { children } = $props();
+
+  // App-update detection. SvelteKit's `updated.current` flips to true
+  // when the client's poll of `_app/version.json` (interval set in
+  // svelte.config.js `kit.version`) returns a name different from the
+  // one this session booted with — i.e. a new deploy is live. Reload
+  // so the next paint is from the new HTML + bundle. Transit views
+  // have no form state to lose, so silent reload is the cleanest UX.
+  $effect(() => {
+    if (updated.current && typeof window !== 'undefined') {
+      window.location.reload();
+    }
+  });
 
   // Dev/debug console hooks. Lets the user pin a fake GPS location from
   // the browser console — useful in Safari where DevTools doesn't have a
