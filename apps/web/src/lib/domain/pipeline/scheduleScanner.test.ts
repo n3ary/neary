@@ -41,7 +41,10 @@ describe('scanSchedule', () => {
     expect(out[0].schedule?.headsign).toBe('Mănăștur');
   });
 
-  it('produces a predicted vehicle when scheduled to be at the stop now', () => {
+  it('emits scheduled vehicles regardless of where in the trip window now falls', () => {
+    // In the schedule-only path every emitted vehicle is 'scheduled'.
+    // The bucketer downstream classifies dwell / arriving / departing
+    // based on the row's scheduled times. The scanner doesn't pre-bucket.
     const out = scanSchedule({
       rows: [row({ arrival_time: '08:59:00', departure_time: '09:01:00' })],
       nowMinSinceMidnight: now,
@@ -49,9 +52,7 @@ describe('scanSchedule', () => {
       windowMinutes: 60,
     });
     expect(out).toHaveLength(1);
-    expect(out[0].kind).toBe('predicted');
-    expect(out[0].position?.source).toBe('predicted-from-schedule');
-    expect(out[0].position?.lat).toBeCloseTo(46.7712, 4);
+    expect(out[0].kind).toBe('scheduled');
   });
 
   it('drops future arrivals outside the window', () => {
@@ -136,20 +137,4 @@ describe('scanSchedule', () => {
     expect(out[0].dropOffOnly).toBeUndefined();
   });
 
-  it('attaches checkedSources to predicted vehicles only', () => {
-    const out = scanSchedule({
-      rows: [
-        row({ arrival_time: '09:10:00' }),       // scheduled, future
-        row({ arrival_time: '08:59:30', trip_id: 't-2' }), // predicted, at stop
-      ],
-      nowMinSinceMidnight: now,
-      nowMs,
-      windowMinutes: 60,
-      checkedSources: ['gtfs-rt'],
-    });
-    const predicted = out.find((v) => v.kind === 'predicted');
-    const scheduled = out.find((v) => v.kind === 'scheduled');
-    expect(predicted?.kind === 'predicted' && predicted.checkedSources).toEqual(['gtfs-rt']);
-    expect((scheduled as { checkedSources?: unknown }).checkedSources).toBeUndefined();
-  });
 });

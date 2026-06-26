@@ -98,8 +98,18 @@ known scheduled times.
 export type LiveSource = 'gtfs-rt' | 'tranzy';
 
 export type VehicleKind =
-  | 'scheduled'      // trip in schedule, not yet active, no GPS expected
-  | 'predicted'      // trip should be running now per schedule, no live GPS
+  | 'scheduled'      // trip exists in the schedule. The schedule-only
+                     // pipeline (Phase 4) emits every row with this kind.
+                     // No position attached. Bucketing classifies it as
+                     // arriving / at-station / departing / departed / etc.
+                     // based on its scheduled times.
+  | 'predicted'      // RESERVED for the live reconciler (Phase 5+). Means
+                     // "we polled live sources, none reported this trip,
+                     // and we *estimate* its position from the schedule".
+                     // `checkedSources` will list which live feeds we
+                     // tried. Not emitted by the schedule-only path —
+                     // there's nothing to "predict" against if no live
+                     // source has even been polled.
   | 'live'           // live GPS, no schedule trip matched
   | 'reconciled'     // live GPS + matched scheduled trip (1 live source)
   | 'corroborated';  // live GPS + matched scheduled trip + ≥2 live sources

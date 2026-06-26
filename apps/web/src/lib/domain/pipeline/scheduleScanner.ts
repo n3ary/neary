@@ -2,29 +2,27 @@
  * scheduleScanner — first pipeline stage. Pure function: given a flat list
  * of GTFS rows (joined stop_times + trips + routes) at a target stop and
  * the current `nowMinSinceMidnight`, emit one Vehicle per scheduled
- * arrival in the window.
+ * arrival in the active window.
  *
- *   kind = 'scheduled'  → future arrival
- *   kind = 'predicted'  → scheduled to be at/around the stop right now
- *                         (between arrival - 1 min and departure + 5 min).
- *                         Position is the stop's lat/lon as a placeholder
- *                         until the shape-walking predictor lands in a
- *                         later phase. Confidence 'low' to flag it.
+ * EVERY row emitted here is `kind: 'scheduled'`. That's intentional:
+ * 'scheduled' just means "this trip exists in the schedule", which is
+ * the only thing we know in a schedule-only pipeline. The `'predicted'`
+ * kind is reserved for the live reconciler (Phase 5+): it emits a
+ * `predicted` vehicle when we've polled live sources, found none
+ * reporting the trip, and chose to *estimate* its position from the
+ * schedule. That choice doesn't exist at this layer.
  *
- * No live data is consumed here. Downstream stages (Phase 5) take this
- * output and upgrade `kind` to live/reconciled/corroborated as live
- * sources report matches.
+ * Map view position interpolation along the route shape is a separate
+ * rendering concern and doesn't change the kind.
  */
 
 import type {
-  LiveSource,
   Route,
   ScheduledRun,
   Vehicle,
   VehicleType,
 } from '../types';
 import { vehicleTypeFromGtfs } from '../types';
-import { DEFAULT_CONFIG } from '../config';
 import { timeToMinutes } from './timeUtils';
 
 /** Raw row shape from the joined SQL query the worker runs. */
@@ -57,24 +55,18 @@ export interface ScheduleScannerInputs {
   rows: ScheduleRow[];
   /** Minutes since local midnight when "now" happened. */
   nowMinSinceMidnight: number;
-  /** Unix ms for the same "now". Stamped onto position.asOf for predicted. */
+  /** Unix ms for the same "now". Reserved — unused now that nothing here
+   *  stamps a position; the live reconciler will use it in Phase 5. */
   nowMs: number;
   /** How many minutes in the future to include. */
   windowMinutes: number;
-  /** Sources we tried to query for live data, even if none responded for
-   *  this trip. Empty array means "we only have schedule, no live wired". */
-  checkedSources?: LiveSource[];
 }
-
-const PREDICTED_DEPARTURE_GRACE_MIN = DEFAULT_CONFIG.predictedDepartureGraceMin;
 
 export function scanSchedule(inputs: ScheduleScannerInputs): Vehicle[] {
   const {
     rows,
     nowMinSinceMidnight,
-    nowMs,
     windowMinutes,
-    checkedSources = [],
   } = inputs;
 
   const upper = nowMinSinceMidnight + windowMinutes;
@@ -90,7 +82,6 @@ export function scanSchedule(inputs: ScheduleScannerInputs): Vehicle[] {
     //   * past arrivals whose trip hasn't yet reached its terminus (so the
     //     vehicle is still en route somewhere on the line and belongs in
     //     the 'departed' bucket on this stop's board).
-    // No artificial 5-min recency cap — the trip-end gate naturally bounds it.
     if (arrivalMin > upper) continue;
     if (arrivalMin <= nowMinSinceMidnight && tripEndMin <= nowMinSinceMidnight) {
       continue;
@@ -115,50 +106,23 @@ export function scanSchedule(inputs: ScheduleScannerInputs): Vehicle[] {
       Number(r.pickup_type) === 1 || r.stop_sequence === r.last_seq
         ? true
         : undefined;
-    const id = `trip:${r.trip_id}`;
     const etaMinutes = arrivalMin - nowMinSinceMidnight;
-    const eta = {
-      distanceMeters: 0,
-      minutes: etaMinutes,
-      confidence: 'low' as const,
-    };
 
-    const isCurrentlyAtStop =
-      nowMinSinceMidnight >= arrivalMin - 1 &&
-      nowMinSinceMidnight <= departureMin + PREDICTED_DEPARTURE_GRACE_MIN;
-
-    if (isCurrentlyAtStop) {
-      out.push({
-        kind: 'predicted',
-        id,
-        route,
-        type,
-        schedule,
-        headsign: r.trip_headsign ?? undefined,
-        dropOffOnly,
+    out.push({
+      kind: 'scheduled',
+      id: `trip:${r.trip_id}`,
+      route,
+      type,
+      schedule,
+      headsign: r.trip_headsign ?? undefined,
+      dropOffOnly,
+      confidence: 'low',
+      eta: {
+        distanceMeters: 0,
+        minutes: etaMinutes,
         confidence: 'low',
-        position: {
-          lat: r.stop_lat,
-          lon: r.stop_lon,
-          source: 'predicted-from-schedule',
-          asOf: nowMs,
-        },
-        checkedSources,
-        eta,
-      });
-    } else {
-      out.push({
-        kind: 'scheduled',
-        id,
-        route,
-        type,
-        schedule,
-        headsign: r.trip_headsign ?? undefined,
-        dropOffOnly,
-        confidence: 'low',
-        eta,
-      });
-    }
+      },
+    });
   }
   return out;
 }

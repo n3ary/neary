@@ -342,8 +342,6 @@ const api: GtfsRepo = {
       nowMinSinceMidnight,
       nowMs,
       windowMinutes,
-      // Phase 4 is schedule-only — no live sources have been polled yet.
-      checkedSources: [],
     });
   },
 

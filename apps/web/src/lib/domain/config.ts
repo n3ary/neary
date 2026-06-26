@@ -30,11 +30,6 @@ export interface NearyConfig {
    *  surfaces as "arriving" rather than splitting into at-station. */
   minDwellGapMin: number;
 
-  // ── Pipeline / scanner ─────────────────────────────────────────────
-  /** How long (min) past a scheduled departure we still treat a trip as
-   *  "predicted at the stop" (used by scheduleScanner to pick the
-   *  predicted vs scheduled kind). */
-  predictedDepartureGraceMin: number;
 }
 
 /** Production defaults. v1 magic numbers ported per spec §7.1. */
@@ -45,5 +40,4 @@ export const DEFAULT_CONFIG: NearyConfig = {
   imminentEtaThresholdMin: 5,
   departingSpeedKmh: 5,
   minDwellGapMin: 1,
-  predictedDepartureGraceMin: 5,
 };
