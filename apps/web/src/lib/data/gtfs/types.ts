@@ -12,7 +12,7 @@ import type { Route, Station, Vehicle } from '$lib/domain/types';
 export interface StopWithDistance extends Station {
   /** Meters from the query coordinate. Optional because the by-id
    *  entry path (getStationBoard) has no GPS context to compute it
-   *  against \u2014 every other producer (getStopsNear, getStationBoardsNear)
+   *  against — every other producer (getStopsNear, getStationBoardsNear)
    *  always sets it. Consumers that need it should check for `number`. */
   distance?: number;
 }

@@ -40,7 +40,7 @@ class FeedsStore {
   }
 
   /** The bound feed's IANA timezone, falling back to 'UTC' while the
-   *  registry is still loading or the worker isn\u2019t bound yet. Single
+   *  registry is still loading or the worker isn’t bound yet. Single
    *  source for every consumer of the schedule-pipeline (page-level
    *  composers, prediction helpers) so we never silently mix
    *  system-local time with feed-local time. */

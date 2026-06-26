@@ -390,7 +390,7 @@ const api: GtfsRepo = {
     return {
       stop: {
         id: s.stop_id, name: s.stop_name, lat: s.stop_lat, lon: s.stop_lon,
-        // distance intentionally absent \u2014 no GPS context here, and
+        // distance intentionally absent — no GPS context here, and
         // StopWithDistance treats it as optional. The StationCard
         // already handles undefined distance gracefully.
       },

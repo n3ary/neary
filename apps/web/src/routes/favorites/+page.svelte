@@ -1,8 +1,8 @@
 <!--
-  Favorites — lists the user\u2019s favorited routes. Each badge links to a
+  Favorites — lists the user’s favorited routes. Each badge links to a
   (future) route detail view; for now tapping a heart removes the
-  favorite. Routes the user hasn\u2019t encountered yet aren\u2019t shown here
-  \u2014 favoriting still happens from the Stations view (in a follow-up
+  favorite. Routes the user hasn’t encountered yet aren’t shown here
+  — favoriting still happens from the Stations view (in a follow-up
   commit, until then via `neary.stores.favoritesStore.add(routeId)` in
   the console).
 -->
@@ -17,7 +17,7 @@
   import { favoritesStore } from '$lib/stores/favoritesStore.svelte';
   import { userPrefs } from '$lib/stores/userPrefs.svelte';
 
-  // Fetch the feed\u2019s full route list once so we can look up shortName
+  // Fetch the feed’s full route list once so we can look up shortName
   // and color for each favorited id. Keeps the favorite store as a pure
   // id set (no embedded route metadata that could drift from the feed).
   let routesById = $state<Map<number, Route> | null>(null);

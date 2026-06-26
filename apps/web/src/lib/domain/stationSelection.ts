@@ -4,11 +4,11 @@
  *
  * Rules (spec: docs/rebuild-v2/vehicles-and-views.md §… TBC):
  *
- *   1. PRIMARY \u2014 closest stop within `nearbyRadiusM`. If a second
+ *   1. PRIMARY — closest stop within `nearbyRadiusM`. If a second
  *      stop is also within `nearbyRadiusM` AND its distance to the user
  *      is within `pairProximityM` of the closest, surface it too (the
  *      "I'm standing between two stops" case).
- *   2. FAVORITE FALLBACK \u2014 if nothing satisfies (1) AND a favorite
+ *   2. FAVORITE FALLBACK — if nothing satisfies (1) AND a favorite
  *      route set is provided, surface the closest stop within
  *      `favoriteFallbackRadiusM` whose schedule includes at least one
  *      favorite route (regardless of direction). Single stop only.
@@ -21,7 +21,7 @@
  * the favorite-fallback can inspect what routes serve each stop without
  * needing a second worker round-trip. Caller is responsible for
  * passing a candidate set wide enough to cover BOTH the nearby and the
- * favorite-fallback radii \u2014 i.e. query with the larger of the two.
+ * favorite-fallback radii — i.e. query with the larger of the two.
  *
  * Why here and not in the page: the route shape "view of stations" is
  * a domain concept (which stops should the user see?). The /stations
@@ -51,16 +51,16 @@ export interface SelectionInputs<S extends SelectableStop> {
   /** Boards from `repo.getStationBoardsNear`. MUST be pre-sorted by
    *  `stop.distance` ascending (the worker already does this). */
   candidates: StationBoardCandidate<S>[];
-  /** Tunable knobs \u2014 see NearyConfig. */
+  /** Tunable knobs — see NearyConfig. */
   config: Pick<NearyConfig, 'nearbyRadiusM' | 'pairProximityM' | 'favoriteFallbackRadiusM'>;
   /** Routes the user has favorited. Pass `null` until the favorites
-   *  store exists \u2014 the favorite-fallback step is a no-op. */
+   *  store exists — the favorite-fallback step is a no-op. */
   favoriteRouteIds: ReadonlySet<number> | null;
 }
 
 export interface SelectionResult<S extends SelectableStop> {
-  /** Stations to display, in distance order. Length 0\u20132 in primary
-   *  mode, 0\u20131 in favorite-fallback mode. */
+  /** Stations to display, in distance order. Length 0–2 in primary
+   *  mode, 0–1 in favorite-fallback mode. */
   boards: StationBoardCandidate<S>[];
   /** Stop id that the view should auto-expand. Always the closest of
    *  whatever `boards` contains; null when boards is empty. */

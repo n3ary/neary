@@ -51,7 +51,7 @@ describe('resolveDirectionId', () => {
     expect(resolveDirectionId(null, 'opaque')).toBe(-1);
   });
 
-  it('ignores trip_id segments that aren\u2019t 0/1', () => {
+  it('ignores trip_id segments that aren’t 0/1', () => {
     expect(resolveDirectionId(1, '13_7_LV_99_1500')).toBe(1);
   });
 });

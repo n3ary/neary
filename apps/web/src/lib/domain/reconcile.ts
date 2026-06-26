@@ -107,7 +107,7 @@ export function reconcileWithLive(
   //      in at most one match. A perfect (delta=0) pairing therefore
   //      always wins over a sloppy (delta=tol) pairing fighting for the
   //      same scheduled slot, no matter the iteration order of `live`.
-  // This is strictly \u2265 the previous first-iteration-wins variant; it
+  // This is strictly ≥ the previous first-iteration-wins variant; it
   // never loses a match the old code would have made, and recovers
   // dropped perfect matches in the common "two buses claim the same
   // sched slot" situation observed on high-frequency lines.
@@ -133,8 +133,8 @@ export function reconcileWithLive(
       inTol += 1;
       if (delta < minDelta) minDelta = delta;
     }
-    // Telemetry only: count obs that had \u22652 candidates at the same
-    // closest delta \u2014 we still resolve via the global sort below.
+    // Telemetry only: count obs that had ≥2 candidates at the same
+    // closest delta — we still resolve via the global sort below.
     if (inTol >= 2) {
       let tiedAtMin = 0;
       for (const c of candidates) {

@@ -100,7 +100,7 @@
 
   // Group rows by bucket while preserving the domain-sorted order. Empty
   // buckets are dropped so the UI shows only headers that have content.
-  // The card does NOT filter \u2014 the caller is expected to hand us only
+  // The card does NOT filter — the caller is expected to hand us only
   // the rows that should appear (route filter, prefs filter, etc. all
   // belong upstream so the cap operates on the already-filtered set).
   // `selectedRouteId` here is purely a visual prop: it tells the badge

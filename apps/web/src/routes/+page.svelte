@@ -115,7 +115,7 @@
     });
   });
 
-  // Wall clock for ETA/bucket recompute \u2014 single shared ticker, see
+  // Wall clock for ETA/bucket recompute — single shared ticker, see
   // nowTicker.svelte.ts.
   const nowMs = $derived(nowTicker.ms);
 

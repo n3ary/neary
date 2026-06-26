@@ -112,12 +112,12 @@ export function capStationBoard(rows: BoardRow[]): BoardRow[] {
  *
  * The Stations view (and any other consumer that wants a fully-resolved
  * board) calls this ONE function instead of chaining
- *   filter \u2192 reconcileWithLive \u2192 assembleStationBoard
+ *   filter → reconcileWithLive → assembleStationBoard
  * itself. Keeps pipeline composition + timezone discipline in the
  * domain layer; the UI just renders what comes back.
  *
- * Stage order matches docs/rebuild-v2/vehicles-and-views.md \u00a75.5:
- *   1. Route filter (visual scope chosen by the user) \u2014 applied first
+ * Stage order matches docs/rebuild-v2/vehicles-and-views.md §5.5:
+ *   1. Route filter (visual scope chosen by the user) — applied first
  *      so the rest of the pipeline operates on the right subset.
  *   2. Live reconciliation (route+direction+startTime match).
  *   3. Bucket + filter + sort + cap (assembleStationBoard).
@@ -153,7 +153,7 @@ export function assembleLiveBoard(input: AssembleLiveBoardInputs): BoardRow[] {
 
 /** Deduped, sorted route list for a station based on the schedule.
  *  Lives in the domain so consumers (Stations page, future map view,
- *  showcase) all read routes the same way \u2014 numeric short-names sort
+ *  showcase) all read routes the same way — numeric short-names sort
  *  numerically, alpha after. */
 export function routesFromVehicles(vehicles: Vehicle[]): Route[] {
   const map = new Map<number, Route>();
