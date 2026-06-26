@@ -31,7 +31,13 @@
   const FALLBACK_LON = 23.6236;
   const SEARCH_RADIUS_M = 500;
   const MAX_STATIONS = 8;
-  const ARRIVALS_WINDOW_MIN = 60;
+  // Query a generous future window so the 5-row cap on the StationCard
+  // always has enough to pick from, even at sparse stops where service
+  // runs only every 30 min. The cap (lib/domain/stationBoard.ts) trims
+  // down to 5; everything past that just sits in memory as
+  // overflow-incoming we never render. Volume is fine — ~120 trips at a
+  // very busy stop x 8 stops = small kB-range JSON over Comlink.
+  const ARRIVALS_WINDOW_MIN = 240;
 
   onMount(() => locationStore.start());
 
