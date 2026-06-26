@@ -243,10 +243,10 @@ Commits: `60d167e` · `7f0a610`
   (`ready` / `getManifest` / `getRoutes` / `getStopsNear` /
   `getDeparturesFromStop`).
 - `/data-test` route exercises the full pipeline end-to-end.
-- **Outstanding (blocked on neary-gtfs work)**: same script runs as a
-  GitHub Action step in neary-gtfs producing `data/<id>/<id>.sqlite3.gz`
-  on the `releases` branch + entry in `hashes.json`. Until then the v2
-  app is dev-only for agency 2; other agencies are gated in the picker.
+- **Outstanding (blocked on neary-gtfs work)**: pipeline refactor described
+  in [neary-gtfs-plan.md](neary-gtfs-plan.md). v2 app keeps using the
+  dev-only `agency-2.sqlite3.gz` until that branch's `releases-v2`
+  publishes the new `feeds.json` + SQLite blobs.
 
 ### Phase 3 — App shell + status system · ✓ done
 Commits: `4078a3f` · `d4aa4f9`
