@@ -4,6 +4,8 @@ import { dirname, join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { parseVehiclePositions, resolveDirectionId } from './gtfsRtClient';
 
+// Fixture is a real protobuf capture from Cluj's vehicle_positions feed.
+// Purpose + regen recipe: docs/specs/live-data-pipeline.md § "Test fixture".
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const fixture = readFileSync(join(__dirname, '__fixtures__/cluj-vehicle-positions.bin'));
 

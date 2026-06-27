@@ -169,3 +169,26 @@ both environments.
 
 These thresholds live in [src/lib/domain/config.ts](../../src/lib/domain/config.ts);
 adjust there, not in this doc.
+
+## Test fixture
+
+[src/lib/data/live/__fixtures__/cluj-vehicle-positions.bin](../../src/lib/data/live/__fixtures__/cluj-vehicle-positions.bin)
+is a 15 KB protobuf capture of a real Cluj `vehicle_positions` response
+from 2026-06-27. Used by
+[gtfsRtClient.test.ts](../../src/lib/data/live/gtfsRtClient.test.ts)
+to round-trip `parseVehiclePositions` against bytes the operator
+actually emits — catches regressions in `gtfs-realtime-bindings`
+upgrades and upstream schema drift that a hand-built `FeedMessage`
+wouldn't.
+
+To regenerate after an upstream change (with `npm run dev` running so
+the same-origin proxy is up):
+
+```bash
+curl -o src/lib/data/live/__fixtures__/cluj-vehicle-positions.bin \
+  http://localhost:5173/api/rt/cluj-napoca/vehiclePositions
+```
+
+The snapshot is intentionally pinned — bumping it should be a deliberate
+PR, not a passive refresh, so the diff makes any field-shape change
+visible.
