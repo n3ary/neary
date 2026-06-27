@@ -139,6 +139,8 @@
             {#each feedsStore.feeds as f (f.id)}
               {@const hasSqlite = f.files?.sqlite_gz != null}
               {@const selected = userPrefs.feedId === f.id}
+              {@const generatedMs = f.generated_at ? Date.parse(f.generated_at) : NaN}
+              {@const updated = Number.isFinite(generatedMs) ? `updated ${formatWhen(generatedMs)}` : null}
               <ListItem
                 button={hasSqlite}
                 onclick={hasSqlite ? () => (userPrefs.feedId = f.id) : undefined}
@@ -146,7 +148,7 @@
               >
                 <ListItemText
                   primary={f.name}
-                  secondary={`${f.country}${f.region ? ' · ' + f.region : ''} · ${f.timezone}${f.size_bytes?.sqlite_gz ? ' · ' + formatBytes(f.size_bytes.sqlite_gz) : ''}`}
+                  secondary={`${f.country}${f.region ? ' · ' + f.region : ''} · ${f.timezone}${f.size_bytes?.sqlite_gz ? ' · ' + formatBytes(f.size_bytes.sqlite_gz) : ''}${updated ? ' · ' + updated : ''}`}
                 />
                 {#if selected}
                   <Chip size="small" color="primary">
