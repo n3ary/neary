@@ -19,8 +19,8 @@ fixes two real pain points in the current app:
 
 | Document | Scope |
 |---|---|
-| [prediction-v2.md](prediction-v2.md) | The above — active |
-| [neary-gtfs-evolution.md](neary-gtfs-evolution.md) | M3–M5 roadmap on the separate `neary-gtfs` repo |
+| [prediction-v2.md](prediction-v2.md) | Prediction overhaul — active priority |
+| [tranzy-integration.md](tranzy-integration.md) | Opt-in second live source for higher-confidence reconciliation |
 | [polish-and-perf.md](polish-and-perf.md) | Phase 9 — Histoire, Biome, perf budgets, store install |
 | [open-questions.md](open-questions.md) | Deferred decisions awaiting more signal |
 

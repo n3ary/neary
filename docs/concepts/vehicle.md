@@ -30,8 +30,3 @@ Each entry also carries:
 - `confidence: 'high' | 'medium' | 'low'` → see [confidence.md](confidence.md).
 - `liveSources: LiveSource[]` (when the kind has live data) → records which feeds confirm it.
 - `schedule.isAtTripStart` → the bus is at its trip origin, so schedule is authoritative even without GPS.
-
-## What this replaces from v1
-
-- v1's "ghost" naming → replaced by `scheduled` + `predicted` with confidence semantics.
-- v1's per-component "is this real?" branches → replaced by `kind` switch.

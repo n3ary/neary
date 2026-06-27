@@ -40,7 +40,6 @@ Per [reconcile.ts](../../src/lib/domain/reconcile.ts):
 let a high-delta match claim a slot before a perfect-delta match got
 a chance. Bipartite greedy guarantees perfect matches always win.
 
-Spec-level: this matches v1's algorithm with the matching-quality fix.
 Future direction: see [../plan/prediction-v2.md](../plan/prediction-v2.md).
 
 ## Direction-id resolution

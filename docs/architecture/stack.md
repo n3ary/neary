@@ -34,6 +34,5 @@ Current v2 stack as of 2026-06-27. Authoritative dependency list is [package.jso
 
 ## What's deliberately not here
 
-- React, Zustand, Material-UI, axios — that's the v1 stack, frozen in [legacy/](../../legacy/).
 - Server-side rendering — static prerender only. Revisit only if route-based data fetching needs it.
 - MapLibre GL — kept on Leaflet until a real iOS-Safari bottleneck appears.
