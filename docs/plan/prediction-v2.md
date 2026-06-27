@@ -38,28 +38,14 @@ These aren't up for re-litigation; they fix the shape of the work below.
 - **Validation is empirical.** No formal test corpus; quality is judged
   by using the app (rides, screenshots, gut feel). A regression-MAE
   pipeline is explicit anti-goal until we feel the lack of one.
-
-## Open questions
-
-- **Q1 — Should reconciliation tie-break by GPS position when timing
-  alone is ambiguous?**
-
-  Today's matcher uses `(routeId, directionId, tripStartMin)` with an
-  adaptive timing tolerance. On a high-frequency route, two scheduled
-  trips often sit inside the same tolerance window (e.g.
-  `tripStartMin = 12:30` and `12:32`, a live obs reporting `12:31`).
-  The smallest-delta winner can be wrong: a bus running 5 min late on
-  the 12:30 trip looks identical to a bus running on time on the 12:32
-  trip if we only look at start time.
-
-  Proposal: project the live obs onto the route shape (we have the
-  shape for ETA already). For each candidate scheduled trip, compute
-  *where the trip should be right now* per its own schedule — also a
-  `distAlongM`. Pick the candidate whose expected position is closest
-  to where the bus actually is. Fall back to timing-only when shape
-  projection isn't available.
-
-  *Decide before item 6.*
+- **Reconciliation matches by route order, not per-obs greedy.** When
+  multiple scheduled trips fall inside the same timing tolerance on a
+  `(route, dir)` cohort, sort scheduled trips by `tripStartMin`
+  (earliest first = furthest along expected) and sort live obs by
+  projected `distAlongM` (furthest along first), then pair in sequence.
+  Captures the physical truth that buses on the same route don't
+  overtake each other; independently picking each obs's closest match
+  can swap two adjacent buses. Implementation in item 6.
 
 ---
 
@@ -67,7 +53,7 @@ These aren't up for re-litigation; they fix the shape of the work below.
 
 Numbered in dependency order. neary-gtfs work is grouped in §A at the end.
 
-### 1. Shared `prediction-core` module — [ ]
+### [ ] 1. Shared `prediction-core` module
 
 Pure TS, no DOM/IO, lives at `src/lib/domain/prediction-core/`. Mirrored
 into neary-gtfs (see §A.2) so build-time and runtime use the same math.
@@ -97,7 +83,7 @@ into neary-gtfs (see §A.2) so build-time and runtime use the same math.
 Cascade runs **per segment**, not per vehicle. Speeds ≤ 5 km/h are
 treated as "stopped, not moving" and excluded from tiers 1–2.
 
-### 2. Consume `shape_dist_traveled` at runtime — [ ]
+### [ ] 2. Consume `shape_dist_traveled` at runtime
 
 neary-gtfs already populates this column on every `stop_times` row
 (see §A.1). Web app still re-projects every stop in `buildTripShapePlan`
@@ -111,7 +97,7 @@ on page load — wasted CPU.
 - [ ] Measure: route-map load CPU drops by the projection share
       (hot route: 24B).
 
-### 3. `predictArrivalAlongShape.ts` — multi-tier ETA — [ ]
+### [ ] 3. `predictArrivalAlongShape.ts` — multi-tier ETA
 
 Replaces today's single-tier [`predictEta.ts`](../../src/lib/domain/predictEta.ts).
 Composes item 1's `estimateSegmentSpeed` with the shape walk from
@@ -142,7 +128,7 @@ view all consume the same `ArrivalPlan` — no more `predictEta` vs
 - [ ] Optional: feature flag for A/B vs today's single-tier ETA.
 - [ ] Delete `predictEta.ts` once the new path is the sole caller.
 
-### 4. Continuous position rendering for every visible vehicle — [ ]
+### [ ] 4. Continuous position rendering for every visible vehicle
 
 Live-GPS vehicles already dead-reckon. Schedule-only markers still snap
 on each `nowTicker` tick. Goal: every marker glides between ticks.
@@ -157,7 +143,7 @@ recomputes the anchor at the next tick.
       `predictedVel` alongside `predictedPos`.
 - [ ] Live-GPS path: `predictPositionFromGps` does the same.
 
-### 5. VERY_STALE handling on the map — [ ]
+### [ ] 5. VERY_STALE handling on the map
 
 Freshness bands: HEALTHY < 3 min · STALE < 5 min · VERY_STALE ≥ 5 min.
 
@@ -171,30 +157,46 @@ Freshness bands: HEALTHY < 3 min · STALE < 5 min · VERY_STALE ≥ 5 min.
 Today the map page has a defensive `STALE_HARD_MAX_MS = 15 min` cap for
 orphans but no VERY_STALE-with-border path.
 
-### 6. Reconciliation GPS tie-break — [ ]
+### [ ] 6. Reconciliation: GPS + route-order tie-break
 
-(Resolves Q1.) Among candidates within timing tolerance, prefer the one
-whose projected `distAlongM` is closest to the elapsed-time expectation.
-Fall back to timing-only when no GPS is available for the candidate.
+For each `(route, direction)` cohort within the existing timing tolerance:
 
-- [ ] Decide Q1.
+1. Project every live obs onto the route shape (`projectOnPolyline`).
+2. Compute each scheduled trip's expected `distAlongM` for `now` —
+   `predictPositionOnShape` already does this; reuse it.
+3. Sort scheduled trips by `tripStartMin` ascending (earliest = furthest
+   along expected).
+4. Sort live obs by projected `distAlongM` descending (furthest along
+   first).
+5. Pair in sequence.
+6. Fall back to per-obs nearest-distance match when shape projection
+   isn't available or when a pair's delta exceeds an implausibility
+   threshold (suggests the no-overtake invariant doesn't hold for this
+   pair — detour, terminus turnaround, etc.).
+
+Closes the same-minute-crossings case **and** the "two adjacent buses
+swap" case that independent greedy matching can produce on
+high-frequency lines.
+
 - [ ] Implement in [`reconcileWithLive`](../../src/lib/domain/reconcile.ts).
-- [ ] Tests for the same-minute-crossing case.
+- [ ] Tests for: (a) same-minute crossing; (b) two-bus swap that greedy
+      would mis-assign; (c) fallback to per-obs greedy when delta is
+      implausible.
 
-### 7. Empirical per-segment speeds — [ ]
+### [ ] 7. Empirical per-segment speeds
 
 Long-term: capture → analyse → ship empirical speeds inside the same
 SQLite the client already downloads. Collapses the cascade from 5 tiers
 to **empirical baseline × live-correction multiplier**, with the cold-
 start tiers (3–5) becoming sparse-cell backstop.
 
-#### 7a. Capture script — [ ]
+#### [ ] 7a. Capture script
 
 - [ ] `neary-gtfs/scripts/observe-cluj.mjs`: polls upstream GTFS-RT every
       ~15 s, stores raw snapshots locally. Manual invocation. Not wired
       into the build pipeline.
 
-#### 7b. Analysis pass — [ ]
+#### [ ] 7b. Analysis pass
 
 - [ ] `neary-gtfs/scripts/analyze-observations.mjs` reads snapshots,
       outputs per-bucket median speeds.
@@ -206,7 +208,7 @@ Multi-segment intervals distribute `Δd` proportionally across touched
 legs. Bucket by `(route_id, direction_id, segment_idx, hour_of_week)`,
 take p60, drop buckets with < 20 samples.
 
-#### 7c. Ship empirical data in SQLite — [ ]
+#### [ ] 7c. Ship empirical data in SQLite
 
 New table in the existing artifact (no new endpoint):
 
@@ -227,7 +229,7 @@ CREATE TABLE segment_speeds (
       in the feed's `.sqlite`.
 - [ ] Worker query exposes per-bucket lookup to `speedCascade.ts`.
 
-#### 7d. Cascade collapse — [ ]
+#### [ ] 7d. Cascade collapse
 
 - [ ] Tiers 1–2 fold into a live-correction multiplier
       (`observed / empirical_median`).
@@ -242,7 +244,7 @@ CREATE TABLE segment_speeds (
 Build-time changes live in the sibling repo. Grouped here so this plan
 stays the single roadmap.
 
-### A.1. Build-time interpolation — [x]
+### [x] A.1. Build-time interpolation
 
 Shipped as **neary-gtfs#12**. Replaced the legacy haversine + 18 km/h +
 0-dwell formula in `feeds/cluj-napoca/build.js` with shape-aware timing.
@@ -256,7 +258,7 @@ Current Cluj `feeds/cluj-napoca/config.json`:
 
 `shape_dist_traveled` populated on every `stop_times` row.
 
-### A.2. `prediction-core` mirror — [ ]
+### [ ] A.2. `prediction-core` mirror
 
 When item 1 lands:
 
@@ -266,7 +268,7 @@ When item 1 lands:
 - [ ] `scripts/check-mirror.{sh,mjs}` in CI fails any PR that touches
       one copy without the other.
 
-### A.3. Build-time `estimateSegmentSpeed` — [ ]
+### [ ] A.3. Build-time `estimateSegmentSpeed`
 
 Once §A.2 lands:
 
@@ -276,7 +278,7 @@ Once §A.2 lands:
       time). No behavioural change expected — same constants, single
       source of truth.
 
-### A.4. Observation pipeline — [ ]
+### [ ] A.4. Observation pipeline
 
 Items 7a–7c above live in neary-gtfs. Cross-referenced here so a
 neary-gtfs reader can see the full picture.
