@@ -198,6 +198,12 @@ export interface GtfsRepo {
   getRoutesForStop(stopId: number): Promise<Route[]>;
 
   /**
+   * Route ids for which `stopId` is the first stop (origin) of at least one trip.
+   * Used to show the isStart ▶ marker on route badges in the station view.
+   */
+  getOriginRoutesAtStop(stopId: number): Promise<string[]>;
+
+  /**
    * One round-trip payload for the route-map view: every trip
    * currently active on (routeId, directionId) plus a representative
    * shape polyline for the direction.

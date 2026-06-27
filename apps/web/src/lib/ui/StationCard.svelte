@@ -59,6 +59,9 @@
     onRouteClick?: (routeId: string) => void;
     /** Optional set of route ids that are favorited. */
     favoriteRouteIds?: ReadonlySet<string>;
+    /** Route ids for which this station is the first (origin) stop. When set,
+     *  the corresponding badge shows the isStart ▶ wedge. */
+    originRouteIds?: ReadonlySet<string>;
     class?: string;
   };
 
@@ -72,6 +75,7 @@
     selectedRouteId,
     onRouteClick,
     favoriteRouteIds,
+    originRouteIds,
     class: className,
   }: Props = $props();
 
@@ -180,7 +184,8 @@
                 <RouteBadge
                   {route}
                   size="medium"
-                  colorMode="neutral"
+                  colorMode="route"
+                  isStart={originRouteIds?.has(route.id) ?? false}
                   selected={selectedRouteId === route.id}
                   isFavorite={favoriteRouteIds?.has(route.id) ?? false}
                   onclick={onRouteClick ? () => onRouteClick(route.id) : undefined}

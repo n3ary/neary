@@ -27,7 +27,7 @@
 <script lang="ts">
   import { goto } from '$app/navigation';
   import { page } from '$app/state';
-  import { ArrowRightLeft, ArrowUpRight, ChevronDown, ExternalLink, Moon } from 'lucide-svelte';
+  import { ArrowRightLeft, ArrowUpRight, ChevronDown, ExternalLink, Map as MapIcon, Moon } from 'lucide-svelte';
   import {
     BackButton, Card, CardContent, Chip, IconButton, NoFeedState, RouteBadge, Spinner,
     Stack, ToggleGroup, Typography,
@@ -625,25 +625,38 @@
                     {/if}
                   </Stack>
                 {:else}
-                  {#each todayVisibleTrips as t (t.tripId)}
+                  {#each todayVisibleTrips as t, tripIdx (t.tripId)}
                     {@const isOpen = expandedTripId === t.tripId}
                     {@const stops = tripStops.get(t.tripId)}
+                    {@const isNext = tripIdx === 0}
                     <Stack spacing={0}>
-                      <button
-                        type="button"
-                        aria-expanded={isOpen}
-                        onclick={() => toggleExpand(t.tripId)}
-                        class="flex items-center gap-2 px-2 py-1 rounded-md transition-colors text-left text-[color:var(--color-fg)] hover:bg-[color:var(--color-border)]/30"
-                      >
-                        <Chip size="small" class="font-mono shrink-0">{formatHHMM(t.tripStartMin)}</Chip>
-                        <span class={`flex-1 min-w-0 text-xs ${relClass(t.tripStartMin)}`}>
-                          {relText(t.tripStartMin)}
-                        </span>
-                        <ChevronDown
-                          size={16}
-                          class={`shrink-0 transition-transform text-[color:var(--color-fg-muted)] ${isOpen ? 'rotate-180' : ''}`}
-                        />
-                      </button>
+                      <div class="flex items-center gap-1">
+                        <button
+                          type="button"
+                          aria-expanded={isOpen}
+                          onclick={() => toggleExpand(t.tripId)}
+                          class="flex flex-1 items-center gap-2 px-2 py-1 rounded-md transition-colors text-left text-[color:var(--color-fg)] hover:bg-[color:var(--color-border)]/30 min-w-0"
+                        >
+                          <Chip size="small" class="font-mono shrink-0">{formatHHMM(t.tripStartMin)}</Chip>
+                          <span class={`flex-1 min-w-0 text-xs ${relClass(t.tripStartMin)}`}>
+                            {relText(t.tripStartMin)}
+                          </span>
+                          <ChevronDown
+                            size={16}
+                            class={`shrink-0 transition-transform text-[color:var(--color-fg-muted)] ${isOpen ? 'rotate-180' : ''}`}
+                          />
+                        </button>
+                        {#if isNext && direction != null}
+                          <a
+                            href={`/map/route/${routeId}_${direction}/${encodeURIComponent(t.tripId)}`}
+                            aria-label="View on map"
+                            title="View on map"
+                            class="shrink-0 inline-flex items-center justify-center w-7 h-7 rounded-md text-[color:var(--color-fg-muted)] hover:text-[color:var(--color-fg)] hover:bg-[color:var(--color-border)]/40 transition-colors"
+                          >
+                            <MapIcon size={15} />
+                          </a>
+                        {/if}
+                      </div>
                       {#if isOpen}
                         <div class="mt-1 mb-1 rounded-md border border-[color:var(--color-border)] bg-[color:var(--color-surface-raised,var(--color-surface))] py-1">
                           {#if stops == null}

@@ -163,7 +163,12 @@
   // ── Derived view-model ──────────────────────────────────────────────
   /** Render-ready vehicles for the current nowMin. Each trip yields
    *  one entry; the domain decides position + status, the UI maps
-   *  status → opacity / hidden. */
+   *  status → opacity / style.
+   *
+   *  `scheduled` = vehicle is at origin waiting to depart ('at-origin')
+   *  or not yet close enough to be imminent ('before', next trip only).
+   *  Scheduled vehicles show with an outlined badge so the user knows
+   *  position is a schedule estimate, not a live/interpolated position. */
   type VehicleMarker = {
     tripId: string;
     headsign: string | null;
@@ -172,31 +177,38 @@
     opacity: number;
     selected: boolean;
     tripStartMin: number;
+    /** True for 'before' (next only) and 'at-origin' — no movement prediction. */
+    scheduled: boolean;
   };
   const markers = $derived.by<VehicleMarker[]>(() => {
     if (!view) return [];
     const out: VehicleMarker[] = [];
+    let nextScheduledShown = false;
+    // trips are sorted by tripStartMin ascending — so the first 'before'
+    // we encounter IS the next scheduled departure.
     for (const t of view.trips) {
       const plan = tripPlans.get(t.tripId);
       const p = plan
         ? predictPositionOnShape(plan, nowMin)
         : predictPosition(t.stops, nowMin);
       if (!p) continue;
-      // 'before' = scheduled but not yet imminent at the origin
-      // → hide so the start station isn't a tower of buses.
-      // 'after'  = past terminus → drop.
-      if (p.status === 'before' || p.status === 'after') continue;
-      // 'at-origin' = imminent (within ~5 min of departure) →
-      // visible but dimmer; 'active' = en route → full opacity.
-      const opacity = p.status === 'at-origin' ? 0.4 : 0.9;
+      // Past terminus — drop entirely.
+      if (p.status === 'after') continue;
+      // Not-yet-started trips: only show the single soonest upcoming departure
+      // so the origin stop isn't covered by a stack of future vehicles.
+      if (p.status === 'before') {
+        if (nextScheduledShown) continue;
+        nextScheduledShown = true;
+      }
       out.push({
         tripId: t.tripId,
         headsign: t.headsign,
         lat: p.lat,
         lon: p.lon,
-        opacity,
+        opacity: 0.9,
         selected: t.tripId === selectedTripId,
         tripStartMin: t.tripStartMin,
+        scheduled: p.status === 'before' || p.status === 'at-origin',
       });
     }
     return out;
@@ -316,7 +328,7 @@
   let stopsLayer: import('leaflet').LayerGroup | null = null;
   let arrowsLayer: import('leaflet').LayerGroup | null = null;
   let vehiclesLayer: import('leaflet').LayerGroup | null = null;
-  let userMarker: import('leaflet').CircleMarker | null = null;
+  let userMarker: import('leaflet').Marker | null = null;
   let hasFitOnce = false;
   let resizeObserver: ResizeObserver | null = null;
 
@@ -466,8 +478,8 @@
                 html: isOrigin
                   ? endpointHtml(currentView.route.color, 'origin')
                   : endpointHtml(currentView.route.color, 'terminus'),
-                iconSize: isOrigin ? [18, 18] : [22, 22],
-                iconAnchor: isOrigin ? [9, 9] : [11, 11],
+                iconSize: isOrigin ? [18, 18] : [16, 16],
+                iconAnchor: isOrigin ? [9, 9] : [8, 8],
               }),
               keyboard: false,
               riseOnHover: true,
@@ -568,8 +580,9 @@
     vehiclesLayer.clearLayers();
     const routeColor = view.route.color;
     const labelFg = pickContrastingText(routeColor);
+    const nowMinSnap = nowMin;
     for (const m of markers) {
-      const html = vehicleHtml(view.route.shortName, routeColor, labelFg, m.selected, m.opacity);
+      const html = vehicleHtml(view.route.shortName, routeColor, labelFg, m.selected, m.opacity, m.scheduled);
       const icon = Lref.divIcon({
         className: 'neary-vehicle',
         html,
@@ -581,7 +594,7 @@
       const marker = Lref.marker([m.lat, m.lon], { icon, pane: 'nearyVehicles' });
       // offset: [0, -16] anchors the popup tail just above the badge
       // top edge so it floats above the vehicle rather than covering it.
-      marker.bindPopup(vehiclePopupHtml(m, rid, dir), {
+      marker.bindPopup(vehiclePopupHtml(m, rid, dir, nowMinSnap), {
         closeButton: false,
         offset: Lref.point(0, -16),
       });
@@ -604,12 +617,15 @@
     }
     const latlng: [number, number] = [coords.latitude, coords.longitude];
     if (!userMarker) {
-      userMarker = L.circleMarker(latlng, {
-        radius: 7,
-        color: '#fff',
-        weight: 2,
-        fillColor: '#1d4ed8',
-        fillOpacity: 1,
+      userMarker = L.marker(latlng, {
+        icon: L.divIcon({
+          className: '',
+          html: '<div class="neary-user-dot"></div>',
+          iconSize: [14, 14],
+          iconAnchor: [7, 7],
+        }),
+        interactive: false,
+        zIndexOffset: -200,
       }).addTo(mapInstance);
     } else {
       userMarker.setLatLng(latlng);
@@ -618,18 +634,25 @@
 
   // ── Inline HTML helpers (kept here, not exported, since they are
   // purely the Leaflet `divIcon` payload). ──────────────────────────
-  function vehiclePopupHtml(m: VehicleMarker, rId: string, dir: 0 | 1): string {
-    // Calendar icon = position is schedule-based (Phase 4 only)
+  function vehiclePopupHtml(m: VehicleMarker, rId: string, dir: 0 | 1, nowMinVal: number): string {
+    // Calendar icon = position is schedule-based (Phase 4)
     const calSvg = `<svg xmlns="http://www.w3.org/2000/svg" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="display:block;flex-shrink:0;opacity:0.65;"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>`;
     // CalendarDays icon for the schedule link button
     const schedSvg = `<svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="display:block;flex-shrink:0;"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/><circle cx="8" cy="14" r="1" fill="currentColor"/><circle cx="12" cy="14" r="1" fill="currentColor"/><circle cx="16" cy="14" r="1" fill="currentColor"/><circle cx="8" cy="18" r="1" fill="currentColor"/><circle cx="12" cy="18" r="1" fill="currentColor"/></svg>`;
     const headsignHtml = m.headsign
       ? `<div style="font-weight:600;margin-bottom:5px;white-space:nowrap;">${escapeHtml(m.headsign)}</div>`
       : '';
+    let infoText: string;
+    if (m.scheduled) {
+      const minsUntil = m.tripStartMin - nowMinVal;
+      infoText = minsUntil <= 0 ? 'departing now' : `in ${minsUntil} min`;
+    } else {
+      infoText = `dep ${escapeHtml(formatHHMM(m.tripStartMin))}`;
+    }
     return `<div style="font:13px/1.3 ui-sans-serif,system-ui;min-width:140px;">
       ${headsignHtml}<div style="display:flex;align-items:center;justify-content:space-between;gap:8px;">
         <div style="display:flex;align-items:center;gap:3px;color:#888;font-size:11px;">
-          ${calSvg}<span>dep ${escapeHtml(formatHHMM(m.tripStartMin))}</span>
+          ${calSvg}<span>${infoText}</span>
         </div>
         <a href="/schedule/route/${escapeHtml(rId)}_${dir}" title="View schedule"
           style="display:inline-flex;align-items:center;justify-content:center;
@@ -646,14 +669,20 @@
     fg: string,
     selected: boolean,
     opacity: number,
+    scheduled: boolean,
   ): string {
     const ring = selected
       ? 'box-shadow:0 0 0 3px #fff, 0 0 0 5px #111;'
       : 'box-shadow:0 0 0 2px #fff;';
+    // Scheduled vehicles (at-origin / next 'before'): outlined badge so
+    // the user can distinguish "waiting to depart" from "en route".
+    const colors = scheduled
+      ? `background:rgba(255,255,255,0.92);color:${bg};border:1.5px solid ${bg};`
+      : `background:${bg};color:${fg};`;
     return `<div style="
       display:inline-flex;align-items:center;justify-content:center;
       min-width:32px;height:22px;padding:0 6px;border-radius:6px;
-      background:${bg};color:${fg};font:600 12px/1 ui-sans-serif,system-ui;
+      ${colors}font:600 12px/1 ui-sans-serif,system-ui;
       opacity:${opacity};${ring}
     ">${escapeHtml(shortName)}</div>`;
   }
@@ -688,9 +717,11 @@
    *  Terminus shows a white square (■) — RouteBadge's isEnd cap. */
   function endpointHtml(routeColor: string, kind: 'origin' | 'terminus'): string {
     const fg = pickContrastingText(routeColor);
-    // Origin is slightly smaller (18×18) so vehicles aren't hidden when
-    // they're at the start stop; terminus stays at 22×22 for emphasis.
-    const size = kind === 'origin' ? 18 : 22;
+    // Origin: 18×18 — play-styled, stands out but leaves room for the
+    // scheduled vehicle badge that usually sits on top of it.
+    // Terminus: 16×16 — slightly special (square glyph) but smaller so
+    // the hierarchy origin > terminus > regular stop is clear.
+    const size = kind === 'origin' ? 18 : 16;
     const glyph = kind === 'origin'
       ? `<svg width="8" height="8" viewBox="0 0 24 24" fill="${fg}" style="margin-left:1px;"><polygon points="6 4 20 12 6 20"/></svg>`
       : `<svg width="8" height="8" viewBox="0 0 24 24" fill="${fg}"><rect x="4" y="4" width="16" height="16" rx="1.5"/></svg>`;
@@ -854,5 +885,22 @@
      reads better with rounded corners + a touch of shadow. */
   :global(.leaflet-popup-content-wrapper) {
     border-radius: 8px;
+  }
+  /* User-position dot: blue circle with a gentle breathing pulse so it
+     reads as "live location" without being distracting. 2 s cycle
+     (not too fast / not too slow). Uses transform so the animation
+     stays composited and doesn't repaint the map layer below it. */
+  :global(.neary-user-dot) {
+    width: 14px;
+    height: 14px;
+    border-radius: 50%;
+    background: #1d4ed8;
+    border: 2.5px solid #fff;
+    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.35);
+    animation: neary-user-pulse 2s ease-in-out infinite;
+  }
+  @keyframes neary-user-pulse {
+    0%, 100% { transform: scale(1); opacity: 1; }
+    50% { transform: scale(1.35); opacity: 0.65; }
   }
 </style>

@@ -35,6 +35,7 @@
 
   let board = $state<{ stop: StopWithDistance; vehicles: Vehicle[] } | null>(null);
   let shapes = $state<Record<string, Array<{ lat: number; lon: number }>>>({});
+  let originRouteIds = $state<Set<string>>(new Set());
   let error = $state<string | null>(null);
   let notFound = $state(false);
   let routeFilter = $state<string | null>(null);
@@ -63,10 +64,14 @@
           board = result;
           error = null;
           routeFilter = null; // reset on every refresh
-          // Fetch shapes for this stop's trips so the composer can
-          // run the GPS-derived ETA predictor.
+          // Fetch shapes + origin-route membership in parallel.
           const tripIds = tripIdsFromVehicles(result.vehicles);
-          shapes = tripIds.length > 0 ? await repo.getShapesForTrips(tripIds) : {};
+          const [fetchedShapes, originIds] = await Promise.all([
+            tripIds.length > 0 ? repo.getShapesForTrips(tripIds) : Promise.resolve({}),
+            repo.getOriginRoutesAtStop(sid),
+          ]);
+          shapes = fetchedShapes;
+          originRouteIds = new Set(originIds);
         }
       } catch (e) {
         error = e instanceof Error ? e.message : String(e);
@@ -126,6 +131,7 @@
       selectedRouteId={routeFilter}
       onRouteClick={(rid) => (routeFilter = routeFilter === rid ? null : rid)}
       favoriteRouteIds={favoritesStore.routeIds}
+      originRouteIds={originRouteIds}
       expanded={true}
       ontoggle={() => {}}
     />

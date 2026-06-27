@@ -837,6 +837,26 @@ const api: GtfsRepo = {
       type: vehicleTypeFromGtfs(r.route_type),
     }));
   },
+
+  async getOriginRoutesAtStop(stopId: number): Promise<string[]> {
+    const db = await ensureDb();
+    type Row = { route_id: string };
+    const rows = selectAll<Row>(
+      db,
+      `SELECT DISTINCT t.route_id
+       FROM stop_times st
+       JOIN trips t ON t.trip_id = st.trip_id
+       WHERE st.stop_id = ?
+         AND st.stop_sequence = (
+           SELECT MIN(st2.stop_sequence)
+           FROM stop_times st2
+           WHERE st2.trip_id = st.trip_id
+         )
+       ORDER BY CAST(t.route_id AS INTEGER), t.route_id;`,
+      [stopId],
+    );
+    return rows.map((r) => r.route_id);
+  },
 };
 
 // Shape cache lives at module scope so it survives across method
