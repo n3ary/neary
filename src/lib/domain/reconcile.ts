@@ -209,16 +209,48 @@ export function reconcileWithLive(
   // The Vehicle the reconciler emits is uniform with the rest of the
   // pipeline (downstream applyGpsEta / assembleStationBoard treat
   // kind: 'live' alongside kind: 'reconciled' for bucketing).
+  //
+  // ETA seed for parked-at-origin orphans:
+  //   We also record the sibling's TRAVEL TIME from origin to this
+  //   stop (sibling.scheduledArrival − sibling.tripStartMin). When
+  //   the orphan reports its own tripStartMin (from `start_time` or
+  //   the `..._HHMM` suffix), we synthesize an ETA on the emitted
+  //   row: `(obs.tripStartMin + travelTimeMin) − nowMin`. This gives
+  //   a sensible ETA for a bus parked at the trip's origin where
+  //   GPS speed is zero and a pure-GPS ETA would use the fallback
+  //   speed (noisy). `applyGpsEta` downstream KEEPS this seed for
+  //   genuinely-at-origin orphans and OVERWRITES it with a GPS-
+  //   derived ETA once the bus is moving — so an early departure
+  //   self-corrects on the next render tick.
   let liveOut = 0;
-  const repByKey = new Map<string, { route: Vehicle['route']; headsign: string | undefined }>();
+  const repByKey = new Map<string, {
+    route: Vehicle['route'];
+    headsign: string | undefined;
+    travelTimeMin: number | undefined;
+  }>();
   for (const v of scheduled) {
     if (v.kind !== 'scheduled') continue;
     const dir = v.schedule.directionId;
     if (dir !== 0 && dir !== 1) continue;
     const key = `${v.route.id}|${dir}`;
+    const arrivalMin = v.schedule.scheduledArrival ?? v.schedule.scheduledDeparture;
+    const startMin = v.schedule.tripStartMin;
+    const travelTimeMin =
+      typeof arrivalMin === 'number' && typeof startMin === 'number' && arrivalMin >= startMin
+        ? arrivalMin - startMin
+        : undefined;
     const existing = repByKey.get(key);
-    if (!existing || (!existing.headsign && v.headsign)) {
-      repByKey.set(key, { route: v.route, headsign: v.headsign });
+    if (
+      !existing ||
+      // Prefer reps with both headsign + travel time when filling in.
+      (!existing.headsign && v.headsign) ||
+      (existing.travelTimeMin == null && travelTimeMin != null)
+    ) {
+      repByKey.set(key, {
+        route: v.route,
+        headsign: v.headsign ?? existing?.headsign,
+        travelTimeMin: travelTimeMin ?? existing?.travelTimeMin,
+      });
     }
   }
   for (const obs of live) {
@@ -228,6 +260,21 @@ export function reconcileWithLive(
     if (dir !== 0 && dir !== 1) continue;
     const rep = repByKey.get(`${obs.routeId}|${dir}`);
     if (!rep) continue;
+    // Sibling-derived ETA seed (re-evaluated each tick by applyGpsEta).
+    let etaSeed: Vehicle['eta'] | undefined;
+    const obsStartMin = parseLiveStartMin(obs);
+    if (
+      obsStartMin != null &&
+      rep.travelTimeMin != null &&
+      nowMinSinceMidnight != null
+    ) {
+      const expectedArrivalMin = obsStartMin + rep.travelTimeMin;
+      etaSeed = {
+        minutes: Math.round(expectedArrivalMin - nowMinSinceMidnight),
+        distanceMeters: 0,
+        confidence: 'low',
+      };
+    }
     vehicles.push({
       kind: 'live',
       id: `live:${obs.tripId}`,
@@ -237,6 +284,7 @@ export function reconcileWithLive(
       directionId: dir,
       headsign: rep.headsign,
       confidence: 'medium',
+      eta: etaSeed,
       position: {
         lat: obs.lat,
         lon: obs.lon,

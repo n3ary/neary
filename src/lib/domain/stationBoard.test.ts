@@ -209,6 +209,52 @@ describe('applyGpsEta', () => {
     expect(out[0]).toBe(v);
     expect(out[0].eta).toBeUndefined();
   });
+
+  // ── At-origin re-evaluation for orphans ────────────────────────────
+  //
+  // The reconciler can seed orphans with a sibling-derived ETA (see
+  // reconcile.ts). applyGpsEta should:
+  //  - PRESERVE that seed when the bus is detected at origin
+  //    (project near shape start AND speed ~0)
+  //  - OVERWRITE it with a GPS-derived ETA once the bus is moving
+  //    or its projection has advanced past origin.
+
+  const orphanAtOrigin = (opts: { speedMs: number | null; seededEtaMin: number }): Vehicle => ({
+    kind: 'live',
+    id: 'live:T-parked',
+    route: r24,
+    type: 'bus',
+    tripId: 'T-parked',
+    directionId: 0,
+    confidence: 'medium',
+    eta: { distanceMeters: 0, minutes: opts.seededEtaMin, confidence: 'low' },
+    // Position at first vertex of POLY — i.e. shape's origin.
+    position: { lat: 46.770, lon: 23.580, source: 'gps', asOf: 0, speedMs: opts.speedMs },
+    liveSources: ['gtfs-rt'],
+  } as Vehicle);
+
+  it("preserves the reconciler's seed when the orphan is parked at origin (speed=0)", () => {
+    const v = orphanAtOrigin({ speedMs: 0, seededEtaMin: 17 });
+    const out = applyGpsEta([v], { 'T-parked': POLY }, STOP);
+    expect(out[0]).toBe(v);
+    expect(out[0].eta?.minutes).toBe(17);  // seed preserved
+  });
+
+  it("preserves the seed when speed is unknown but bus is near origin", () => {
+    const v = orphanAtOrigin({ speedMs: null, seededEtaMin: 17 });
+    const out = applyGpsEta([v], { 'T-parked': POLY }, STOP);
+    expect(out[0].eta?.minutes).toBe(17);
+  });
+
+  it("OVERWRITES the seed with a GPS-derived ETA once the bus is moving (early departure)", () => {
+    // Same position (near origin) but speed = 5 m/s → bus is moving.
+    // GPS-derived ETA should win, replacing the 17-min seed.
+    const v = orphanAtOrigin({ speedMs: 5, seededEtaMin: 17 });
+    const out = applyGpsEta([v], { 'T-parked': POLY }, STOP);
+    // 2 km @ 5 m/s ≈ 7 min, clearly different from the 17 seed.
+    expect(out[0].eta?.minutes).toBeGreaterThan(5);
+    expect(out[0].eta?.minutes).toBeLessThan(10);
+  });
 });
 
 describe('capStationBoard', () => {

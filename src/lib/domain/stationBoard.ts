@@ -25,7 +25,7 @@ import { minSinceMidnightInTz } from './pipeline/timeUtils';
 import { predictEta } from './predictEta';
 import { reconcileWithLive } from './reconcile';
 import type { LiveVehicleObservation } from '$lib/data/live/gtfsRtClient';
-import type { Polyline } from './shapeProjection';
+import { projectOnPolyline, type Polyline } from './shapeProjection';
 import type { Route, Vehicle } from './types';
 
 export interface BoardRow {
@@ -227,10 +227,18 @@ function buildShapesByRouteDir(
  *       trip_id is in the live feed but absent from static (the
  *       remaining ~23% with HHMM/run drift in Cluj).
  *
- *  Skipped at trip origin for reconciled rows (parked bus, speed
- *  ~0, predictEta produces noise). NOT skipped for orphans —
- *  trip-origin detection without a schedule context is a known
- *  limitation tracked in /memories/repo/orphan-resolution-plan.md.
+ *  Skipped at trip origin:
+ *   - For reconciled rows: when `v.schedule.isAtTripStart === true`.
+ *     The schedule scanner labels the origin stop; predictEta would
+ *     just produce noise from a parked bus's near-zero speed.
+ *   - For orphan kind:'live' rows: detected from the GPS projection
+ *     itself — bus's `distAlong` on the shape is < AT_ORIGIN_DIST_M
+ *     AND its speed is < AT_ORIGIN_SPEED_MS (or unknown). When the
+ *     bus is detected at origin we keep the reconciler's sibling-
+ *     derived ETA seed (see reconcile.ts) instead of overwriting
+ *     with a GPS-derived noise estimate. The detection re-runs
+ *     every render tick, so the ETA self-corrects to GPS-derived
+ *     the moment the bus starts moving — handles early departures.
  *
  *  Pure. */
 export function applyGpsEta(
@@ -247,6 +255,19 @@ export function applyGpsEta(
     if (!v.position) return v;
     const polyline = pickShape(v, shapes, shapesByRouteDir);
     if (!polyline || polyline.length < 2) return v;
+    // For live orphans: detect "parked at origin" — keep the
+    // sibling-derived ETA seed the reconciler attached, don't
+    // overwrite with a GPS estimate driven by FALLBACK_SPEED_MS.
+    if (v.kind === 'live') {
+      const proj = projectOnPolyline(
+        { lat: v.position.lat, lon: v.position.lon },
+        polyline,
+      );
+      const speed = v.position.speedMs ?? 0;
+      const atOrigin =
+        proj.distAlongM < AT_ORIGIN_DIST_M && speed < AT_ORIGIN_SPEED_MS;
+      if (atOrigin && v.eta != null) return v;
+    }
     const p = predictEta({
       vehiclePos: { lat: v.position.lat, lon: v.position.lon },
       stopPos,
@@ -263,6 +284,13 @@ export function applyGpsEta(
     };
   });
 }
+
+/** Bus is "at origin" when its projection onto the trip shape is
+ *  within this distance of the shape's start vertex. */
+const AT_ORIGIN_DIST_M = 100;
+/** And its reported speed (m/s) is below this. Includes null/undefined
+ *  speed (parked buses often don't transmit speed). */
+const AT_ORIGIN_SPEED_MS = 1;
 
 function pickShape(
   v: Vehicle,

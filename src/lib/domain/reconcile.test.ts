@@ -352,4 +352,68 @@ describe('reconcileWithLive (kind:live emission for unmatched obs)', () => {
     const live = vehicles.find((x) => x.kind === 'live');
     expect(live?.headsign).toBe('Centru');
   });
+
+  it("seeds the orphan's eta from the sibling's travel time + the orphan's own tripStartMin", () => {
+    // Sibling trip: tripStartMin 14:21, scheduledDeparture (used as
+    // arrival fallback) 14:25 → travel time 4 min.
+    const sched = [scheduled({ tripId: 't-1', tripStartMin: 14 * 60 + 21 })];
+    // Orphan reports its own start as 18:00. Now = 14:25.
+    // Expected ETA at this stop: 18:00 + 4 min - 14:25 = 219 min.
+    const { vehicles } = reconcileWithLive(
+      sched,
+      [obs({ tripId: 'orphan', startTime: '18:00:00' })],
+      { nowMs: epochAt(14 * 60 + 25), timezone: 'UTC' },
+    );
+    const live = vehicles.find((v) => v.kind === 'live');
+    expect(live?.eta?.minutes).toBe(219);
+    expect(live?.eta?.confidence).toBe('low');
+  });
+
+  it("leaves orphan eta undefined when the orphan's tripStartMin can't be parsed", () => {
+    const sched = [scheduled({ tripId: 't-1', tripStartMin: 14 * 60 + 21 })];
+    const { vehicles } = reconcileWithLive(
+      sched,
+      [obs({ tripId: 'opaque-orphan' })],
+      { nowMs: epochAt(14 * 60 + 25), timezone: 'UTC' },
+    );
+    // 'opaque-orphan' has no parseable HHMM suffix and no startTime,
+    // so we have nothing to seed the ETA from. The orphan should
+    // not be emitted in this case (gated by tripId presence too —
+    // it's tripId='opaque-orphan' which has no HHMM tail).
+    const live = vehicles.find((v) => v.kind === 'live');
+    // Either dropped or emitted without eta — both acceptable; just
+    // assert we don't fabricate an eta when we lack inputs.
+    if (live) expect(live.eta).toBeUndefined();
+  });
+
+  it("leaves orphan eta undefined when no sibling has scheduledArrival/Departure", () => {
+    // Build a scheduled vehicle whose schedule.scheduledDeparture is
+    // intentionally absent (not constructible via the helper which
+    // always sets it). Skip by simulating via a custom Vehicle.
+    const sched: Vehicle[] = [{
+      kind: 'scheduled',
+      id: 'trip:t-1',
+      route: r14,
+      type: 'bus',
+      confidence: 'low',
+      schedule: {
+        tripId: 't-1',
+        // scheduledDeparture is required by the type; we can't truly
+        // omit it. Instead test the case where tripStartMin is null —
+        // travelTime can't be derived, sibling rep has travelTimeMin
+        // undefined → orphan eta seed is undefined.
+        scheduledDeparture: 14 * 60 + 25,
+        directionId: 1,
+        // tripStartMin omitted on purpose
+      },
+      eta: { distanceMeters: 0, minutes: 3, confidence: 'low' },
+    } as Vehicle];
+    const { vehicles } = reconcileWithLive(
+      sched,
+      [obs({ tripId: 'orphan', startTime: '18:00:00' })],
+      { nowMs: epochAt(14 * 60 + 25), timezone: 'UTC' },
+    );
+    const live = vehicles.find((v) => v.kind === 'live');
+    expect(live?.eta).toBeUndefined();
+  });
 });
