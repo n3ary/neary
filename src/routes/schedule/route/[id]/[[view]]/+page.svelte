@@ -530,13 +530,15 @@
                 </Typography>
               {/if}
             </Stack>
-            <IconButton
-              aria-label={otherDirection.value === false ? 'Reverse direction not available' : 'Swap direction'}
-              disabled={direction == null || otherDirection.value === false}
-              onclick={swapDirection}
-            >
-              <ArrowRightLeft size={18} />
-            </IconButton>
+            {#if otherDirection.value !== false}
+              <IconButton
+                aria-label="Swap direction"
+                disabled={direction == null}
+                onclick={swapDirection}
+              >
+                <ArrowRightLeft size={18} />
+              </IconButton>
+            {/if}
           </Stack>
         </CardContent>
       </Card>

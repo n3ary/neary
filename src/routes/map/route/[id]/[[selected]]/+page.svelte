@@ -792,13 +792,14 @@
               {/if}
             </Stack>
             <Stack direction="row" spacing={0.5} align="center" class="shrink-0">
-              <IconButton
-                aria-label={otherDirection.value === false ? 'Reverse direction not available' : 'Swap direction'}
-                disabled={otherDirection.value === false}
-                onclick={swapDirection}
-              >
-                <ArrowRightLeft size={18} />
-              </IconButton>
+              {#if otherDirection.value !== false}
+                <IconButton
+                  aria-label="Swap direction"
+                  onclick={swapDirection}
+                >
+                  <ArrowRightLeft size={18} />
+                </IconButton>
+              {/if}
             </Stack>
           </Stack>
         </CardContent>
