@@ -169,3 +169,77 @@ export function predictPositionOnShape(
   const p = pointAtDistance(measured, terminus.distAlongM);
   return { lat: p.lat, lon: p.lon, status: 'active' };
 }
+
+/** GPS observation used to anchor dead-reckoning. */
+export interface GpsObservation {
+  lat: number;
+  lon: number;
+  /** Vehicle speed in m/s. `null` skips extrapolation — position falls
+   *  back to the last known GPS fix snapped onto the shape. */
+  speedMs: number | null;
+  /** Unix ms when the GPS fix was reported by the upstream feed. */
+  asOfMs: number;
+}
+
+export type GpsFreshness = 'fresh' | 'stale' | 'expired';
+
+export interface GpsPredictedPosition extends PredictedPosition {
+  /** How stale the GPS fix is at `nowMs`:
+   *   - 'fresh':  < 2 min old; full dead-reckoning trusted.
+   *   - 'stale':  2–5 min old; position is the snapped GPS fix
+   *               (no extrapolation), UI should hint at lower confidence.
+   *   - 'expired': > 5 min old; caller should fall back to schedule
+   *                (this helper returns null instead). */
+  freshness: GpsFreshness;
+}
+
+/** Hard cap on how far forward the dead-reckoner walks the bus per
+ *  refresh tick. Caps a 10 m/s × 5 min worst case at 3 km regardless
+ *  of the actual interval, so a stale-but-not-expired fix can't fly the
+ *  marker off the visible part of the route. */
+const MAX_DEAD_RECKON_M = 3000;
+const FRESH_MS = 2 * 60_000;
+const EXPIRE_MS = 5 * 60_000;
+
+/**
+ * Position from live GPS, dead-reckoned forward along the trip's shape.
+ *
+ * Why: the reconciler matches a live observation to a scheduled trip, but
+ * the observation is a snapshot — between polls the marker shouldn't sit
+ * still. Project the GPS fix onto the shape, then walk `speed × dt` metres
+ * along the polyline so the marker glides until the next observation lands.
+ *
+ * Returns `null` when the fix is older than `EXPIRE_MS` (caller falls back
+ * to the schedule predictor) or when the projection fails.
+ */
+export function predictPositionFromGps(
+  plan: TripShapePlan,
+  obs: GpsObservation,
+  nowMs: number,
+): GpsPredictedPosition | null {
+  const dt = nowMs - obs.asOfMs;
+  if (dt > EXPIRE_MS) return null;
+  if (plan.measured.points.length < 2) return null;
+
+  const proj = projectOnPolyline(
+    { lat: obs.lat, lon: obs.lon },
+    plan.measured.points,
+  );
+
+  const freshness: GpsFreshness =
+    dt < FRESH_MS ? 'fresh' : 'stale';
+
+  // 'stale' fixes skip dead-reckoning — the speed at the time of the fix
+  // is too old to extrapolate from. Render the snapped point as-is.
+  let distAlongM = proj.distAlongM;
+  if (freshness === 'fresh' && obs.speedMs != null && obs.speedMs > 0) {
+    const forward = Math.min(
+      MAX_DEAD_RECKON_M,
+      (obs.speedMs * Math.max(0, dt)) / 1000,
+    );
+    distAlongM = Math.min(plan.measured.totalDistM, proj.distAlongM + forward);
+  }
+
+  const p = pointAtDistance(plan.measured, distAlongM);
+  return { lat: p.lat, lon: p.lon, status: 'active', freshness };
+}
