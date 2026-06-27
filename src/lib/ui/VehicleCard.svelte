@@ -73,6 +73,10 @@
   const secondaryLine = $derived.by(() => {
     if (vehicle.eta) return formatRelativeMin(vehicle.eta.minutes, vehicle.schedule?.scheduledDeparture);
     if (vehicle.schedule) return `Scheduled ${formatHHMM(vehicle.schedule.scheduledDeparture)}`;
+    // kind:'live' orphans have a GPS position but no schedule/ETA — the bus
+    // exists right now even though we don't have a precise per-stop timing
+    // for it. 'En route' wrongly implies "departed on schedule, GPS unknown".
+    if (vehicle.position) return 'Live';
     return 'En route';
   });
 

@@ -8,9 +8,9 @@
 <script lang="ts">
   import { onMount } from 'svelte';
   import { version } from '$app/environment';
-  import { CheckCheck, Locate, Moon, Sun } from 'lucide-svelte';
+  import { Circle, CircleDot, Locate, Moon, Sun } from 'lucide-svelte';
   import {
-    Box, Button, Card, CardContent, Chip, List, ListItem, ListItemText,
+    Box, Card, CardContent, Chip,
     Spinner, Stack, Switch, ToggleGroup, Typography,
     formatBytes, formatWhen,
   } from '$lib/ui';
@@ -119,10 +119,7 @@
       <Stack spacing={1.5}>
         <Typography variant="h6">Transit feed</Typography>
         <Typography variant="caption">
-          Pick one. The schedule database downloads once and is cached for
-          offline use. Feeds are published by
-          <a href="https://github.com/ciotlosm/neary-gtfs" target="_blank" rel="noopener" class="underline">neary-gtfs</a>
-          to the <code>binaries</code> branch.
+          Pick a feed. Downloads once, cached offline. Tap again to deselect.
         </Typography>
 
         {#if feedsStore.error}
@@ -135,39 +132,49 @@
             <Typography variant="caption">Loading feed list…</Typography>
           </Stack>
         {:else}
-          <List>
+          <Stack spacing={1}>
             {#each feedsStore.feeds as f (f.id)}
               {@const hasSqlite = f.files?.sqlite_gz != null}
               {@const selected = userPrefs.feedId === f.id}
               {@const generatedMs = f.generated_at ? Date.parse(f.generated_at) : NaN}
-              {@const updated = Number.isFinite(generatedMs) ? `updated ${formatWhen(generatedMs)}` : null}
-              <ListItem
-                button={hasSqlite}
-                onclick={hasSqlite ? () => (userPrefs.feedId = f.id) : undefined}
-                class={selected ? 'bg-[color:var(--color-primary)]/10' : ''}
+              {@const updated = Number.isFinite(generatedMs) ? formatWhen(generatedMs) : null}
+              {@const size = f.size_bytes?.sqlite_gz ? formatBytes(f.size_bytes.sqlite_gz) : null}
+              <button
+                type="button"
+                disabled={!hasSqlite}
+                aria-pressed={selected}
+                onclick={hasSqlite ? () => (userPrefs.feedId = selected ? null : f.id) : undefined}
+                class={[
+                  'w-full text-left flex items-start gap-3 px-3 py-2.5 rounded-md',
+                  'border transition-colors',
+                  selected
+                    ? 'border-[color:var(--color-primary)] bg-[color:var(--color-primary)]/10'
+                    : 'border-[color:var(--color-border)]',
+                  hasSqlite
+                    ? 'hover:bg-[color:var(--color-border)]/30 cursor-pointer'
+                    : 'opacity-60 cursor-not-allowed',
+                  'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--color-primary)]',
+                ].join(' ')}
               >
-                <ListItemText
-                  primary={f.name}
-                  secondary={`${f.country}${f.region ? ' · ' + f.region : ''} · ${f.timezone}${f.size_bytes?.sqlite_gz ? ' · ' + formatBytes(f.size_bytes.sqlite_gz) : ''}${updated ? ' · ' + updated : ''}`}
-                />
                 {#if selected}
-                  <Chip size="small" color="primary">
-                    {#snippet icon()}<CheckCheck size={12} />{/snippet}
-                    Selected
-                  </Chip>
-                {:else if !hasSqlite}
+                  <CircleDot size={18} class="mt-0.5 shrink-0 text-[color:var(--color-primary)]" />
+                {:else}
+                  <Circle size={18} class="mt-0.5 shrink-0 text-[color:var(--color-fg-muted)]" />
+                {/if}
+                <div class="flex-1 min-w-0">
+                  <div class="font-medium text-sm">{f.name}</div>
+                  <div class="text-xs text-[color:var(--color-fg-muted)]">{f.timezone}</div>
+                  {#if size || updated}
+                    <div class="text-xs text-[color:var(--color-fg-muted)]">
+                      {[size, updated && `updated ${updated}`].filter(Boolean).join(' · ')}
+                    </div>
+                  {/if}
+                </div>
+                {#if !hasSqlite}
                   <Chip size="small" variant="outlined">no data yet</Chip>
                 {/if}
-              </ListItem>
+              </button>
             {/each}
-          </List>
-        {/if}
-
-        {#if userPrefs.feedId != null}
-          <Stack direction="row" justify="end">
-            <Button size="small" variant="outlined" color="danger" onclick={() => (userPrefs.feedId = null)}>
-              Clear selection
-            </Button>
           </Stack>
         {/if}
       </Stack>
