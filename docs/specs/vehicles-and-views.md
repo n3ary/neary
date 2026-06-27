@@ -21,7 +21,7 @@ multiple entry points.
 |---|---|---|
 | Stations (primary) | `/` | Nearby stations, each with its arrivals board |
 | Favorites (primary) | `/favorites` | Saved routes; tap opens the drill-downs |
-| Planner (primary) | `/planner` | Reserved — Phase 8 |
+| Planner (primary) | `/planner` | Reserved — not yet implemented |
 | Settings (primary) | `/settings` | Theme, feed picker, display toggles |
 | Schedule (drill-down) | `/schedule/route/[id]/[[view]]` | Per-route schedule with today / tomorrow / week tabs |
 | Map (drill-down) | `/map/route/[id]/[[selected]]` | Whole route on the map: shape + every vehicle + selected highlight |
