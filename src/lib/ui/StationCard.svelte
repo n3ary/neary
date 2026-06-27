@@ -237,7 +237,7 @@
           </Stack>
 
           {#if routes.length > 0}
-            <Stack direction="row" spacing={0.5} align="center" wrap class="mt-1">
+            <Stack direction="row" spacing={1} align="center" wrap class="mt-1">
               {#each routes as route (route.id)}
                 <RouteBadge
                   {route}
