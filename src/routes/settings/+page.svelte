@@ -193,7 +193,7 @@
         <Stack spacing={0.5}>
           <Typography variant="body2">App version</Typography>
           <Typography variant="caption">
-            v{version} · updated {formatRelative(versionFirstSeenAt)}{#if versionFirstSeenAt} ({formatAbsolute(versionFirstSeenAt)}){/if}
+            v{version} · updated {formatRelative(versionFirstSeenAt)}{#if versionFirstSeenAt}{` (${formatAbsolute(versionFirstSeenAt)})`}{/if}
           </Typography>
         </Stack>
       </Stack>
