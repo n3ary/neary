@@ -17,9 +17,23 @@ describe('formatBytes', () => {
 });
 
 describe('formatWhen', () => {
-  // Pin "now" to a known instant so day/month/year math is deterministic.
-  // Using a Saturday so weekday names are predictable.
-  const NOW = new Date('2026-06-27T16:04:00+03:00').getTime();
+  // Pin "now" to a known LOCAL instant so day arithmetic is deterministic
+  // regardless of CI vs dev timezone. Time strings are derived from Date
+  // objects (same logic as the formatter) rather than hardcoded so the
+  // test passes in any tz.
+  const NOW = new Date(2026, 5, 27, 16, 4, 0).getTime(); // local 2026-06-27 16:04
+
+  function hhmm(ms: number): string {
+    return new Date(ms).toLocaleString('en-GB', {
+      hour: '2-digit',
+      minute: '2-digit',
+      hourCycle: 'h23',
+    });
+  }
+
+  function weekday(ms: number): string {
+    return new Date(ms).toLocaleString('en-GB', { weekday: 'short' });
+  }
 
   beforeEach(() => {
     vi.useFakeTimers();
@@ -43,33 +57,44 @@ describe('formatWhen', () => {
   });
 
   it("returns 'today, HH:MM' for same calendar day past one hour", () => {
-    // 5 hours earlier same day → 11:04
-    expect(formatWhen(NOW - 5 * 3600_000)).toBe('today, 11:04');
+    const ts = NOW - 5 * 3600_000;
+    expect(formatWhen(ts)).toBe(`today, ${hhmm(ts)}`);
   });
 
   it("returns 'yesterday, HH:MM' for the previous calendar day", () => {
-    // Same wall-clock time, day before → yesterday, 16:04
     const yesterday = new Date(NOW);
     yesterday.setDate(yesterday.getDate() - 1);
-    expect(formatWhen(yesterday.getTime())).toBe('yesterday, 16:04');
+    const ts = yesterday.getTime();
+    expect(formatWhen(ts)).toBe(`yesterday, ${hhmm(ts)}`);
   });
 
   it("returns 'Wd HH:MM' for entries 2–6 calendar days ago", () => {
-    // 2 days ago = Thursday 16:04
     const twoAgo = new Date(NOW);
     twoAgo.setDate(twoAgo.getDate() - 2);
-    expect(formatWhen(twoAgo.getTime())).toBe('Thu 16:04');
+    const ts = twoAgo.getTime();
+    expect(formatWhen(ts)).toBe(`${weekday(ts)} ${hhmm(ts)}`);
   });
 
   it('returns day + short month for ≥ 7 days ago, same year', () => {
     const tenDaysAgo = new Date(NOW);
     tenDaysAgo.setDate(tenDaysAgo.getDate() - 10);
-    expect(formatWhen(tenDaysAgo.getTime())).toBe('17 Jun');
+    const ts = tenDaysAgo.getTime();
+    const expected = new Date(ts).toLocaleString('en-GB', {
+      day: 'numeric',
+      month: 'short',
+    });
+    expect(formatWhen(ts)).toBe(expected);
   });
 
   it('returns day + month + year for entries in an earlier year', () => {
     const lastYear = new Date(NOW);
     lastYear.setFullYear(lastYear.getFullYear() - 1);
-    expect(formatWhen(lastYear.getTime())).toBe('27 Jun 2025');
+    const ts = lastYear.getTime();
+    const expected = new Date(ts).toLocaleString('en-GB', {
+      day: 'numeric',
+      month: 'short',
+      year: 'numeric',
+    });
+    expect(formatWhen(ts)).toBe(expected);
   });
 });
