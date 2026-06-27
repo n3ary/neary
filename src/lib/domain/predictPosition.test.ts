@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   buildTripShapePlan,
   predictPosition,
+  predictPositionFromGps,
   predictPositionOnShape,
   type PredictStop,
 } from './predictPosition';
@@ -104,5 +105,88 @@ describe('predictPositionOnShape', () => {
     const p = predictPositionOnShape(plan, 999);
     expect(p?.status).toBe('after');
     expect(p?.lon).toBeCloseTo(4, 6);
+  });
+});
+
+describe('predictPositionFromGps', () => {
+  // Same dogleg as predictPositionOnShape tests so we can reuse the
+  // intuition: shape goes (0,0) → (0.5,1) → (0,2).
+  const twoStops: PredictStop[] = [
+    { lat: 0, lon: 0, arrivalMin: 100 },
+    { lat: 0, lon: 2, arrivalMin: 110 },
+  ];
+  const detourShape = [
+    { lat: 0, lon: 0 },
+    { lat: 0.5, lon: 1 },
+    { lat: 0, lon: 2 },
+  ];
+  const plan = buildTripShapePlan(twoStops, detourShape)!;
+  const NOW = 1_700_000_000_000;
+
+  it('returns null when the GPS fix is older than 5 min', () => {
+    const out = predictPositionFromGps(
+      plan,
+      { lat: 0.5, lon: 1, speedMs: 5, asOfMs: NOW - 6 * 60_000 },
+      NOW,
+    );
+    expect(out).toBeNull();
+  });
+
+  it("flags a < 2 min fix as 'fresh'", () => {
+    const out = predictPositionFromGps(
+      plan,
+      { lat: 0.5, lon: 1, speedMs: null, asOfMs: NOW - 30_000 },
+      NOW,
+    );
+    expect(out?.freshness).toBe('fresh');
+    expect(out?.status).toBe('active');
+  });
+
+  it("flags a 2–5 min fix as 'stale' and skips dead-reckoning", () => {
+    const fix = { lat: 0.5, lon: 1, speedMs: 20, asOfMs: NOW - 3 * 60_000 };
+    const stale = predictPositionFromGps(plan, fix, NOW)!;
+    expect(stale.freshness).toBe('stale');
+    // Same call without speed should land on the same point — proves
+    // the stale path didn't extrapolate using speed.
+    const noSpeed = predictPositionFromGps(
+      plan,
+      { ...fix, speedMs: null },
+      NOW,
+    )!;
+    expect(stale.lat).toBeCloseTo(noSpeed.lat, 9);
+    expect(stale.lon).toBeCloseTo(noSpeed.lon, 9);
+  });
+
+  it('dead-reckons forward along the shape when fresh + speed > 0', () => {
+    const fix = { lat: 0, lon: 0, asOfMs: NOW - 30_000 };
+    const still = predictPositionFromGps(
+      plan,
+      { ...fix, speedMs: null },
+      NOW,
+    )!;
+    const moving = predictPositionFromGps(
+      plan,
+      { ...fix, speedMs: 50 },
+      NOW,
+    )!;
+    // Moving fix should have advanced along the shape (lon increases
+    // monotonically along the polyline). With null speed it sits at origin.
+    expect(still.lon).toBeCloseTo(0, 6);
+    expect(moving.lon).toBeGreaterThan(still.lon);
+  });
+
+  it('caps dead-reckoning so an outlier speed cannot overshoot the terminus', () => {
+    // Speed × dt would otherwise project far past the 3 km cap, but
+    // the result must still land on the polyline (clamped to total
+    // distance) — never past it.
+    const out = predictPositionFromGps(
+      plan,
+      { lat: 0, lon: 0, speedMs: 1_000, asOfMs: NOW - 2 * 60_000 + 1 },
+      NOW,
+    )!;
+    expect(out.freshness).toBe('fresh');
+    // Position must remain on the shape's lon range [0, 2].
+    expect(out.lon).toBeGreaterThanOrEqual(0);
+    expect(out.lon).toBeLessThanOrEqual(2);
   });
 });

@@ -39,7 +39,7 @@
   } from '$lib/domain/types';
   import { minSinceMidnightInTz } from '$lib/domain/pipeline/timeUtils';
   import {
-    buildTripShapePlan, predictPosition, predictPositionOnShape,
+    buildTripShapePlan, predictPosition, predictPositionOnShape, predictPositionFromGps,
     type TripShapePlan,
   } from '$lib/domain/predictPosition';
   import {
@@ -48,6 +48,7 @@
   } from '$lib/domain/shapeProjection';
   import { feedsStore } from '$lib/stores/feedsStore.svelte';
   import { favoritesStore } from '$lib/stores/favoritesStore.svelte';
+  import { liveVehiclesStore } from '$lib/stores/liveVehiclesStore.svelte';
   import { locationStore } from '$lib/stores/locationStore.svelte';
   import { nowTicker } from '$lib/stores/nowTicker.svelte';
   import { refreshBus } from '$lib/stores/refreshBus.svelte';
@@ -186,14 +187,35 @@
     if (!view) return [];
     const out: VehicleMarker[] = [];
     let nextScheduledShown = false;
+    // Index live observations by trip_id so each iteration is O(1)
+    // instead of scanning the whole observation array per trip.
+    const obsByTripId = new Map<string, (typeof liveVehiclesStore.observations)[number]>();
+    for (const o of liveVehiclesStore.observations) {
+      if (o.tripId.length > 0) obsByTripId.set(o.tripId, o);
+    }
+    const nowMs = nowTicker.ms;
     // Sort by tripStartMin so the soonest not-yet-departed trip always wins
     // the single origin slot, regardless of query order from the DB.
     const trips = [...view.trips].sort((a, b) => a.tripStartMin - b.tripStartMin);
     for (const t of trips) {
       const plan = tripPlans.get(t.tripId);
-      const p = plan
-        ? predictPositionOnShape(plan, nowMin)
-        : predictPosition(t.stops, nowMin);
+      // GPS-anchored prediction takes priority when a recent fix exists
+      // for this trip; fall back to schedule interpolation otherwise.
+      const obs = obsByTripId.get(t.tripId);
+      let p: ReturnType<typeof predictPositionOnShape> | null = null;
+      let gpsConfidence: 'good' | 'poor' | null = null;
+      if (plan && obs) {
+        const gps = predictPositionFromGps(plan, obs, nowMs);
+        if (gps) {
+          p = gps;
+          gpsConfidence = gps.freshness === 'fresh' ? 'good' : 'poor';
+        }
+      }
+      if (!p) {
+        p = plan
+          ? predictPositionOnShape(plan, nowMin)
+          : predictPosition(t.stops, nowMin);
+      }
       if (!p) continue;
       // Past terminus — drop entirely.
       if (p.status === 'after') continue;
@@ -213,7 +235,7 @@
         selected: t.tripId === selectedTripId,
         tripStartMin: t.tripStartMin,
         scheduled: p.status === 'before' || p.status === 'at-origin',
-        gpsConfidence: null,
+        gpsConfidence,
       });
     }
     return out;

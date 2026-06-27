@@ -15,6 +15,7 @@
   import { favoritesStore } from '$lib/stores/favoritesStore.svelte';
   import { liveVehiclesStore } from '$lib/stores/liveVehiclesStore.svelte';
   import { locationStore } from '$lib/stores/locationStore.svelte';
+  import { nowTicker } from '$lib/stores/nowTicker.svelte';
   import { refreshBus } from '$lib/stores/refreshBus.svelte';
   import { statusBus } from '$lib/stores/statusBus.svelte';
   import { userPrefs } from '$lib/stores/userPrefs.svelte';
@@ -195,6 +196,7 @@
   onrefresh={() => {
     refreshBus.fire();
     liveVehiclesStore.refresh();
+    nowTicker.bump();
   }}
 >
   {@render children()}

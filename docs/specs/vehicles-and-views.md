@@ -108,10 +108,12 @@ On top of the badge fill, a ring conveys live-data state:
 
 | Ring | Meaning |
 |---|---|
-| white (default) | no live GPS yet (Phase 4 baseline) |
-| green | live GPS, healthy freshness (Phase 5+) |
-| yellow | live GPS, poor / stale freshness |
+| white (default) | no live GPS, or live fix expired |
+| green | live GPS, fresh fix |
+| yellow | live GPS, stale fix |
 | white inner + dark outer | the currently selected vehicle |
+
+Fresh vs stale vs expired thresholds live in [`predictPosition.ts`](../../src/lib/domain/predictPosition.ts) (`predictPositionFromGps`).
 
 ### One scheduled marker, not many
 
@@ -145,12 +147,12 @@ These are the cases where a simple "match by trip_id then by timing"
 breaks down and the bug is easy to re-introduce.
 
 > [!IMPORTANT]
-> Only §5.5 is implemented today (Phase 4 baseline; the rest are Phase 5+
-> work tracked in [../plan/prediction-v2.md](../plan/prediction-v2.md) and
-> [../plan/tranzy-integration.md](../plan/tranzy-integration.md)). The
-> rules below are the **design** the reconciler must satisfy when live
-> reconciliation lands — if a future PR ships live matching without these,
-> you get the bugs listed.
+> Only §5.5 (Cluj direction-id workaround) is wired up; §5.1–5.4 are
+> aspirational design tracked in [../plan/prediction-v2.md](../plan/prediction-v2.md)
+> and [../plan/tranzy-integration.md](../plan/tranzy-integration.md).
+> The rules below are the **contract** the reconciler must satisfy when
+> live reconciliation lands — if a future PR ships live matching without
+> these, you get the bugs listed.
 
 ### 5.1 The late-vehicle phantom
 
