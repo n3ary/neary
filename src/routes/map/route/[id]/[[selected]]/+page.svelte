@@ -270,6 +270,10 @@
     // Sort by tripStartMin so the soonest not-yet-departed trip always wins
     // the single origin slot, regardless of query order from the DB.
     const trips = [...view.trips].sort((a, b) => a.tripStartMin - b.tripStartMin);
+    // Hard cap on GPS-fix age before we stop showing the marker at all
+    // — applies to both known trips with stale fixes AND orphan trips
+    // so the two code paths behave identically.
+    const STALE_HARD_MAX_MS = 15 * 60_000;
     for (const t of trips) {
       const plan = tripPlans.get(t.tripId);
       // GPS-anchored prediction takes priority when a recent fix exists
@@ -282,6 +286,15 @@
         if (gps) {
           p = gps;
           gpsConfidence = gps.freshness === 'fresh' ? 'good' : 'poor';
+        } else if (nowMs - obs.asOfMs < STALE_HARD_MAX_MS) {
+          // predictPositionFromGps expired the fix (> 5 min). Render at
+          // the raw last sample anyway — we still know roughly where
+          // the bus is, and that beats letting the schedule mark it
+          // 'after' which silently drops the marker. The hard cap
+          // protects against showing dots for buses that long left
+          // the network.
+          p = { lat: obs.lat, lon: obs.lon, status: 'active' as const };
+          gpsConfidence = 'poor';
         }
       }
       if (!p) {
@@ -314,26 +327,43 @@
 
     // Orphans: live buses on this (route, direction) whose trip the
     // static-schedule scanner didn't surface. Render at the GPS fix
-    // (dead-reckoned forward) so the user can still see — and click
-    // from a station card to highlight — a running bus.
+    // (dead-reckoned forward if the shape is cached + fix is fresh,
+    // else at the raw last GPS sample) so the user can still see —
+    // and click from a station card to highlight — a running bus.
+    // The STALE_HARD_MAX_MS cap declared above for known-trip stale
+    // GPS applies here too.
     for (const o of orphanObservations) {
+      const age = nowMs - o.asOfMs;
+      if (age > STALE_HARD_MAX_MS) continue;
+      let lat = o.lat;
+      let lon = o.lon;
+      // Default freshness from raw GPS age, mirroring predictPositionFromGps
+      // thresholds so the ring color reads the same regardless of which
+      // path produced the marker.
+      let gpsConfidence: 'good' | 'poor' = age < 2 * 60_000 ? 'good' : 'poor';
       const plan = orphanPlans.get(o.tripId);
-      if (!plan) continue;
-      const p = predictPositionFromGps(plan, o, nowMs);
-      if (!p) continue;
+      if (plan) {
+        const p = predictPositionFromGps(plan, o, nowMs);
+        if (p) {
+          lat = p.lat;
+          lon = p.lon;
+          gpsConfidence = p.freshness === 'fresh' ? 'good' : 'poor';
+        }
+        // p === null means predictPositionFromGps expired the fix.
+        // Fall through to raw GPS — still useful info, just stale.
+      }
       out.push({
         tripId: o.tripId,
         headsign: directionHeadsign,
-        lat: p.lat,
-        lon: p.lon,
+        lat,
+        lon,
         opacity: 0.9,
         selected: o.tripId === selectedTripId,
-        // Use the trip's start_time from the observation when present
-        // (we lack stop_times for orphan trips). Falls back to nowMin
-        // so sorting stays defined.
+        // We don't have stop_times for orphan trips, so no real
+        // tripStartMin. nowMin keeps sort order defined.
         tripStartMin: nowMin,
         scheduled: false,
-        gpsConfidence: p.freshness === 'fresh' ? 'good' : 'poor',
+        gpsConfidence,
       });
     }
     return out;
