@@ -8,7 +8,10 @@ this doc only carries decisions and pending work.
 
 Schedule-driven pipeline with worker-owned reconciliation (PR #72).
 Live-GPS vehicles dead-reckon along the trip shape via
-[`predictPositionFromGps`](../../src/lib/domain/predictPosition.ts).
+[`predictPositionFromGps`](../../src/lib/domain/predictPosition.ts)
+("dead-reckon" = extrapolate forward from the last GPS sample using
+its reported speed, so the marker moves between 15 s polls instead of
+freezing).
 Schedule-only markers snap to `nowTicker` ticks (15 s). ETA is
 single-tier: vehicle's own `speedMs`, fallback to schedule.
 
@@ -36,10 +39,13 @@ These aren't up for re-litigation; they fix the shape of the work below.
 - **Validation is empirical.** No formal test corpus; quality is judged
   by using the app (rides, screenshots, gut feel). A regression-MAE
   pipeline is explicit anti-goal until we feel the lack of one.
-- **Reconciliation matches by route order, not per-obs greedy.** Buses
-  on the same `(route, dir)` don't overtake each other; independently
-  picking each obs's closest scheduled match can swap two adjacent
-  buses on a high-frequency line. Algorithm in item 5.
+- **Reconciliation will match by route order, not per-obs greedy.**
+  Today's [`reconcileWithLive`](../../src/lib/domain/reconcile.ts)
+  matches by `(route, dir, tripStartMin)` with timing-only tolerance and
+  bipartite greedy on the delta. Target: buses on the same `(route, dir)`
+  don't overtake each other, so independently picking each obs's closest
+  scheduled match can swap two adjacent buses on a high-frequency line.
+  Algorithm in item 5.
 - **Cross-repo math sharing is deferred.** neary-gtfs already maintains
   a manual vendored copy of polyline math (header in
   `neary-gtfs/src/pipeline/lib/polyline.js` literally says
