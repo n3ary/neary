@@ -24,6 +24,7 @@
   import {
     Box, Card, CardContent, Chip, List, ListItem, ListItemText,
     RouteBadge, Stack, Typography,
+    formatBytes,
   } from '$lib/ui';
   import { MapPin } from 'lucide-svelte';
 
@@ -70,9 +71,6 @@
     }
   });
 
-  function fmtBytes(n: number) {
-    return n < 1024 * 1024 ? `${(n / 1024).toFixed(1)} KB` : `${(n / 1024 / 1024).toFixed(2)} MB`;
-  }
   function fmtMeters(m: number) {
     return m < 1000 ? `${Math.round(m)} m` : `${(m / 1000).toFixed(2)} km`;
   }
@@ -115,7 +113,7 @@
             <Typography variant="caption">Generated {new Date(feed.generated_at).toLocaleString()}</Typography>
             <Typography variant="caption">Source: {feed.source.publisher} ({feed.source.type})</Typography>
             {#if feed.size_bytes.sqlite_gz}
-              <Typography variant="caption">Sqlite gz: {fmtBytes(feed.size_bytes.sqlite_gz)}</Typography>
+              <Typography variant="caption">Sqlite gz: {formatBytes(feed.size_bytes.sqlite_gz)}</Typography>
             {/if}
             <Box class="mt-2">
               <Stack direction="row" spacing={1} wrap>

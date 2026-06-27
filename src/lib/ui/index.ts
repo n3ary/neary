@@ -38,6 +38,9 @@ export { default as StationCard } from './StationCard.svelte';
 export { default as NoFeedState } from './NoFeedState.svelte';
 export { default as TypeBadge } from './TypeBadge.svelte';
 
+// Pure helpers (no DOM, no stores).
+export { formatBytes } from './formatters';
+
 // App shell.
 export { default as Header } from './Header.svelte';
 export type { HeaderHealth, HealthState } from './headerTypes';

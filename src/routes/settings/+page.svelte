@@ -11,6 +11,7 @@
   import {
     Box, Button, Card, CardContent, Chip, List, ListItem, ListItemText,
     Spinner, Stack, Switch, ToggleGroup, Typography,
+    formatBytes,
   } from '$lib/ui';
   import { feedsStore } from '$lib/stores/feedsStore.svelte';
   import { userPrefs, type Theme } from '$lib/stores/userPrefs.svelte';
@@ -18,11 +19,6 @@
   onMount(() => {
     void feedsStore.load();
   });
-
-  function fmtBytes(n: number | undefined | null): string {
-    if (!n) return '';
-    return n < 1024 * 1024 ? `${(n / 1024).toFixed(0)} KB` : `${(n / 1024 / 1024).toFixed(1)} MB`;
-  }
 </script>
 
 <div class="mx-auto max-w-3xl px-4 py-6 space-y-6">
@@ -127,7 +123,7 @@
               >
                 <ListItemText
                   primary={f.name}
-                  secondary={`${f.country}${f.region ? ' · ' + f.region : ''} · ${f.timezone}${f.size_bytes?.sqlite_gz ? ' · ' + fmtBytes(f.size_bytes.sqlite_gz) : ''}`}
+                  secondary={`${f.country}${f.region ? ' · ' + f.region : ''} · ${f.timezone}${f.size_bytes?.sqlite_gz ? ' · ' + formatBytes(f.size_bytes.sqlite_gz) : ''}`}
                 />
                 {#if selected}
                   <Chip size="small" color="primary">

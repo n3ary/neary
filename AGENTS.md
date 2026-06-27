@@ -19,6 +19,9 @@ beat one big traversal.
 
 ## Core rules
 
+Coding principles (KISS, DRY) live in [docs/standards/core-principles.md](docs/standards/core-principles.md).
+The rules below are how those principles apply to agent behavior in this repo.
+
 ### Verify before you state
 
 - Read the actual file, run the actual command, query the actual store.
