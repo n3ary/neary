@@ -62,19 +62,23 @@ These aren't up for re-litigation; they fix the shape of the work below.
 
 Numbered in dependency order. neary-gtfs work is grouped in §A at the end.
 
-### [ ] 1. Consume `shape_dist_traveled` at runtime
+### [x] 1. Consume `shape_dist_traveled` at runtime
+
+Shipped in **PR #74**.
 
 neary-gtfs already populates this column on every `stop_times` row
 (see §A.1). Web app still re-projects every stop in `buildTripShapePlan`
 on page load — wasted CPU.
 
-- [ ] Surface `shape_dist_traveled` on the rows returned by
+- [x] Surface `shape_dist_traveled` on the rows returned by
       [`getRouteMapView`](../../src/lib/workers/gtfs/queries/routeMapView.ts)
       and [`getStopsAlongTrip`](../../src/lib/workers/gtfs/queries/routeStops.ts).
-- [ ] Drop the `projectOnPolyline` call in `buildTripShapePlan`; read
+- [x] Drop the `projectOnPolyline` call in `buildTripShapePlan`; read
       `distAlongM` directly off the row.
 - [ ] Measure: route-map load CPU drops by the projection share
-      (hot route: 24B).
+      (hot route: 24B). *Not formally profiled — the fast path is
+      structurally guaranteed by the code, fallback path covered by
+      tests.*
 
 ### [ ] 2. `predictArrivalAlongShape.ts` — multi-tier ETA
 
@@ -178,7 +182,9 @@ Four changes:
 - [ ] Align the freshness thresholds: today `FRESH_MS = 2 min`, doc
       says 3 min. Pick one and reflect it in the code constants.
 
-### [ ] 5. Reconciliation: GPS + route-order tie-break
+### [x] 5. Reconciliation: GPS + route-order tie-break
+
+Shipped in **PR #75**.
 
 For each `(route, direction)` cohort within the existing timing tolerance:
 
@@ -199,8 +205,8 @@ Closes the same-minute-crossings case **and** the "two adjacent buses
 swap" case that independent greedy matching can produce on
 high-frequency lines.
 
-- [ ] Implement in [`reconcileWithLive`](../../src/lib/domain/reconcile.ts).
-- [ ] Tests for: (a) same-minute crossing; (b) two-bus swap that greedy
+- [x] Implement in [`reconcileWithLive`](../../src/lib/domain/reconcile.ts).
+- [x] Tests for: (a) same-minute crossing; (b) two-bus swap that greedy
       would mis-assign; (c) fallback to per-obs greedy when delta is
       implausible.
 
