@@ -39,7 +39,7 @@ export { default as NoFeedState } from './NoFeedState.svelte';
 export { default as TypeBadge } from './TypeBadge.svelte';
 
 // Pure helpers (no DOM, no stores).
-export { formatBytes, formatRelative, formatAbsolute } from './formatters';
+export { formatBytes, formatWhen } from './formatters';
 
 // App shell.
 export { default as Header } from './Header.svelte';
