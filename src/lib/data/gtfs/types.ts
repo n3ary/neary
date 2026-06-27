@@ -337,6 +337,14 @@ export interface ScheduleTripStop {
   arrivalMin: number;
   /** 1-based stop_sequence as in GTFS. */
   stopSequence: number;
+  /** GTFS `shape_dist_traveled` — cumulative distance along the trip's
+   *  shape from origin to this stop, in metres. Populated at build time
+   *  by feeds whose stop_times have the column (Cluj does via
+   *  neary-gtfs#12; mirrored Transitous feeds may or may not). When
+   *  present, runtime predictors can skip per-stop polyline projection;
+   *  when absent (undefined), `buildTripShapePlan` falls back to
+   *  projecting on the client. */
+  distAlongM?: number;
 }
 
 /** One active trip in the map-view payload. */
