@@ -12,7 +12,7 @@
   import {
     Box, Button, Card, CardContent, Chip, List, ListItem, ListItemText,
     Spinner, Stack, Switch, ToggleGroup, Typography,
-    formatBytes, formatRelative, formatAbsolute,
+    formatBytes, formatWhen,
   } from '$lib/ui';
   import { feedsStore } from '$lib/stores/feedsStore.svelte';
   import { userPrefs, type Theme } from '$lib/stores/userPrefs.svelte';
@@ -193,7 +193,7 @@
         <Stack spacing={0.5}>
           <Typography variant="body2">App version</Typography>
           <Typography variant="caption">
-            v{version} · updated {formatRelative(versionFirstSeenAt)}{#if versionFirstSeenAt}{` (${formatAbsolute(versionFirstSeenAt)})`}{/if}
+            v{version} · updated {formatWhen(versionFirstSeenAt)}
           </Typography>
         </Stack>
       </Stack>
