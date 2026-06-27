@@ -35,15 +35,31 @@ These aren't up for re-litigation; they fix the shape of the work below.
   heuristic; everything's debuggable line by line.
 - **Single source of truth for cascade math** — mirrored byte-for-byte
   between the two repos, CI-enforced. No duplicate implementations.
+- **Validation is empirical.** No formal test corpus; quality is judged
+  by using the app (rides, screenshots, gut feel). A regression-MAE
+  pipeline is explicit anti-goal until we feel the lack of one.
 
 ## Open questions
 
-- **Q1 — GPS tie-break in reconciliation?** Among candidates within
-  timing tolerance, prefer the one whose projected `distAlongM` is
-  closest to elapsed-time expectation. Cheap to add; closes same-minute
-  crossings. *Decide before item 6.*
-- **Q2 — Prediction-quality test corpus.** Without one, item 3 ships
-  blind. *Decide before item 3 starts in earnest.*
+- **Q1 — Should reconciliation tie-break by GPS position when timing
+  alone is ambiguous?**
+
+  Today's matcher uses `(routeId, directionId, tripStartMin)` with an
+  adaptive timing tolerance. On a high-frequency route, two scheduled
+  trips often sit inside the same tolerance window (e.g.
+  `tripStartMin = 12:30` and `12:32`, a live obs reporting `12:31`).
+  The smallest-delta winner can be wrong: a bus running 5 min late on
+  the 12:30 trip looks identical to a bus running on time on the 12:32
+  trip if we only look at start time.
+
+  Proposal: project the live obs onto the route shape (we have the
+  shape for ETA already). For each candidate scheduled trip, compute
+  *where the trip should be right now* per its own schedule — also a
+  `distAlongM`. Pick the candidate whose expected position is closest
+  to where the bus actually is. Fall back to timing-only when shape
+  projection isn't available.
+
+  *Decide before item 6.*
 
 ---
 
@@ -121,7 +137,7 @@ Per segment walked forward from `vehicleDistAlongM`:
 view all consume the same `ArrivalPlan` — no more `predictEta` vs
 `predictPositionOnShape` ad-hoc split.
 
-- [ ] Module + tests (needs Q2 corpus to score against).
+- [ ] Module + tests.
 - [ ] Wire `assembleLiveBoard` to call it instead of `predictEta`.
 - [ ] Optional: feature flag for A/B vs today's single-tier ETA.
 - [ ] Delete `predictEta.ts` once the new path is the sole caller.
@@ -165,30 +181,20 @@ Fall back to timing-only when no GPS is available for the candidate.
 - [ ] Implement in [`reconcileWithLive`](../../src/lib/domain/reconcile.ts).
 - [ ] Tests for the same-minute-crossing case.
 
-### 7. Prediction-quality test corpus — [ ]
-
-(Resolves Q2.) Lets items 1 / 3 / 4 ship with a real number behind them.
-
-- [ ] Capture script: a week of GTFS-RT pings + matching scheduled
-      arrival rows.
-- [ ] CSV / SQLite: `(tripId, stopId, scheduled_arrival_min, observed_arrival_min)`.
-- [ ] Each predictor scored on MAE against it. Lives in the test suite
-      as a regression sentinel — a PR that worsens MAE fails CI.
-
-### 8. Empirical per-segment speeds — [ ]
+### 7. Empirical per-segment speeds — [ ]
 
 Long-term: capture → analyse → ship empirical speeds inside the same
 SQLite the client already downloads. Collapses the cascade from 5 tiers
 to **empirical baseline × live-correction multiplier**, with the cold-
 start tiers (3–5) becoming sparse-cell backstop.
 
-#### 8a. Capture script — [ ]
+#### 7a. Capture script — [ ]
 
 - [ ] `neary-gtfs/scripts/observe-cluj.mjs`: polls upstream GTFS-RT every
       ~15 s, stores raw snapshots locally. Manual invocation. Not wired
       into the build pipeline.
 
-#### 8b. Analysis pass — [ ]
+#### 7b. Analysis pass — [ ]
 
 - [ ] `neary-gtfs/scripts/analyze-observations.mjs` reads snapshots,
       outputs per-bucket median speeds.
@@ -200,7 +206,7 @@ Multi-segment intervals distribute `Δd` proportionally across touched
 legs. Bucket by `(route_id, direction_id, segment_idx, hour_of_week)`,
 take p60, drop buckets with < 20 samples.
 
-#### 8c. Ship empirical data in SQLite — [ ]
+#### 7c. Ship empirical data in SQLite — [ ]
 
 New table in the existing artifact (no new endpoint):
 
@@ -221,7 +227,7 @@ CREATE TABLE segment_speeds (
       in the feed's `.sqlite`.
 - [ ] Worker query exposes per-bucket lookup to `speedCascade.ts`.
 
-#### 8d. Cascade collapse — [ ]
+#### 7d. Cascade collapse — [ ]
 
 - [ ] Tiers 1–2 fold into a live-correction multiplier
       (`observed / empirical_median`).
@@ -272,7 +278,7 @@ Once §A.2 lands:
 
 ### A.4. Observation pipeline — [ ]
 
-Items 8a–8c above live in neary-gtfs. Cross-referenced here so a
+Items 7a–7c above live in neary-gtfs. Cross-referenced here so a
 neary-gtfs reader can see the full picture.
 
 ---
@@ -283,7 +289,7 @@ Repeat-resistant against scope drift.
 
 - No Kalman / state-space model.
 - No machine-learning ETA.
-- No always-on historical service in the release path (§8 is opt-in,
+- No always-on historical service in the release path (item 7 is opt-in,
   runs manually).
 - No multi-feed merging at runtime.
 - No bypass of the worker for SQLite access.
