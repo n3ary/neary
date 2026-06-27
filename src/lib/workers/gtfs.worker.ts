@@ -24,6 +24,7 @@ import type {
 } from '$lib/data/gtfs/types';
 import { scanSchedule, type ScheduleRow } from '$lib/domain/pipeline/scheduleScanner';
 import { dateKeyInTz, minSinceMidnightInTz } from '$lib/domain/pipeline/timeUtils';
+import { opfsFileFor, pruneStaleFeedFiles } from './opfsFilenames';
 
 // ---------------------------------------------------------------------------
 // Source URL resolution per feed.
@@ -47,10 +48,10 @@ function seedUrlFor(feed: Feed): string {
   return `${BINARIES_BASE}/${feed.files.sqlite_gz}`;
 }
 
-function opfsFileFor(feedId: string): string {
-  return `/${feedId}.sqlite3`;
-}
-
+// ---------------------------------------------------------------------------
+// Lazy + feed-aware bootstrap. The pool is created once (it persists across
+// feed switches — multiple feed files can coexist in OPFS). The DB instance
+// is per-feed: switching feeds closes the previous DB and opens (or seeds)
 // ---------------------------------------------------------------------------
 // Lazy + feed-aware bootstrap. The pool is created once (it persists across
 // feed switches — multiple feed files can coexist in OPFS). The DB instance
@@ -123,7 +124,7 @@ async function getPool() {
 
 async function bootstrap(feed: Feed): Promise<Database> {
   const poolUtil = await getPool();
-  const opfsFile = opfsFileFor(feed.id);
+  const opfsFile = opfsFileFor(feed);
 
   if (!poolUtil.getFileNames().includes(opfsFile)) {
     const url = seedUrlFor(feed);
@@ -142,6 +143,10 @@ async function bootstrap(feed: Feed): Promise<Database> {
     }
     console.log(`[gtfs.worker] Importing ${bytes.byteLength} bytes into ${opfsFile}…`);
     poolUtil.importDb(opfsFile, bytes);
+    // After a successful import, drop any older snapshot of THIS feed
+    // so OPFS doesn't fill with one file per upstream rebuild.
+    const removed = pruneStaleFeedFiles(poolUtil, feed.id, opfsFile);
+    if (removed > 0) console.log(`[gtfs.worker] Pruned ${removed} stale OPFS file(s) for ${feed.id}`);
   }
 
   const db = new poolUtil.OpfsSAHPoolDb(opfsFile);
