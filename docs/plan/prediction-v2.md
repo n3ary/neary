@@ -7,11 +7,9 @@ this doc only carries decisions and pending work.
 ## Where we are
 
 Schedule-driven pipeline with worker-owned reconciliation (PR #72).
-Live-GPS vehicles dead-reckon along the trip shape via
-[`predictPositionFromGps`](../../src/lib/domain/predictPosition.ts)
-("dead-reckon" = extrapolate forward from the last GPS sample using
-its reported speed, so the marker moves between 15 s polls instead of
-freezing).
+Live-GPS vehicles extrapolate forward along the trip shape via
+[`predictPositionFromGps`](../../src/lib/domain/predictPosition.ts) so
+the marker keeps moving between 15 s GPS polls instead of freezing.
 Schedule-only markers snap to `nowTicker` ticks (15 s). ETA is
 single-tier: vehicle's own `speedMs`, fallback to schedule.
 
@@ -31,11 +29,11 @@ These aren't up for re-litigation; they fix the shape of the work below.
 - **`nowTicker = 15 s`** globally, synced with `livePollMs`. Map marker
   smoothness comes from RAF interpolation between ticks, not from a
   faster global tick.
-- **All live-GPS bands dead-reckon.** HEALTHY, STALE, and VERY_STALE
-  all walk the shape forward from the last GPS-anchored `distAlongM`,
-  accumulating per-segment time using the cascade speeds from item 2
-  (the same speed source `predictArrivalAlongShape` uses to look
-  forward; here we use it to look backward over the elapsed `dt`).
+- **All live-GPS bands extrapolate forward.** HEALTHY, STALE, and
+  VERY_STALE all walk the shape forward from the last GPS-anchored
+  `distAlongM`, accumulating per-segment time using the cascade speeds
+  from item 2 (the same speed source `predictArrivalAlongShape` uses to
+  look forward; here we use it to look backward over the elapsed `dt`).
   Capped at `MAX_DEAD_RECKON_M = 3 km` so a parked bus can't drift
   implausibly far. The bands differ only by **border colour** on the
   map marker, not by motion. Drop the marker only past the hard cap
@@ -132,7 +130,7 @@ treated as "stopped, not moving" and excluded from tiers 1–2.
 
 ### [ ] 3. Continuous position rendering for every visible vehicle
 
-Live-GPS vehicles already dead-reckon. Schedule-only markers still snap
+Live-GPS vehicles already extrapolate forward. Schedule-only markers still snap
 on each `nowTicker` tick. Goal: every marker glides between ticks.
 
 Pattern (copied from the existing "traveling dots" RAF layer): each
@@ -149,7 +147,7 @@ recomputes the anchor at the next tick.
 
 (Depends on item 2.)
 
-All three live-GPS bands dead-reckon along the trip shape from the last
+All three live-GPS bands extrapolate forward along the trip shape from the last
 known projected `distAlongM`, walking `legs[]` forward and consuming
 `dt_segment = segmentDist / cascadeSpeed(segment)` until the elapsed
 `dt` is exhausted. Capped at `MAX_DEAD_RECKON_M = 3 km`. Bands differ
@@ -158,13 +156,13 @@ identical across all three.
 
 | Band       | Age      | Border | Behaviour                       |
 |------------|----------|--------|---------------------------------|
-| HEALTHY    | < 3 min  | none   | Dead-reckon (cascade speeds)    |
-| STALE      | 3–5 min  | yellow | Dead-reckon (cascade speeds)    |
-| VERY_STALE | 5–15 min | red    | Dead-reckon (cascade speeds)    |
+| HEALTHY    | < 3 min  | none   | Extrapolate (cascade speeds)    |
+| STALE      | 3–5 min  | yellow | Extrapolate (cascade speeds)    |
+| VERY_STALE | 5–15 min | red    | Extrapolate (cascade speeds)    |
 | (expired)  | ≥ 15 min | —      | Drop marker                     |
 
 Today's [`predictPositionFromGps`](../../src/lib/domain/predictPosition.ts)
-dead-reckons only in the `'fresh'` band (< 2 min) and uses the bus's
+extrapolates only in the `'fresh'` band (< 2 min) and uses the bus's
 single reported `speedMs` as a stopgap (ignores per-segment variation).
 Four changes:
 
