@@ -234,7 +234,7 @@
         <Stack spacing={1}>
           <Typography variant="h6">No nearby stations</Typography>
           <Typography variant="caption">
-            No stops within {DEFAULT_CONFIG.nearbyRadiusM} m of {gpsState === 'available' ? 'your current position' : 'the fallback location'}.
+            No stops within {DEFAULT_CONFIG.favoriteFallbackRadiusM} m of {gpsState === 'available' ? 'your current position' : 'the fallback location'}.
             Try moving closer to a transit corridor or enabling location.
           </Typography>
         </Stack>

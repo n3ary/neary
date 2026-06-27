@@ -8,10 +8,12 @@
  *      stop is also within `nearbyRadiusM` AND its distance to the user
  *      is within `pairProximityM` of the closest, surface it too (the
  *      "I'm standing between two stops" case).
- *   2. FAVORITE FALLBACK — if nothing satisfies (1) AND a favorite
- *      route set is provided, surface the closest stop within
- *      `favoriteFallbackRadiusM` whose schedule includes at least one
- *      favorite route (regardless of direction). Single stop only.
+ *   2. WIDER FALLBACK — if nothing satisfies (1), surface ONE stop
+ *      within `favoriteFallbackRadiusM`:
+ *         a) closest stop on a favorited route (when favorites exist), OR
+ *         b) closest stop overall (when no favorites match or are set).
+ *      Avoids the "No nearby stations" dead end when stops exist a
+ *      few hundred meters past `nearbyRadiusM`.
  *   3. Otherwise return [].
  *
  * The closest returned stop is also designated `expandedStopId` so the
@@ -89,18 +91,25 @@ export function selectBoardsForView<S extends SelectableStop>(
     return { boards, expandedStopId: closest.stop.id };
   }
 
-  // (2) Favorite fallback: scan further out for the first stop with a
-  // favorite route on its schedule. Single stop only.
+  // (2) Wider fallback — surface ONE stop within favoriteFallbackRadiusM.
+  // Prefer a favorited route when the user has any; otherwise just take
+  // the closest stop. Prevents the empty "No nearby stations" state in
+  // the common case of a user standing a few hundred meters past the
+  // primary radius.
+  const wide = candidates.filter(
+    (c) => typeof c.stop.distance === 'number' && c.stop.distance <= config.favoriteFallbackRadiusM,
+  );
+  if (wide.length === 0) return { boards: [], expandedStopId: null };
+
   if (favoriteRouteIds && favoriteRouteIds.size > 0) {
-    for (const c of candidates) {
-      const d = c.stop.distance;
-      if (typeof d !== 'number' || d > config.favoriteFallbackRadiusM) continue;
+    for (const c of wide) {
       if (c.vehicles.some((v) => favoriteRouteIds.has(v.route.id))) {
         return { boards: [c], expandedStopId: c.stop.id };
       }
     }
   }
-
-  // (3) Empty.
-  return { boards: [], expandedStopId: null };
+  // No favorited match (or no favorites set) — fall through to the
+  // closest stop in the wider radius.
+  const closestWide = wide[0];
+  return { boards: [closestWide], expandedStopId: closestWide.stop.id };
 }

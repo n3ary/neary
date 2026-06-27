@@ -82,7 +82,9 @@ describe('selectBoardsForView', () => {
     expect(res.expandedStopId).toBe(2);
   });
 
-  it('favorite fallback respects favoriteFallbackRadiusM', () => {
+  it('wider fallback respects favoriteFallbackRadiusM', () => {
+    // Stop at 800m is within the wider radius → returned.
+    // Stop at 2500m is outside; ignored.
     const res = selectBoardsForView({
       candidates: [
         { stop: stop(1, 800), vehicles: [vehicle(r2)] },
@@ -91,18 +93,30 @@ describe('selectBoardsForView', () => {
       config: cfg,
       favoriteRouteIds: new Set(['99']),
     });
-    expect(res.boards).toEqual([]);
-    expect(res.expandedStopId).toBeNull();
+    expect(res.boards.map((b) => b.stop.id)).toEqual([1]);
+    expect(res.expandedStopId).toBe(1);
   });
 
-  it('returns empty when no nearby stops and no favorite set provided', () => {
+  it('returns truly empty only when nothing is within favoriteFallbackRadiusM', () => {
     const res = selectBoardsForView({
-      candidates: [{ stop: stop(1, 800), vehicles: [vehicle(r1)] }],
+      candidates: [{ stop: stop(1, 2500), vehicles: [vehicle(r2)] }],
       config: cfg,
       favoriteRouteIds: null,
     });
     expect(res.boards).toEqual([]);
     expect(res.expandedStopId).toBeNull();
+  });
+
+  it('falls back to closest stop in the wider radius when no favorites are set', () => {
+    // No favorites — wider fallback still surfaces a stop (was the
+    // "No nearby stations" bug pre-fix: empty even though a stop
+    // existed within 2 km).
+    const res = selectBoardsForView({
+      candidates: [{ stop: stop(1, 800), vehicles: [vehicle(r1)] }],
+      config: cfg,
+      favoriteRouteIds: null,
+    });
+    expect(res.boards.map((b) => b.stop.id)).toEqual([1]);
   });
 
   it('returns empty when candidates is empty', () => {
