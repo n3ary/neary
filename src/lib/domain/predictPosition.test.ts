@@ -106,6 +106,42 @@ describe('predictPositionOnShape', () => {
     expect(p?.status).toBe('after');
     expect(p?.lon).toBeCloseTo(4, 6);
   });
+
+  it('uses pre-populated `distAlongM` and skips polyline projection', () => {
+    // When every stop carries distAlongM (build-time `shape_dist_traveled`),
+    // buildTripShapePlan must read those values verbatim instead of
+    // projecting. Verify by passing intentionally "wrong" distAlongM
+    // values — the resulting plan's legs[] should match the inputs,
+    // proving the projection branch was skipped.
+    const stopsWithDist: PredictStop[] = [
+      { lat: 0, lon: 0, arrivalMin: 100, distAlongM: 1234 },
+      { lat: 0, lon: 2, arrivalMin: 110, distAlongM: 5678 },
+    ];
+    const plan = buildTripShapePlan(stopsWithDist, detourShape)!;
+    expect(plan.legs).toEqual([
+      { arrivalMin: 100, distAlongM: 1234 },
+      { arrivalMin: 110, distAlongM: 5678 },
+    ]);
+  });
+
+  it('falls back to projection when any stop lacks `distAlongM`', () => {
+    // Mixed presence → fall back to projecting all stops. Stops 0 and 2
+    // carry distAlongM, stop 1 doesn't; expect projection-derived values
+    // throughout (not the supplied "garbage" 9999 / 8888 on the carriers).
+    const mixed: PredictStop[] = [
+      { lat: 0, lon: 0, arrivalMin: 100, distAlongM: 9999 },
+      { lat: 0, lon: 2, arrivalMin: 110 },
+      { lat: 0, lon: 4, arrivalMin: 130, distAlongM: 8888 },
+    ];
+    const plan = buildTripShapePlan(mixed, [
+      { lat: 0, lon: 0 }, { lat: 0, lon: 4 },
+    ])!;
+    // distAlongM at origin should be ~0 (start of shape), not 9999.
+    expect(plan.legs[0].distAlongM).toBeLessThan(100);
+    // distAlongM at terminus should be ~full polyline length, not 8888.
+    expect(plan.legs[2].distAlongM).toBeGreaterThan(100);
+    expect(plan.legs[2].distAlongM).toBeLessThan(500_000); // ~4° at equator
+  });
 });
 
 describe('predictPositionFromGps', () => {

@@ -17,11 +17,12 @@ export function getStopsAlongTrip(db: Database, tripId: string): ScheduleTripSto
     stop_lon: number;
     arrival_time: string;
     stop_sequence: number;
+    shape_dist_traveled: number | null;
   };
   const rows = selectAll<Row>(
     db,
     `SELECT s.stop_id, s.stop_name, s.stop_lat, s.stop_lon,
-            st.arrival_time, st.stop_sequence
+            st.arrival_time, st.stop_sequence, st.shape_dist_traveled
      FROM stop_times st
      JOIN stops s ON s.stop_id = st.stop_id
      WHERE st.trip_id = ?
@@ -36,5 +37,6 @@ export function getStopsAlongTrip(db: Database, tripId: string): ScheduleTripSto
     arrivalTime: r.arrival_time,
     arrivalMin: timeToMinutes(r.arrival_time),
     stopSequence: r.stop_sequence,
+    distAlongM: r.shape_dist_traveled ?? undefined,
   }));
 }

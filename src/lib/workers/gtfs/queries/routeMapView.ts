@@ -146,11 +146,12 @@ function loadStopsForTrips(
     trip_id: string; stop_id: number; stop_name: string;
     stop_lat: number; stop_lon: number;
     arrival_time: string; stop_sequence: number;
+    shape_dist_traveled: number | null;
   };
   const rows = selectAll<Row>(
     db,
     `SELECT st.trip_id, s.stop_id, s.stop_name, s.stop_lat, s.stop_lon,
-            st.arrival_time, st.stop_sequence
+            st.arrival_time, st.stop_sequence, st.shape_dist_traveled
      FROM stop_times st
      JOIN stops s ON s.stop_id = st.stop_id
      WHERE st.trip_id IN (${tripPh})
@@ -167,6 +168,7 @@ function loadStopsForTrips(
       arrivalTime: sr.arrival_time,
       arrivalMin: timeToMinutes(sr.arrival_time),
       stopSequence: sr.stop_sequence,
+      distAlongM: sr.shape_dist_traveled ?? undefined,
     });
     out.set(sr.trip_id, list);
   }

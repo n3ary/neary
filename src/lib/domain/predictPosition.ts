@@ -40,6 +40,11 @@ export interface PredictStop {
   /** Minutes since local midnight (GTFS extended time allowed,
    *  i.e. 24h+ for past-midnight night routes). */
   arrivalMin: number;
+  /** Optional pre-computed distance along the trip's shape from origin
+   *  to this stop, in metres. When present, `buildTripShapePlan` reads
+   *  it directly instead of projecting on the client. Populated by feeds
+   *  whose `stop_times.shape_dist_traveled` is non-null at build time. */
+  distAlongM?: number;
 }
 
 export type TripStatus = 'before' | 'at-origin' | 'active' | 'after';
@@ -111,8 +116,18 @@ export interface TripShapePlan {
   legs: Array<{ arrivalMin: number; distAlongM: number }>;
 }
 
-/** Build a `TripShapePlan` by projecting each stop onto the shape's
- *  polyline. O(stops × shape segments). Run once per trip+shape.
+/** Build a `TripShapePlan` for a trip.
+ *
+ *  Fast path (preferred): when every `PredictStop` carries
+ *  `distAlongM` (populated at build time from
+ *  `stop_times.shape_dist_traveled`), the per-stop polyline projection
+ *  is skipped entirely — page load drops from O(stops × shape segments)
+ *  to O(stops).
+ *
+ *  Fallback: when any stop is missing `distAlongM`, project every stop
+ *  onto the shape (today's behaviour). Mixed presence falls back to
+ *  projection so consumers see consistent data within a single plan.
+ *
  *  Returns `null` when no usable shape exists — caller should fall
  *  back to `predictPosition`. */
 export function buildTripShapePlan(
@@ -121,10 +136,13 @@ export function buildTripShapePlan(
 ): TripShapePlan | null {
   if (stops.length === 0 || shape.length < 2) return null;
   const measured = measurePolyline(shape);
-  const legs = stops.map((s) => {
-    const proj = projectOnPolyline({ lat: s.lat, lon: s.lon } as LatLon, shape);
-    return { arrivalMin: s.arrivalMin, distAlongM: proj.distAlongM };
-  });
+  const everyStopHasDist = stops.every((s) => typeof s.distAlongM === 'number');
+  const legs = everyStopHasDist
+    ? stops.map((s) => ({ arrivalMin: s.arrivalMin, distAlongM: s.distAlongM as number }))
+    : stops.map((s) => {
+        const proj = projectOnPolyline({ lat: s.lat, lon: s.lon } as LatLon, shape);
+        return { arrivalMin: s.arrivalMin, distAlongM: proj.distAlongM };
+      });
   // Stops projected onto a doubled-back shape (rare but possible
   // when an operator publishes the same trace for both directions)
   // can land out of order. Ignore that here — the time-based bracket
