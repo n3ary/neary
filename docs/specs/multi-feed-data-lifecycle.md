@@ -90,6 +90,21 @@ offline on arrival.
 | Active feed not on-device | "Offline — <Name> isn't downloaded yet" StatusBar error |
 | No feed ever picked, no GPS, no cached registry | "Offline — connect once to download a city" |
 
+## GPS auto-pick
+
+When `userPrefs.feedId` is null and we have a GPS fix, `locationStore.pickFeed(feeds)`
+returns the feed whose `bbox` contains the position.
+
+Non-obvious rules:
+
+- **Overlapping bboxes — pick the smallest.** Rail feeds and city feeds
+  routinely overlap (e.g. a national rail bbox containing all city bboxes).
+  Smallest area = most specific = the feed the user actually wants.
+- **Intercity routes inflate bboxes.** A feed whose stops include an
+  intercity terminus has a much larger bbox than the city's footprint.
+  Acceptable trade-off: auto-pick stays opinion-free, the user can always
+  override via the picker.
+
 ## Worker API
 
 ```ts
@@ -108,7 +123,8 @@ Shipped:
 - `setFeed` (cold switch from jsDelivr).
 - Per-feed OPFS storage.
 
-Pending (tracked in [../plan/neary-gtfs-evolution.md](../plan/neary-gtfs-evolution.md)):
-- Full LRU eviction.
-- Tier A registry ETag check.
-- Pin-for-offline UI.
+Pending app-side:
+- Full LRU eviction per the rules above.
+- Tier A registry ETag check on launch + manual refresh.
+- Pin-for-offline UI in the feed picker.
+- `locationStore.pickFeed()` auto-pick with the bbox tie-break rule.

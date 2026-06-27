@@ -1,21 +1,12 @@
-import { execSync } from 'node:child_process';
+import { readFileSync } from 'node:fs';
 import adapter from '@sveltejs/adapter-static';
 import { vitePreprocess } from '@sveltejs/vite-plugin-svelte';
 
-/** Best-effort unique build identifier. Falls back to a timestamp
- *  when the build runs outside a git checkout (CI sandbox, Netlify
- *  without git history fetched, etc.). The runtime client polls
- *  `_app/version.json` carrying this string — a change triggers
- *  the auto-reload in +layout.svelte. */
-function buildVersion() {
-  try {
-    return execSync('git rev-parse --short HEAD', { stdio: ['ignore', 'pipe', 'ignore'] })
-      .toString()
-      .trim();
-  } catch {
-    return `t${Date.now()}`;
-  }
-}
+/** Single source of truth for the app version. Bumped on every PR by the
+ *  auto-version GitHub Action — see docs/specs/ci-and-versioning.md. The
+ *  runtime client polls `_app/version.json` carrying this string; UI code
+ *  reads the same value via `import { version } from '$app/environment'`. */
+const pkg = JSON.parse(readFileSync(new URL('./package.json', import.meta.url), 'utf-8'));
 
 /**
  * SvelteKit config — static adapter because v2 is a pure PWA with no server
@@ -43,7 +34,7 @@ const config = {
     // minutes for a PWA the user comes back to, infrequent enough
     // to not show up in network panels or burn battery.
     version: {
-      name: buildVersion(),
+      name: pkg.version,
       pollInterval: 60 * 1000,
     },
   },
