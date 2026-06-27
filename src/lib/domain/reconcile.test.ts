@@ -24,6 +24,8 @@ function scheduled(opts: {
     id: `trip:${opts.tripId}`,
     route: opts.route ?? r14,
     type: 'bus',
+    tripId: opts.tripId,
+    directionId: opts.directionId ?? 1,
     confidence: 'low',
     schedule: {
       tripId: opts.tripId,
@@ -415,5 +417,160 @@ describe('reconcileWithLive (kind:live emission for unmatched obs)', () => {
     );
     const live = vehicles.find((v) => v.kind === 'live');
     expect(live?.eta).toBeUndefined();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Route-order pairing (resolves the "no-overtake invariant" cases that
+// greedy-by-timing-delta can mis-pair on high-frequency lines). Tests
+// build a 10 km straight-line shape and place live obs at known
+// positions along it.
+// ---------------------------------------------------------------------------
+
+import { measurePolyline } from './shapeProjection';
+
+describe('reconcileWithLive (route-order pairing with shape)', () => {
+  // 10 km straight-line shape east of (46.7, 23.6). At Cluj's latitude,
+  // 0.131° lon ≈ 10 km; 0.001° lon ≈ ~76 m. Two vertices is enough —
+  // projection lands every point on the line directly.
+  const shape10km = measurePolyline([
+    { lat: 46.7, lon: 23.6 },
+    { lat: 46.7, lon: 23.731 },
+  ]);
+  /** Return a lon-coordinate that lands roughly `meters` along the shape. */
+  function lonAt(meters: number): number {
+    return 23.6 + 0.131 * (meters / shape10km.totalDistM);
+  }
+  function shapesFor(cohort: string): Map<string, ReturnType<typeof measurePolyline>> {
+    return new Map([[cohort, shape10km]]);
+  }
+
+  it('(a) same-minute crossing — picks the trip whose expected position matches', () => {
+    // Two scheduled trips a minute apart; one live obs whose start time
+    // sits between them but whose GPS position is far along the route,
+    // matching trip A's expected position much better than trip B's.
+    const sched = [
+      scheduled({ tripId: 'A', tripStartMin: 14 * 60, scheduledDeparture: 14 * 60 }), // 14:00
+      scheduled({ tripId: 'B', tripStartMin: 14 * 60 + 2, scheduledDeparture: 14 * 60 + 2 }), // 14:02
+    ];
+    // Bump trip durations: scheduledArrival = start + 30 min (used as tripEndMin).
+    (sched[0] as Vehicle).schedule!.scheduledArrival = 14 * 60 + 30;
+    (sched[1] as Vehicle).schedule!.scheduledArrival = 14 * 60 + 32;
+    // Now = 14:25. Expected: A at 25/30 = 83% ≈ 8333 m; B at 23/30 ≈ 7667 m.
+    // Obs at 8300 m (close to A's expected).
+    const liveObs = obs({
+      tripId: 'live-pole',
+      startTime: '14:01:00', // straddles both starts
+      lat: 46.7,
+      lon: lonAt(8300),
+    });
+    const { vehicles, stats } = reconcileWithLive(sched, [liveObs], {
+      nowMs: epochAt(14 * 60 + 25),
+      timezone: 'UTC',
+      shapesByCohort: shapesFor('14|1'),
+    });
+    expect(stats.matched).toBe(1);
+    // Route-order pairs A (earliest start) with the obs (only obs).
+    const matched = vehicles.find((v) => v.kind === 'reconciled');
+    expect(matched?.tripId).toBe('A');
+  });
+
+  it('(b) two-bus swap — route order prefers physical plausibility over perfect timing', () => {
+    // Two scheduled trips with a 10-minute start spread; two live obs
+    // whose start_time claims swap them (operator misconfig in the
+    // GTFS-RT feed). Greedy-by-timing pairs by perfect timing:
+    //   A=obs2 (claims 14:00, but physically near B's expected ≈ 5 km)
+    //   B=obs1 (claims 14:10, but physically near A's expected ≈ 8 km)
+    // That implies A is 3+ km behind expected — implausible.
+    // Route-order ignores the (possibly-wrong) start_time and pairs by
+    // along-shape distance:
+    //   A=obs1 (8 km, near A's 8.3 km expected — slight delay)
+    //   B=obs2 (4.5 km, near B's 5 km expected — slight delay)
+    // Physically plausible: both buses ~500 m behind expected, no swap.
+    const sched = [
+      scheduled({ tripId: 'A', tripStartMin: 14 * 60, scheduledDeparture: 14 * 60 }), // 14:00
+      scheduled({ tripId: 'B', tripStartMin: 14 * 60 + 10, scheduledDeparture: 14 * 60 + 10 }), // 14:10
+    ];
+    (sched[0] as Vehicle).schedule!.scheduledArrival = 14 * 60 + 30;
+    (sched[1] as Vehicle).schedule!.scheduledArrival = 14 * 60 + 40;
+    // Now = 14:25. A expected: 25/30 × 10 km ≈ 8333 m. B expected: 15/30 × 10 km = 5000 m.
+    const obsAt8km = obs({
+      tripId: 'obs1',
+      startTime: '14:10:00', // claims to be on B
+      lat: 46.7,
+      lon: lonAt(8000),
+    });
+    const obsAt4_5km = obs({
+      tripId: 'obs2',
+      startTime: '14:00:00', // claims to be on A
+      lat: 46.7,
+      lon: lonAt(4500),
+    });
+    const { vehicles } = reconcileWithLive(sched, [obsAt8km, obsAt4_5km], {
+      nowMs: epochAt(14 * 60 + 25),
+      timezone: 'UTC',
+      shapesByCohort: shapesFor('14|1'),
+    });
+    const matched = vehicles.filter((v) => v.kind === 'reconciled');
+    expect(matched).toHaveLength(2);
+    const aMatch = matched.find((v) => v.tripId === 'A');
+    const bMatch = matched.find((v) => v.tripId === 'B');
+    // A (earliest, furthest-along-expected) pairs with obsAt8km.
+    expect(aMatch?.position?.lon).toBeCloseTo(lonAt(8000), 4);
+    // B (later, behind-A-expected) pairs with obsAt4_5km.
+    expect(bMatch?.position?.lon).toBeCloseTo(lonAt(4500), 4);
+  });
+
+  it('(c) implausible distance delta — falls back to greedy by timing', () => {
+    // Same two scheduled trips (A: 14:00, B: 14:10), but the obs
+    // distances are wildly off any reasonable expected position:
+    // one at 9.9 km, one at 0.1 km. Route-order would pair
+    //   A=obs1 (9.9 km, delta 1.6 km — borderline ok)
+    //   B=obs2 (0.1 km, delta 4.9 km — IMPLAUSIBLE)
+    // Implausibility fires → fall back to greedy by timing, which
+    // pairs by perfect timing: A=obs2 (claims 14:00), B=obs1
+    // (claims 14:10).
+    const sched = [
+      scheduled({ tripId: 'A', tripStartMin: 14 * 60, scheduledDeparture: 14 * 60 }),
+      scheduled({ tripId: 'B', tripStartMin: 14 * 60 + 10, scheduledDeparture: 14 * 60 + 10 }),
+    ];
+    (sched[0] as Vehicle).schedule!.scheduledArrival = 14 * 60 + 30;
+    (sched[1] as Vehicle).schedule!.scheduledArrival = 14 * 60 + 40;
+    const obsNearEnd = obs({
+      tripId: 'obs1', startTime: '14:10:00',
+      lat: 46.7, lon: lonAt(9900),
+    });
+    const obsNearStart = obs({
+      tripId: 'obs2', startTime: '14:00:00',
+      lat: 46.7, lon: lonAt(100),
+    });
+    const { vehicles } = reconcileWithLive(sched, [obsNearEnd, obsNearStart], {
+      nowMs: epochAt(14 * 60 + 25),
+      timezone: 'UTC',
+      shapesByCohort: shapesFor('14|1'),
+    });
+    const aMatch = vehicles.find((v) => v.tripId === 'A' && v.kind === 'reconciled');
+    const bMatch = vehicles.find((v) => v.tripId === 'B' && v.kind === 'reconciled');
+    // Fallback to greedy: A=obs2 (start 14:00), B=obs1 (start 14:10).
+    expect(aMatch?.position?.lon).toBeCloseTo(lonAt(100), 4);
+    expect(bMatch?.position?.lon).toBeCloseTo(lonAt(9900), 4);
+  });
+
+  it('falls back to greedy when shape is missing for a cohort', () => {
+    // Map exists but key is for a different cohort → reconciler treats
+    // this one as shape-absent and uses greedy-by-timing.
+    const sched = [
+      scheduled({ tripId: 'A', tripStartMin: 14 * 60 }),
+    ];
+    const { stats } = reconcileWithLive(
+      sched,
+      [obs({ tripId: 'live', startTime: '14:00:00', lat: 46.7, lon: lonAt(5000) })],
+      {
+        nowMs: epochAt(14 * 60 + 25),
+        timezone: 'UTC',
+        shapesByCohort: shapesFor('OTHER|0'),
+      },
+    );
+    expect(stats.matched).toBe(1);
   });
 });

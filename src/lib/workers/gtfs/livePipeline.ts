@@ -20,8 +20,11 @@ import type { ReconciledSnapshot } from '$lib/data/gtfs/types';
 import { fetchVehiclePositions } from '$lib/data/live/gtfsRtClient';
 import { DEFAULT_CONFIG } from '$lib/domain/config';
 import { reconcileWithLive } from '$lib/domain/reconcile';
+import { measurePolyline, type MeasuredPolyline } from '$lib/domain/shapeProjection';
+import type { Vehicle } from '$lib/domain/types';
 
 import { getActiveTrips } from './queries/activeTrips';
+import { getShapesForTrips } from './queries/shapes';
 import { ensureDb, state } from './state';
 
 // ---------------------------------------------------------------------------
@@ -89,16 +92,19 @@ export async function tickLive(): Promise<void> {
     if (feedId !== state.currentFeedId) return;
     const nowMs = Date.now();
     const tz = state.currentFeedTz ?? 'UTC';
+    const db = await ensureDb();
     const active = getActiveTrips(
-      await ensureDb(),
+      db,
       tz,
       nowMs,
       LIVE_RECONCILE_LOOKBACK_MIN,
       LIVE_RECONCILE_LOOKAHEAD_MIN,
     );
+    const shapesByCohort = buildShapesByCohort(db, active);
     const { vehicles, stats } = reconcileWithLive(active, snap.vehicles, {
       nowMs,
       timezone: tz,
+      shapesByCohort,
     });
     const payload: ReconciledSnapshot = {
       vehicles,
@@ -147,4 +153,39 @@ export async function subscribeReconciled(
 /** Latest broadcast payload, or null before the first successful poll. */
 export function getReconciledSnapshot(): ReconciledSnapshot | null {
   return lastSnapshot;
+}
+
+/** Build one representative `MeasuredPolyline` per `(routeId, dir)` cohort
+ *  for the active set, used by the reconciler's route-order pairing.
+ *
+ *  Picks the first tripId per cohort, looks up its shape via
+ *  `getShapesForTrips` (worker shape cache hits keep this cheap on
+ *  steady-state polls), and measures it. Cohorts with no usable shape
+ *  are absent from the result map; the reconciler falls back to
+ *  greedy-by-timing for those.
+ *
+ *  Caching: `MeasuredPolyline` could be cached per `shape_id` too, but
+ *  the per-poll cost of `measurePolyline` (one Haversine per vertex) is
+ *  ~µs even for the longest Cluj shapes. Skip the optimisation until
+ *  measurement says otherwise. */
+function buildShapesByCohort(
+  db: Awaited<ReturnType<typeof ensureDb>>,
+  active: readonly Vehicle[],
+): Map<string, MeasuredPolyline> {
+  const cohortToTripId = new Map<string, string>();
+  for (const v of active) {
+    if (v.directionId !== 0 && v.directionId !== 1) continue;
+    if (!v.tripId) continue;
+    const key = `${v.route.id}|${v.directionId}`;
+    if (!cohortToTripId.has(key)) cohortToTripId.set(key, v.tripId);
+  }
+  if (cohortToTripId.size === 0) return new Map();
+  const tripShapes = getShapesForTrips(db, Array.from(cohortToTripId.values()));
+  const out = new Map<string, MeasuredPolyline>();
+  for (const [key, tripId] of cohortToTripId) {
+    const poly = tripShapes[tripId];
+    if (!poly || poly.length < 2) continue;
+    out.set(key, measurePolyline(poly));
+  }
+  return out;
 }

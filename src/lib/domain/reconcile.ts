@@ -40,12 +40,19 @@
 import type { LiveVehicleObservation } from '$lib/data/live/gtfsRtClient';
 import type { Vehicle } from './types';
 import { minSinceMidnightInTz, timeToMinutes } from './pipeline/timeUtils';
+import { projectOnPolyline, type MeasuredPolyline } from './shapeProjection';
 
 const TOLERANCE_FLOOR_MIN = 1;
 const TOLERANCE_CEILING_MIN = 30;
 const LOCAL_WINDOW_MIN = 60;
 const LOCAL_WINDOW_FALLBACK_MIN = 240;
 const MIN_HEADWAY_SAMPLES = 2;
+
+/** When route-order pair lands a (sched, live) match whose projected
+ *  positions disagree by more than this, treat the no-overtake
+ *  invariant as broken for the cohort (detour, terminus turnaround,
+ *  bad GPS) and fall back to greedy-by-timing for that cohort. */
+const ROUTE_ORDER_IMPLAUSIBLE_M = 2_000;
 
 export interface ReconcileStats {
   /** Scheduled rows upgraded to `kind: 'reconciled'`. */
@@ -71,6 +78,18 @@ export interface ReconcileOptions {
    *  `nowMs` is supplied. When omitted the reconciler falls back to a
    *  fixed ±5 min tolerance. */
   timezone?: string;
+  /** Optional shape lookup keyed by `${routeId}|${directionId}`. When a
+   *  cohort's shape is provided AND `nowMs`+`timezone` are set, the
+   *  reconciler matches by route order (sort scheduled by start time
+   *  asc + live obs by projected `distAlongM` desc, pair in sequence)
+   *  instead of greedy-by-timing-delta. Captures the physical truth
+   *  that buses on the same `(route, dir)` don't overtake each other,
+   *  which timing-only matching can violate on high-frequency lines.
+   *  Falls back to greedy-by-timing per cohort when the shape is
+   *  absent or when the route-order pairing is implausible (any pair's
+   *  expected-vs-actual distance disagrees by more than
+   *  `ROUTE_ORDER_IMPLAUSIBLE_M`). */
+  shapesByCohort?: ReadonlyMap<string, MeasuredPolyline>;
 }
 
 export function reconcileWithLive(
@@ -86,85 +105,64 @@ export function reconcileWithLive(
   // kind:'scheduled' rows that carry the new match-key fields are
   // eligible — anything already promoted is left alone (idempotent),
   // and rows missing tripStartMin / directionId are skipped (defensive
-  // for stale data shapes).
-  const byKey = new Map<string, Array<{ idx: number; v: Vehicle; tripStartMin: number }>>();
+  // for stale data shapes). `tripEndMin` (= scheduledArrival on
+  // active-trips Vehicles) feeds the route-order pairing's linear
+  // time interpolation; falls back to `tripStartMin` (zero duration)
+  // when scheduledArrival is missing, which degrades route-order to
+  // "everyone is at origin" and then matches by timing only.
+  const byKey = new Map<string, SchedEntry[]>();
   scheduled.forEach((v, idx) => {
     if (v.kind !== 'scheduled') return;
     const dir = v.schedule.directionId;
     const start = v.schedule.tripStartMin;
     if ((dir !== 0 && dir !== 1) || typeof start !== 'number') return;
+    const end = v.schedule.scheduledArrival ?? start;
     const key = `${v.route.id}|${dir}`;
     const list = byKey.get(key) ?? [];
-    list.push({ idx, v, tripStartMin: start });
+    list.push({ idx, v, tripStartMin: start, tripEndMin: end });
     byKey.set(key, list);
   });
 
-  // Cache tolerance per (routeId, directionId) so we don't recompute
-  // the median for every observation on the same route.
-  const toleranceCache = new Map<string, number>();
-  function toleranceFor(key: string): number {
-    const cached = toleranceCache.get(key);
-    if (cached != null) return cached;
-    const list = byKey.get(key);
-    const tol = computeTolerance(list?.map((e) => e.tripStartMin) ?? [], nowMinSinceMidnight);
-    toleranceCache.set(key, tol);
-    return tol;
-  }
-
-  // Bipartite-style greedy assignment:
-  //   1. Enumerate ALL (live, sched) pairs that fall within the
-  //      cohort's adaptive tolerance, recording the delta.
-  //   2. Sort by delta ascending so the strongest matches claim their
-  //      slots first.
-  //   3. Greedy walk: each live obs and each scheduled row participate
-  //      in at most one match. A perfect (delta=0) pairing therefore
-  //      always wins over a sloppy (delta=tol) pairing fighting for the
-  //      same scheduled slot, no matter the iteration order of `live`.
-  // This is strictly ≥ the previous first-iteration-wins variant; it
-  // never loses a match the old code would have made, and recovers
-  // dropped perfect matches in the common "two buses claim the same
-  // sched slot" situation observed on high-frequency lines.
-  type Pair = { obs: LiveVehicleObservation; schedIdx: number; delta: number };
-  const pairs: Pair[] = [];
-  let ambiguous = 0;
+  // Group live observations into the same cohort keys + parse start
+  // times once. Live obs whose cohort has no scheduled siblings are
+  // dropped here (the orphan-emission pass below will still consider
+  // them — same gate as before).
+  const liveByKey = new Map<string, LiveEntry[]>();
   for (const obs of live) {
-    const liveStart = parseLiveStartMin(obs);
-    if (liveStart == null) continue;
+    const startMin = parseLiveStartMin(obs);
+    if (startMin == null) continue;
     const dir = obs.directionId;
     if (dir !== 0 && dir !== 1) continue;
     const key = `${Number(obs.routeId)}|${dir}`;
-    const candidates = byKey.get(key);
-    if (!candidates || candidates.length === 0) continue;
-
-    const tol = toleranceFor(key);
-    let inTol = 0;
-    let minDelta = Infinity;
-    for (const c of candidates) {
-      const delta = Math.abs(c.tripStartMin - liveStart);
-      if (delta > tol) continue;
-      pairs.push({ obs, schedIdx: c.idx, delta });
-      inTol += 1;
-      if (delta < minDelta) minDelta = delta;
-    }
-    // Telemetry only: count obs that had ≥2 candidates at the same
-    // closest delta — we still resolve via the global sort below.
-    if (inTol >= 2) {
-      let tiedAtMin = 0;
-      for (const c of candidates) {
-        if (Math.abs(c.tripStartMin - liveStart) === minDelta) tiedAtMin += 1;
-      }
-      if (tiedAtMin > 1) ambiguous += 1;
-    }
+    if (!byKey.has(key)) continue;
+    const list = liveByKey.get(key) ?? [];
+    list.push({ obs, startMin });
+    liveByKey.set(key, list);
   }
-  pairs.sort((a, b) => a.delta - b.delta);
 
+  // Per-cohort matching: try route-order pairing when a shape is
+  // available, fall back to greedy-by-timing-delta otherwise (or when
+  // route-order produces an implausible pairing). Cohorts are disjoint
+  // (different routes / directions), so per-cohort processing is
+  // identical in outcome to a global pair-then-greedy walk.
   const matchByScheduledIdx = new Map<number, LiveVehicleObservation>();
   const matchedLiveObs = new Set<LiveVehicleObservation>();
-  for (const p of pairs) {
-    if (matchByScheduledIdx.has(p.schedIdx)) continue;
-    if (matchedLiveObs.has(p.obs)) continue;
-    matchByScheduledIdx.set(p.schedIdx, p.obs);
-    matchedLiveObs.add(p.obs);
+  let ambiguous = 0;
+  for (const [key, scheds] of byKey) {
+    const lives = liveByKey.get(key);
+    if (!lives || lives.length === 0) continue;
+    const tol = computeTolerance(scheds.map((e) => e.tripStartMin), nowMinSinceMidnight);
+    const shape = options.shapesByCohort?.get(key);
+    const useRouteOrder =
+      shape != null && nowMinSinceMidnight != null && lives.length >= 1 && scheds.length >= 1;
+    const pairings = useRouteOrder
+      ? pairCohortRouteOrder(scheds, lives, tol, shape, nowMinSinceMidnight)
+      : pairCohortGreedyByTiming(scheds, lives, tol);
+    for (const p of pairings.pairs) {
+      matchByScheduledIdx.set(p.schedIdx, p.obs);
+      matchedLiveObs.add(p.obs);
+    }
+    ambiguous += pairings.ambiguous;
   }
 
   let matched = 0;
@@ -356,4 +354,159 @@ export function computeTolerance(
 function clampTolerance(value: number): number {
   if (!Number.isFinite(value) || value <= 0) return TOLERANCE_FLOOR_MIN;
   return Math.max(TOLERANCE_FLOOR_MIN, Math.min(TOLERANCE_CEILING_MIN, value));
+}
+
+// ---------------------------------------------------------------------------
+// Cohort-level matchers. Each takes one (route, dir) cohort's scheduled
+// rows and live observations and returns the matched pairs (plus an
+// `ambiguous` telemetry count). The outer reconciler aggregates results
+// across cohorts.
+// ---------------------------------------------------------------------------
+
+type SchedEntry = {
+  idx: number;
+  v: Vehicle;
+  tripStartMin: number;
+  tripEndMin: number;
+};
+type LiveEntry = { obs: LiveVehicleObservation; startMin: number };
+type CohortMatch = {
+  pairs: Array<{ schedIdx: number; obs: LiveVehicleObservation }>;
+  ambiguous: number;
+};
+
+/** Today's behaviour, extracted: enumerate all (live, sched) pairs
+ *  within tolerance, sort by `|delta|` ascending, greedy walk. Each
+ *  live obs and each scheduled row participate in at most one match.
+ *  Used as the fallback when no shape is available or when route-order
+ *  pairing produces an implausible result. */
+function pairCohortGreedyByTiming(
+  scheds: readonly SchedEntry[],
+  lives: readonly LiveEntry[],
+  tol: number,
+): CohortMatch {
+  type Pair = { obs: LiveVehicleObservation; schedIdx: number; delta: number };
+  const pairs: Pair[] = [];
+  let ambiguous = 0;
+  for (const { obs, startMin } of lives) {
+    let inTol = 0;
+    let minDelta = Infinity;
+    for (const c of scheds) {
+      const delta = Math.abs(c.tripStartMin - startMin);
+      if (delta > tol) continue;
+      pairs.push({ obs, schedIdx: c.idx, delta });
+      inTol += 1;
+      if (delta < minDelta) minDelta = delta;
+    }
+    if (inTol >= 2) {
+      let tiedAtMin = 0;
+      for (const c of scheds) {
+        if (Math.abs(c.tripStartMin - startMin) === minDelta) tiedAtMin += 1;
+      }
+      if (tiedAtMin > 1) ambiguous += 1;
+    }
+  }
+  pairs.sort((a, b) => a.delta - b.delta);
+  const result: CohortMatch = { pairs: [], ambiguous };
+  const usedSched = new Set<number>();
+  const usedObs = new Set<LiveVehicleObservation>();
+  for (const p of pairs) {
+    if (usedSched.has(p.schedIdx) || usedObs.has(p.obs)) continue;
+    usedSched.add(p.schedIdx);
+    usedObs.add(p.obs);
+    result.pairs.push({ schedIdx: p.schedIdx, obs: p.obs });
+  }
+  return result;
+}
+
+/** Route-order pairing. Captures the no-overtake invariant: buses on
+ *  the same (route, dir) don't pass each other in normal operation, so
+ *  the earliest scheduled trip should pair with the live obs that's
+ *  furthest along the shape.
+ *
+ *  Deliberately ignores the timing tolerance for pair eligibility —
+ *  the whole motivation for route-order is that the operator's
+ *  reported `start_time` can lie, and timing-only matching mis-pairs
+ *  in that case. The cohort itself (same route + direction) is the
+ *  scope guard; getActiveTrips already filters scheduled trips to the
+ *  "currently in transit" window upstream.
+ *
+ *  Algorithm:
+ *    1. Project every live obs onto the shape; record `distAlongM`.
+ *    2. Compute each scheduled trip's expected `distAlongM` at `now`
+ *       via linear time interpolation:
+ *         expected = (now - tripStartMin) / (tripEndMin - tripStartMin)
+ *                  × shape.totalDistM
+ *       clamped to [0, totalDistM].
+ *    3. Sort scheduled by `tripStartMin` ascending (earliest = furthest
+ *       along expected).
+ *    4. Sort live by `distAlongM` descending (furthest along first).
+ *    5. Pair in sequence (min(n_sched, n_live) pairs).
+ *    6. If any pair's expected-vs-actual distance disagrees by more
+ *       than `ROUTE_ORDER_IMPLAUSIBLE_M`, the no-overtake invariant
+ *       likely doesn't hold for this cohort (detour, terminus
+ *       turnaround, bad GPS). Fall back to greedy-by-timing for the
+ *       whole cohort. */
+function pairCohortRouteOrder(
+  scheds: readonly SchedEntry[],
+  lives: readonly LiveEntry[],
+  tol: number,
+  shape: MeasuredPolyline,
+  nowMin: number,
+): CohortMatch {
+  if (shape.points.length < 2 || shape.totalDistM <= 0) {
+    return pairCohortGreedyByTiming(scheds, lives, tol);
+  }
+  const liveDist = lives.map((l) => ({
+    obs: l.obs,
+    distAlongM: projectOnPolyline(
+      { lat: l.obs.lat, lon: l.obs.lon },
+      shape.points,
+    ).distAlongM,
+  }));
+  const schedDist = scheds.map((s) => {
+    const duration = s.tripEndMin - s.tripStartMin;
+    const expectedDistAlongM =
+      duration > 0
+        ? Math.max(
+            0,
+            Math.min(
+              shape.totalDistM,
+              ((nowMin - s.tripStartMin) / duration) * shape.totalDistM,
+            ),
+          )
+        : 0;
+    return { idx: s.idx, tripStartMin: s.tripStartMin, expectedDistAlongM };
+  });
+  // Sort schedule by start asc (earliest first → furthest along expected).
+  schedDist.sort((a, b) => a.tripStartMin - b.tripStartMin);
+  // Sort live by distAlongM desc (furthest along first).
+  const sortedLive = [...liveDist].sort((a, b) => b.distAlongM - a.distAlongM);
+
+  const n = Math.min(schedDist.length, sortedLive.length);
+  const pairs: Array<{
+    schedIdx: number;
+    obs: LiveVehicleObservation;
+    distDelta: number;
+  }> = [];
+  for (let i = 0; i < n; i++) {
+    const s = schedDist[i];
+    const l = sortedLive[i];
+    pairs.push({
+      schedIdx: s.idx,
+      obs: l.obs,
+      distDelta: Math.abs(s.expectedDistAlongM - l.distAlongM),
+    });
+  }
+
+  // Implausibility check: a single bad pair signals the invariant
+  // doesn't hold; fall back rather than ship a wrong pairing.
+  if (pairs.some((p) => p.distDelta > ROUTE_ORDER_IMPLAUSIBLE_M)) {
+    return pairCohortGreedyByTiming(scheds, lives, tol);
+  }
+
+  return {
+    pairs: pairs.map((p) => ({ schedIdx: p.schedIdx, obs: p.obs })),
+    ambiguous: 0,
+  };
 }
