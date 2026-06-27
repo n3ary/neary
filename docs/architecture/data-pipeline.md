@@ -17,8 +17,12 @@ a daily GitHub Action (00:30 UTC) that:
    `schemas/feeds.schema.json`).
 7. Force-pushes `outputs/` to the `binaries` branch.
 
-All published artifacts are served via jsDelivr:
-`https://cdn.jsdelivr.net/gh/ciotlosm/neary-gtfs@binaries/feeds.json`
+All published artifacts are served raw from the `binaries` branch on GitHub:
+`https://raw.githubusercontent.com/ciotlosm/neary-gtfs/binaries/feeds.json`
+
+A former plan to front them via jsDelivr was dropped because
+`cdn.jsdelivr.net` intermittently 502s on this branch's binary files
+even when the JSON is cached fine.
 
 ## App side: cold start
 
@@ -33,7 +37,7 @@ PWA boot
    │  GTFS worker: setFeed(id)
    │      │
    │      ├─ already in OPFS + hash matches? open it (warm, <100ms)
-   │      └─ else: stream sqlite_gz from jsDelivr, write OPFS, open it
+   │      └─ else: stream sqlite_gz from `raw.githubusercontent.com/<repo>/binaries/...`, write OPFS, open it
    │
    ├─ getStationBoardsNear(lat, lon, radius)
    │      │ joins stops + stop_times + trips + active services

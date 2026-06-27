@@ -3,10 +3,10 @@
  *
  * Architecture (plan §3):
  *   - Runs in a dedicated worker so SQL queries never block the UI thread.
- *   - First launch downloads <id>.sqlite3.gz from the neary-gtfs binaries
- *     branch (fronted by jsDelivr), decompresses, and imports into the
- *     OPFS SAH pool. Subsequent launches open the OPFS-resident file
- *     directly.
+ *   - First launch downloads <id>.sqlite3.gz from the neary-gtfs
+ *     `binaries` branch (served via raw.githubusercontent.com),
+ *     decompresses, and imports into the OPFS SAH pool. Subsequent
+ *     launches open the OPFS-resident file directly.
  *   - The OPFS-SAHPool VFS works without COOP/COEP headers (it uses sync
  *     file APIs that are worker-only and don't need SharedArrayBuffer).
  *

@@ -53,7 +53,8 @@ Drill-downs (path-based for shareability + iOS back button):
 
 ## Data flow at a glance
 
-1. PWA loads → fetch [feeds.json](../specs/feeds-json.md) from jsDelivr.
+1. PWA loads → fetch [feeds.json](../specs/feeds-json.md) from the
+   `binaries` branch on GitHub (via `raw.githubusercontent.com`).
 2. User's feed selection (or auto-pick by GPS bbox) → worker downloads the feed's
    `.sqlite3.gz` to OPFS, opens it.
 3. Page renders `StationCard`s from the worker's `getStationBoardsNear` /

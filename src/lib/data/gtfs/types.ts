@@ -30,9 +30,10 @@ export interface UpcomingDeparture {
 export interface GtfsRepo {
   /**
    * Bind the repo to a feed. First call for a given feed.id seeds the OPFS
-   * file (downloads its sqlite_gz from jsDelivr + decompresses + opens).
-   * Subsequent calls with the same id are a no-op; calls with a different
-   * id close the current DB and re-bootstrap against the new one.
+   * file (downloads its sqlite_gz from `raw.githubusercontent.com` +
+   * decompresses + opens). Subsequent calls with the same id are a no-op;
+   * calls with a different id close the current DB and re-bootstrap
+   * against the new one.
    *
    * Throws (rejects) with a descriptive message when the seed download or
    * open fails — the caller (typically the +layout effect) surfaces it via

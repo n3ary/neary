@@ -10,7 +10,8 @@ never picks an agency — they pick a feed.
 ## Where feeds come from
 
 The [neary-gtfs](https://github.com/ciotlosm/neary-gtfs) repo publishes
-[feeds.json](../specs/feeds-json.md) via jsDelivr. The schema and per-feed
+[feeds.json](../specs/feeds-json.md) to the `binaries` branch on GitHub,
+read by the app via `raw.githubusercontent.com`. The schema and per-feed
 fields are documented there.
 
 ## Identity

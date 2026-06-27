@@ -2,7 +2,7 @@
 
 The app-facing catalog published by the [neary-gtfs](https://github.com/ciotlosm/neary-gtfs) repo.
 
-**Live URL**: `https://cdn.jsdelivr.net/gh/ciotlosm/neary-gtfs@binaries/feeds.json`
+**Live URL**: `https://raw.githubusercontent.com/ciotlosm/neary-gtfs/binaries/feeds.json`
 
 **Schema** (authoritative, Ajv-validated at build time):
 `https://github.com/ciotlosm/neary-gtfs/blob/main/schemas/feeds.schema.json`
@@ -67,8 +67,9 @@ This doc captures the contract from the app's perspective.
 
 ## Cache headers
 
-jsDelivr serves with HTTP caching. The app should refetch with
-`If-None-Match` so the CDN returns 304 cheaply. See [multi-feed-data-lifecycle.md](multi-feed-data-lifecycle.md#freshness-check).
+`raw.githubusercontent.com` serves with `cache-control: max-age=300` and an
+ETag. The app should refetch with `If-None-Match` so GitHub returns 304
+cheaply. See [multi-feed-data-lifecycle.md](multi-feed-data-lifecycle.md#freshness-check).
 
 ## When this contract changes
 

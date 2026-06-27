@@ -5,8 +5,8 @@
  * Without this, every component that needs the registry would re-fetch.
  *
  * No persistence — the registry is small (~few KB) and effectively static
- * for the lifetime of an app session. jsDelivr's 12h CDN cache + browser
- * cache handle repeat-load latency.
+ * for the lifetime of an app session. raw.githubusercontent.com's ~5-min
+ * edge cache + browser cache handle repeat-load latency.
  */
 
 import { fetchFeeds, type Feed } from '$lib/data/feeds';

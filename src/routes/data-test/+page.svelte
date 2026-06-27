@@ -85,7 +85,8 @@
     <Typography variant="h2">GTFS pipeline test</Typography>
     <Typography variant="body2" class="text-[color:var(--color-fg-muted)]">
       First-launch: downloads <code>{DEMO_FEED_ID}.sqlite3.gz</code> from
-      jsDelivr, decompresses, imports into OPFS via SAH pool, runs real
+      the neary-gtfs <code>binaries</code> branch on GitHub, decompresses,
+      imports into OPFS via SAH pool, runs real
       GTFS queries in a Web Worker. Subsequent visits skip the download.
     </Typography>
   </header>

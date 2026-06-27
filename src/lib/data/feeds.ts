@@ -1,7 +1,7 @@
 /*
  * Feed registry — fetches the app-facing feeds.json catalog from neary-gtfs.
- * The registry is published nightly to the binaries branch and fronted by
- * jsDelivr (CORS-open, 12h CDN cache).
+ * The registry is published nightly to the `binaries` branch and fetched
+ * via `raw.githubusercontent.com` (CORS-open, ~5-min edge cache).
  *
  * Replaces the v1 `agencies.ts` / agency.json registry. Each entry is a
  * publishable transit feed: either a Transitous mirror (bucuresti-ilfov),

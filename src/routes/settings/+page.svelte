@@ -1,7 +1,7 @@
 <!--
   Settings — user preferences. Theme picker, behavior toggles, the feed
-  selector (sources feeds.json from the neary-gtfs binaries branch via
-  jsDelivr), and a tiny Advanced section with the app version + when this
+  selector (sources feeds.json from the neary-gtfs binaries branch on
+  GitHub), and a tiny Advanced section with the app version + when this
   client first saw it. A dedicated /settings/advanced view will land
   alongside storage / debug toggles in a later phase.
 -->
@@ -122,7 +122,7 @@
           Pick one. The schedule database downloads once and is cached for
           offline use. Feeds are published by
           <a href="https://github.com/ciotlosm/neary-gtfs" target="_blank" rel="noopener" class="underline">neary-gtfs</a>
-          and served via jsDelivr.
+          to the <code>binaries</code> branch.
         </Typography>
 
         {#if feedsStore.error}
