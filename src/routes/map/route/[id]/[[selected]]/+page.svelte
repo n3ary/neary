@@ -560,16 +560,17 @@
       currentView.stops.forEach((s) => {
         const isOrigin = originStopId != null && s.stopId === originStopId;
         const m = Lref.circleMarker([s.lat, s.lon], {
-          // Origin-stop highlight needs to sit ABOVE the route's
-          // 5 px polyline, which is drawn in overlayPane (z=400) and
-          // would otherwise paint over the stop's centre. Punt the
-          // origin marker into markerPane (z=600) so the green dot
-          // is uninterrupted. Regular stops stay in overlayPane and
-          // happily get crossed by the route line as before.
-          pane: isOrigin ? 'markerPane' : undefined,
-          radius: isOrigin ? 8 : 5,
+          // Stops are already drawn ON TOP of the route polyline:
+          // both live in overlayPane, the polyline is added by this
+          // effect FIRST and the stops are appended AFTER, so SVG
+          // insertion order puts the stop circles above the line. No
+          // pane gymnastics needed — earlier attempts to hoist the
+          // origin into markerPane / a custom pane broke the marker
+          // entirely because Leaflet's SVG renderer isn't on
+          // markerPane by default.
+          radius: isOrigin ? 9 : 5,
           color: '#fff',
-          weight: isOrigin ? 2.5 : 1.5,
+          weight: isOrigin ? 3 : 1.5,
           // Hardcoded green hex (not var(--color-success)) because
           // Leaflet's SVG renderer doesn't parse CSS custom properties
           // or oklch() — keep parity with the GPS-good ring used in
