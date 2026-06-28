@@ -302,6 +302,24 @@
   const weekTodaySet = $derived<Set<number>>(
     todayCol === 'weekday' ? weekdaySet : todayCol === 'saturday' ? saturdaySet : sundaySet,
   );
+  // Today-column `next` / `last` anchors — same semantics as
+  // `schedule.tripPhase` on origin rows (see docs/concepts/vehicle.md).
+  // `next` is the soonest today-time at or after `nowMin`; `last` is
+  // the latest today-time strictly before `nowMin`. Both are null
+  // when there's no such time (e.g. service hasn't started or has
+  // wrapped past terminus).
+  const weekNextTime = $derived<number | null>(
+    weekAllTimes.find((t) => weekTodaySet.has(t) && t >= nowMin) ?? null,
+  );
+  const weekLastTime = $derived.by<number | null>(() => {
+    let found: number | null = null;
+    for (const t of weekAllTimes) {
+      if (!weekTodaySet.has(t)) continue;
+      if (t < nowMin) found = t;
+      else break;
+    }
+    return found;
+  });
   // Index of the first time in today's column that is ≥ nowMin.
   // When no such time exists (service over for today), collapse to 0
   // so the full table is visible rather than collapsing to an empty tail.
@@ -473,7 +491,14 @@
             ] as cell (cell.col)}
               {@const isToday = cell.col === todayCol}
               {@const isPast = isToday && t < nowMin - 1}
-              <td class={`${isToday ? 'today' : 'other'} ${isPast ? 'past' : ''}`}>
+              {@const isNext = isToday && cell.has && t === weekNextTime}
+              {@const isLast = isToday && cell.has && t === weekLastTime}
+              <td class={[
+                isToday ? 'today' : 'other',
+                isPast && !isLast ? 'past' : '',
+                isNext ? 'next' : '',
+                isLast ? 'last' : '',
+              ].filter(Boolean).join(' ')}>
                 {cell.has ? formatHHMM(t) : '—'}
               </td>
             {/each}
@@ -767,6 +792,22 @@
     text-decoration: line-through;
     text-decoration-color: color-mix(in srgb, var(--color-fg-muted) 50%, transparent);
     opacity: 0.7;
+  }
+  /* `next` and `last` anchors mirror `schedule.tripPhase` on origin
+     rows (see docs/concepts/vehicle.md). `next` is the imminent
+     departure — bold accent so a rider scanning the day's grid sees
+     "now" instantly. `last` is the most recent past departure —
+     kept in the accent colour but struck through, distinct from
+     fully-past rows which fade to muted. */
+  .week-table .next {
+    color: var(--color-primary);
+    font-weight: 700;
+  }
+  .week-table .last {
+    color: var(--color-primary);
+    text-decoration: line-through;
+    text-decoration-color: var(--color-primary);
+    opacity: 0.85;
   }
   .week-table .week-expand-row td {
     padding: 0;
