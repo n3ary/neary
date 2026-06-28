@@ -82,4 +82,15 @@ describe('predictArrivalAlongShape', () => {
     // clamps confidence to 'low'.
     expect(out.confidence).toBe('low');
   });
+
+  it('adds dwell time for intermediate stops when provided', () => {
+    const out = predictArrivalAlongShape(inputs({
+      vehicleSpeedMs: 10, // 36 km/h
+      dwellStopDistAlongM: [3_000, 4_000, 5_000],
+      dwellSecondsPerStop: 20,
+    }));
+    // Base travel: 3 km at 36 km/h = 5 min.
+    // Intermediate dwell: stops at 3 km + 4 km only = 40 s = 0.667 min.
+    expect(out.minutes).toBeCloseTo(5 + 40 / 60, 1);
+  });
 });

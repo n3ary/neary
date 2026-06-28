@@ -40,3 +40,32 @@ export function getStopsAlongTrip(db: Database, tripId: string): ScheduleTripSto
     distAlongM: r.shape_dist_traveled ?? undefined,
   }));
 }
+
+export function getStopDistancesForTrips(
+  db: Database,
+  tripIds: readonly string[],
+): Record<string, number[]> {
+  if (tripIds.length === 0) return {};
+  const uniq = Array.from(new Set(tripIds));
+  const ph = uniq.map(() => '?').join(',');
+  type Row = {
+    trip_id: string;
+    stop_sequence: number;
+    shape_dist_traveled: number | null;
+  };
+  const rows = selectAll<Row>(
+    db,
+    `SELECT trip_id, stop_sequence, shape_dist_traveled
+     FROM stop_times
+     WHERE trip_id IN (${ph})
+       AND shape_dist_traveled IS NOT NULL
+     ORDER BY trip_id, stop_sequence ASC;`,
+    uniq,
+  );
+  const out: Record<string, number[]> = {};
+  for (const r of rows) {
+    if (!(r.trip_id in out)) out[r.trip_id] = [];
+    out[r.trip_id].push(r.shape_dist_traveled as number);
+  }
+  return out;
+}

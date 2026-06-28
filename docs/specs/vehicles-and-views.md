@@ -39,7 +39,7 @@ assembly with a 24-hour window scoped to one route.
 | From | Tap target | Lands on |
 |---|---|---|
 | Stations card route badge | route id | `/schedule/route/[id]_[direction]` (path-based; the picked direction is encoded as `_0` or `_1`) |
-| Stations card map icon | trip id | `/map/route/[id]_[direction]/[tripId]` (selected trip is a path segment) |
+| Stations card map icon | trip id | `/map/route/[id]_[direction]/[tripId]?from=[stationId]` (selected trip is a path segment; `?from` carries the rider's origin stop) |
 | Favorites saved route | schedule icon | `/schedule/route/[id]_0` |
 | Favorites saved route | map icon | `/map/route/[id]_0` |
 | Map vehicle marker | marker | navigates to `/map/route/[id]_[direction]/[tripId]` with the new trip in the path |
@@ -48,6 +48,22 @@ The favorites card body is intentionally not tappable — the badge is
 identity-only (mirrors VehicleCard). Navigation goes through the dedicated
 map / schedule icon buttons, so a quick tap on the colored badge doesn't
 lead anywhere unexpected.
+
+### The `?from=<stopId>` map contract
+
+When the map view is entered from a station card, the URL carries
+`?from=<stopId>` so the map knows which stop the rider was watching:
+
+- The matching stop marker is painted green ("this is the stop I was at").
+- Each vehicle popup gains an `arriving in N min` row computed from the
+  current GPS position and the from-stop. The row is dropped once the
+  vehicle has passed the from-stop, and is suppressed for
+  scheduled-at-origin bubbles (whose popup already shows `in X min` from
+  `tripStartMin`).
+
+Without `?from=`, the map renders standard stop markers and the popup
+shows only the countdown / `left at HH:MM` row appropriate to the
+vehicle's status. Implementation: [src/routes/map/route/[id]/[[selected]]/+page.svelte](../../src/routes/map/route/%5Bid%5D/%5B%5Bselected%5D%5D/+page.svelte).
 
 ## 2. Vehicle taxonomy
 
@@ -94,6 +110,19 @@ The board is a sorted, capped, filtered list of `Vehicle`s for one stop.
 Buckets, ordering and urgency colors are documented in
 [../concepts/arrival-buckets.md](../concepts/arrival-buckets.md).
 
+### Shared GPS ETA logic with the map
+
+GPS-backed station rows (`kind: 'tracked'` / `'gps-only'`) and the
+map popup `arriving in N min` line both go through one domain entry
+point: [`predictArrivalFromGps`](../../src/lib/domain/predictArrivalAlongShape.ts).
+It encapsulates the raw-GPS dead-reckon + per-segment + dwell walk so
+the two views can't disagree. Views MUST NOT call
+`deadReckonGpsAlongShape` + `predictArrivalAlongShape` themselves —
+doing so risks double extrapolation. Station feeds the predictor
+per-trip stop distances via the repo's `getStopDistancesForTrips`;
+the map feeds them inline from `getRouteMapView`. Non-GPS rows keep
+the schedule-based ETA.
+
 ### Map view bypasses the cap
 
 The map consumes the raw `Vehicle[]` for the route directly. No bucket cap,
@@ -138,11 +167,18 @@ The page uses Leaflet panes to control z-order without relying on render
 order:
 
 ```
-nearyVehicles (z=620) > markerPane (z=600, stops) > overlayPane (route shape) > tilePane
+tooltipPane (z=650, popups)
+  > nearyVehicles (z=620, vehicle badges + their debug overlay)
+  > nearyStopDebug (z=610, stop-id debug tooltips, debug mode only)
+  > markerPane (z=600, stop circles)
+  > overlayPane (route shape)
+  > tilePane
 ```
 
-So vehicle badges always render above stop markers; stop markers always
-render above the route polyline.
+Vehicle badges always render above stop markers; the `nearyStopDebug`
+pane sits below `nearyVehicles` so debug-mode station ids never cover
+the vehicle markers or their debug labels. Stop markers stay above the
+route polyline.
 
 ### Selected vehicle highlight
 

@@ -43,7 +43,8 @@
     buildTripShapePlan, predictPosition, predictPositionOnShape, predictPositionFromGps,
     type TripShapePlan,
   } from '$lib/domain/predictPosition';
-  import { predictArrivalAlongShape } from '$lib/domain/predictArrivalAlongShape';
+  import { predictArrivalFromGps } from '$lib/domain/predictArrivalAlongShape';
+  import { measurePolyline, projectOnPolyline } from '$lib/domain/shapeProjection';
   import { DEFAULT_FEED_SPEED_CONFIG } from '$lib/domain/speedCascade';
   import { clockToBucket, DEFAULT_TOD_PROFILE } from '$lib/domain/timeOfDay';
   import { feedsStore } from '$lib/stores/feedsStore.svelte';
@@ -262,36 +263,70 @@
       minSinceMidnightInTz(nowMs, tz),
       DEFAULT_TOD_PROFILE,
     );
+    const measuredShape = curView.shape.length >= 2 ? measurePolyline(curView.shape) : null;
+    const stopDistCache = new Map<string, number[]>();
+    const stopDistAlongM = (tripId: string, stops: RouteMapView['trips'][number]['stops']): number[] => {
+      const cached = stopDistCache.get(tripId);
+      if (cached) return cached;
+      if (!measuredShape) return [];
+      const out = stops.map((s) =>
+        typeof s.distAlongM === 'number'
+          ? s.distAlongM
+          : projectOnPolyline({ lat: s.lat, lon: s.lon }, measuredShape.points).distAlongM,
+      );
+      stopDistCache.set(tripId, out);
+      return out;
+    };
+    // Single GPS-anchored ETA call site for the popup `arriving in N min`
+    // row. Delegates the dead-reckon + per-segment + dwell walk to the
+    // shared domain helper used by station applyGpsEta, so the two views
+    // can never diverge. Schedule-only fallback (no GPS) uses the trip's
+    // own scheduled arrival at the from-stop.
     const computeArrivingInMin = (opts: {
-      lat: number;
-      lon: number;
-      scheduled: boolean;
+      rawGpsLat: number | null;
+      rawGpsLon: number | null;
+      scheduledAtOrigin: boolean;
+      etaSource: 'gps' | 'schedule';
       speedMs: number | null;
+      gpsAsOfMs: number | null;
       directionId: 0 | 1 | -1;
+      scheduledFromArrivalMin: number | null;
+      dwellStopDistAlongM: ReadonlyArray<number> | null;
     }): number | null => {
-      // Excluded cases:
-      //  - no from-stop selected,
-      //  - scheduled-next at origin (the popup already says 'in X min'
-      //    via the countdown row; an 'arriving in' line would be
-      //    confusing on a parked bus that hasn't departed yet).
-      //  - missing or too-short route shape (predictor would bail).
-      if (!fromTarget || opts.scheduled) return null;
-      if (curView.shape.length < 2) return null;
-      const p = predictArrivalAlongShape({
-        vehiclePos: { lat: opts.lat, lon: opts.lon },
-        stopPos: fromTarget,
+      if (!fromTarget || opts.scheduledAtOrigin) return null;
+      if (opts.etaSource === 'schedule') {
+        if (opts.scheduledFromArrivalMin == null) return null;
+        const m = opts.scheduledFromArrivalMin - nowMin;
+        return m > 0 ? m : null;
+      }
+      if (
+        curView.shape.length < 2 ||
+        opts.rawGpsLat == null ||
+        opts.rawGpsLon == null ||
+        opts.gpsAsOfMs == null
+      ) return null;
+      const { arrival } = predictArrivalFromGps({
+        obs: {
+          lat: opts.rawGpsLat,
+          lon: opts.rawGpsLon,
+          speedMs: opts.speedMs,
+          asOfMs: opts.gpsAsOfMs,
+        },
         polyline: curView.shape,
-        vehicleSpeedMs: opts.speedMs,
-        vehicleDirectionId: opts.directionId === -1 ? undefined : opts.directionId,
+        stopPos: fromTarget,
+        nowMs,
         todBucket: arrivingTodBucket,
         feedConfig: DEFAULT_FEED_SPEED_CONFIG,
+        vehicleDirectionId: opts.directionId === -1 ? undefined : opts.directionId,
+        dwellStopDistAlongM: opts.dwellStopDistAlongM ?? undefined,
+        dwellSecondsPerStop: 20,
+        ctx: {
+          feedConfig: DEFAULT_FEED_SPEED_CONFIG,
+          timezone: tz,
+          todProfile: DEFAULT_TOD_PROFILE,
+        },
       });
-      // Vehicle already past the stop → negative signedDist → negative
-      // minutes from predictArrivalAlongShape. Drop the row entirely
-      // in that case so the popup stops showing 'arriving in' once
-      // the bus has crossed the green marker. Round 0 up to null too
-      // (the marker is essentially at the stop, no remaining ETA).
-      return p.minutes > 0 ? Math.round(p.minutes) : null;
+      return arrival.minutes > 0 ? Math.round(arrival.minutes) : null;
     };
 
     // Hard cap on GPS-fix age before we stop showing the orphan marker
@@ -370,11 +405,18 @@
         gpsAsOfMs: reconciled?.position?.asOf ?? null,
         hasOriginTime: true,
         arrivingInMin: computeArrivingInMin({
-          lat: p.lat,
-          lon: p.lon,
-          scheduled: p.status === 'before' || p.status === 'at-origin',
+          rawGpsLat: reconciled?.position?.lat ?? null,
+          rawGpsLon: reconciled?.position?.lon ?? null,
+          scheduledAtOrigin: p.status === 'before' || p.status === 'at-origin',
+          etaSource: reconciled?.position ? 'gps' : 'schedule',
           speedMs: reconciled?.position?.speedMs ?? null,
+          gpsAsOfMs: reconciled?.position?.asOf ?? null,
           directionId: (reconciled?.directionId ?? (direction as 0 | 1)) as 0 | 1 | -1,
+          scheduledFromArrivalMin:
+            fromStopId == null
+              ? null
+              : (t.stops.find((s) => Number(s.stopId) === fromStopId)?.arrivalMin ?? null),
+          dwellStopDistAlongM: stopDistAlongM(t.tripId, t.stops),
         }),
       });
     }
@@ -413,11 +455,15 @@
         gpsAsOfMs: v.position.asOf,
         hasOriginTime: v.schedule?.tripStartMin != null,
         arrivingInMin: computeArrivingInMin({
-          lat: v.position.lat,
-          lon: v.position.lon,
-          scheduled: false,
+          rawGpsLat: v.position.lat,
+          rawGpsLon: v.position.lon,
+          scheduledAtOrigin: false,
+          etaSource: 'gps',
           speedMs: v.position.speedMs ?? null,
+          gpsAsOfMs: v.position.asOf,
           directionId: v.directionId ?? -1,
+          scheduledFromArrivalMin: null,
+          dwellStopDistAlongM: null,
         }),
       });
     }
@@ -583,6 +629,15 @@
         // always paint over stop circles, but below tooltipPane (650).
         const vehiclesPane = mapInstance.createPane('nearyVehicles');
         vehiclesPane.style.zIndex = '620';
+        // Stop debug-id tooltips live in their own pane below the
+        // vehicles pane (z=610 < nearyVehicles z=620) so vehicle
+        // badges and their debug overlays stay readable in debug
+        // mode and aren't covered by station ids. Tooltip pointer
+        // events are disabled too — riders can still tap stop
+        // circles through the label.
+        const stopDebugPane = mapInstance.createPane('nearyStopDebug');
+        stopDebugPane.style.zIndex = '610';
+        stopDebugPane.style.pointerEvents = 'none';
         // Future-resize listener (rotation, splitscreen, sidebar).
         if (typeof ResizeObserver !== 'undefined') {
           resizeObserver = new ResizeObserver(() => mapInstance?.invalidateSize());
@@ -720,6 +775,7 @@
             direction: 'right',
             offset: [4, 0],
             className: 'neary-stop-id-label',
+            pane: 'nearyStopDebug',
           });
         }
         m.addTo(sl);
@@ -1147,5 +1203,21 @@
         0 0 0 5px #111,
         0 0 0 9px rgba(17, 17, 17, 0.35);
     }
+  }
+
+  /* Stop debug-id tooltip (only rendered when userPrefs.showDebugIds
+     is on). Compact font + tight padding so the labels don't crowd
+     the route geometry, and so the vehicle markers + their own debug
+     labels (which paint above this pane) stay the eye's anchor. */
+  :global(.leaflet-tooltip.neary-stop-id-label) {
+    font: 600 8px/1.1 ui-monospace, SFMono-Regular, Menlo, monospace;
+    padding: 1px 3px;
+    background: rgba(255, 255, 255, 0.85);
+    border: none;
+    box-shadow: none;
+    color: #333;
+  }
+  :global(.leaflet-tooltip.neary-stop-id-label::before) {
+    display: none;
   }
 </style>

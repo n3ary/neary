@@ -188,6 +188,15 @@ export interface GtfsRepo {
   getStopsAlongTrip(tripId: string): Promise<ScheduleTripStop[]>;
 
   /**
+   * Batch variant used by station boards: trip_id -> ordered cumulative
+   * stop distances (metres) from stop_times.shape_dist_traveled.
+   * Trips missing the column (or all-null rows) are omitted.
+   */
+  getStopDistancesForTrips(
+    tripIds: string[],
+  ): Promise<Record<string, number[]>>;
+
+  /**
    * Departure times at the trip origin grouped by day-of-week
    * pattern: weekday (any Mon–Fri), saturday, sunday. Each list is
    * minutes-since-midnight, sorted ascending, deduped. Drives the

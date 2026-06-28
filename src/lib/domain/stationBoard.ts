@@ -22,9 +22,8 @@ import {
 } from './buckets';
 import { haversineMeters } from './distance';
 import { minSinceMidnightInTz } from './pipeline/timeUtils';
-import { predictArrivalAlongShape } from './predictArrivalAlongShape';
-import { deadReckonGpsAlongShape } from './predictPosition';
-import { measurePolyline, projectOnPolyline, type Polyline } from './shapeProjection';
+import { predictArrivalFromGps } from './predictArrivalAlongShape';
+import { projectOnPolyline, type Polyline } from './shapeProjection';
 import {
   DEFAULT_FEED_SPEED_CONFIG,
   type FeedSpeedConfig,
@@ -232,6 +231,10 @@ export interface AssembleLiveBoardInputs {
    *  Trips without a shape entry just keep their scheduled ETA.
    *  Pass `{}` to disable GPS-derived ETA altogether. */
   shapes: Record<string, Polyline>;
+  /** Per-trip ordered stop distances (`shape_dist_traveled`) used by
+   *  the per-segment + dwell ETA walk. Trips missing from this record
+   *  fall back to single-segment ETA. */
+  stopDistancesByTrip?: Record<string, number[]>;
   prefs: BoardPrefs;
   nowMs: number;
   /** Feed's IANA timezone, e.g. 'Europe/Bucharest'. Used uniformly by
@@ -264,6 +267,7 @@ export function assembleLiveBoard(input: AssembleLiveBoardInputs): BoardRow[] {
   const withGpsEta = applyGpsEta(merged, input.shapes, input.stop, shapesByRouteDir, {
     nowMs: input.nowMs,
     timezone: input.timezone,
+    stopDistancesByTrip: input.stopDistancesByTrip ?? {},
   });
   return assembleStationBoard(withGpsEta, input.stop, input.prefs, input.nowMs, input.timezone);
 }
@@ -445,6 +449,9 @@ export interface ApplyGpsEtaContext {
   /** Time-of-day profile (peak/night windows). Defaults to the
    *  Cluj-tuned profile. */
   todProfile?: TodProfile;
+  /** Optional trip_id -> ordered stop distances. Enables per-segment
+   *  dwell-aware walk in predictArrivalAlongShape. */
+  stopDistancesByTrip?: Record<string, number[]>;
 }
 
 /** Replace the schedule-based ETA on rows with a live position
@@ -484,6 +491,7 @@ export function applyGpsEta(
   const stopPos = { lat: stop.lat, lon: stop.lon };
   const feedConfig = ctx.feedConfig ?? DEFAULT_FEED_SPEED_CONFIG;
   const todProfile = ctx.todProfile ?? DEFAULT_TOD_PROFILE;
+  const stopDistancesByTrip = ctx.stopDistancesByTrip ?? {};
   const todBucket = clockToBucket(minSinceMidnightInTz(ctx.nowMs, ctx.timezone), todProfile);
   return vehicles.map<Vehicle>((v) => {
     if (v.kind !== 'tracked' && v.kind !== 'gps-only') return v;
@@ -504,45 +512,26 @@ export function applyGpsEta(
         proj.distAlongM < AT_ORIGIN_DIST_M && speed < AT_ORIGIN_SPEED_MS;
       if (atOrigin && v.eta != null) return v;
     }
-    // Dead-reckon the GPS fix forward along the shape so a stale
-    // observation doesn't anchor a bus that has already moved past
-    // the stop. SAME helper as `predictPositionFromGps` (the map
-    // view's marker): both pipelines now derive their "where is the
-    // bus right now?" from one place, so map and station can never
-    // disagree about it again (see issue #86).
-    //
-    // When the fix is older than `VERY_STALE_MS` the helper returns
-    // null — same contract as the map, which drops the marker. Here
-    // we fall back to the raw observation: the station view stays
-    // populated with a stale-but-best-available ETA rather than
-    // suddenly emptying. The row's confidence drops out of the
-    // `predictArrivalAlongShape` cascade naturally because the
-    // very-stale window is also where the cascade's vehicle-speed
-    // tier loses authority.
-    const measured = measurePolyline(polyline);
-    const deadReckoned = deadReckonGpsAlongShape(
-      {
+    // Single domain entry point for GPS-anchored arrival prediction.
+    // It encapsulates the dead-reckon + per-segment + dwell walk so
+    // map and station can never disagree about the physics. Falls back
+    // to single-segment when this trip has no shape_dist_traveled.
+    const { arrival: p, positionAtNow } = predictArrivalFromGps({
+      obs: {
         lat: v.position.lat,
         lon: v.position.lon,
         speedMs: v.position.speedMs ?? null,
         asOfMs: v.position.asOf,
       },
-      measured,
-      ctx.nowMs,
-      { feedConfig, timezone: ctx.timezone, todProfile },
-    );
-    const livePos = deadReckoned?.position ?? {
-      lat: v.position.lat,
-      lon: v.position.lon,
-    };
-    const p = predictArrivalAlongShape({
-      vehiclePos: livePos,
-      stopPos,
       polyline,
-      vehicleSpeedMs: v.position.speedMs ?? null,
-      vehicleDirectionId: v.directionId,
+      stopPos,
+      nowMs: ctx.nowMs,
       todBucket,
       feedConfig,
+      vehicleDirectionId: v.directionId,
+      dwellStopDistAlongM: v.tripId ? stopDistancesByTrip[v.tripId] : undefined,
+      dwellSecondsPerStop: 20,
+      ctx: { feedConfig, timezone: ctx.timezone, todProfile },
     });
     // Also overwrite `position` with the dead-reckoned coords so the
     // downstream bucketer's haversine distance-to-stop (see
@@ -555,11 +544,11 @@ export function applyGpsEta(
     // "projected to nowMs"; `asOf` advances to nowMs because that's
     // when this position is true. Falls through unchanged when
     // dead-reckon returned null (very-stale fix).
-    const position = deadReckoned
+    const position = positionAtNow
       ? {
           ...v.position,
-          lat: deadReckoned.position.lat,
-          lon: deadReckoned.position.lon,
+          lat: positionAtNow.lat,
+          lon: positionAtNow.lon,
           source: 'predicted-from-gps' as const,
           asOf: ctx.nowMs,
         }

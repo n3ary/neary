@@ -36,6 +36,7 @@
 
   let board = $state<{ stop: StopWithDistance; vehicles: Vehicle[] } | null>(null);
   let shapes = $state<Record<string, Array<{ lat: number; lon: number }>>>({});
+  let stopDistancesByTrip = $state<Record<string, number[]>>({});
   let originRouteIds = $state<Set<string>>(new Set());
   let error = $state<string | null>(null);
   let notFound = $state(false);
@@ -67,11 +68,13 @@
           routeFilter = null; // reset on every refresh
           // Fetch shapes + origin-route membership in parallel.
           const tripIds = tripIdsFromVehicles(result.vehicles);
-          const [fetchedShapes, originIds] = await Promise.all([
+          const [fetchedShapes, fetchedStopDistances, originIds] = await Promise.all([
             tripIds.length > 0 ? repo.getShapesForTrips(tripIds) : Promise.resolve({}),
+            tripIds.length > 0 ? repo.getStopDistancesForTrips(tripIds) : Promise.resolve({}),
             repo.getOriginRoutesAtStop(sid),
           ]);
           shapes = fetchedShapes;
+          stopDistancesByTrip = fetchedStopDistances;
           originRouteIds = new Set(originIds);
         }
       } catch (e) {
@@ -105,8 +108,12 @@
     (async () => {
       try {
         const repo = getGtfsRepo();
-        const extra = await repo.getShapesForTrips(missing);
-        shapes = { ...shapes, ...extra };
+        const [extraShapes, extraStopDistances] = await Promise.all([
+          repo.getShapesForTrips(missing),
+          repo.getStopDistancesForTrips(missing),
+        ]);
+        shapes = { ...shapes, ...extraShapes };
+        stopDistancesByTrip = { ...stopDistancesByTrip, ...extraStopDistances };
       } catch {
         // Soft-fail: orphan ETAs fall back to the sibling shape via
         // assembleLiveBoard's shapesByRouteDir, or stay as "Live".
@@ -154,6 +161,7 @@
       stop: board.stop,
       reconciledVehicles: reconciledVehiclesStore.vehicles,
       shapes,
+      stopDistancesByTrip,
       prefs: userPrefs,
       nowMs,
       timezone: feedTimezone,
