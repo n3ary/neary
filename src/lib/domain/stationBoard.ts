@@ -90,11 +90,7 @@ export function assembleStationBoard(
     return { vehicle: v, bucket, etaMinutes: v.eta?.minutes ?? 0 };
   });
   const sorted = filterForStationView(rows, prefs).sort(compareForBoard);
-  return capStationBoard(
-    sorted,
-    prefs.stationBoardMaxRows ?? DEFAULT_CONTEXT_BUCKET_CAP,
-    nowMin,
-  );
+  return capStationBoard(sorted, prefs.stationBoardMaxRows ?? DEFAULT_CONTEXT_BUCKET_CAP);
 }
 
 /** Default cap applied to context buckets (`incoming` / `drop-off` /
@@ -132,41 +128,6 @@ function dedupKey(row: BoardRow): string {
   return `${row.vehicle.route.id}_${row.vehicle.directionId ?? -1}`;
 }
 
-/** When dedup is skipped (single-route board) the drop-off bucket
- *  would otherwise show every scheduled trip arriving at this stop —
- *  including ones that haven't departed their own origin yet, which
- *  are just timetable guesses with no useful position info. Keep
- *  only rows in the "useful at this stop" set, from the trip-origin
- *  POV:
- *    - live-backed (`tracked` / `verified` / `gps-only`): bus is on
- *      the road — equivalent to `tripPhase: 'last' | 'on-route'`.
- *    - schedule-only with `tripStartMin <= nowMin`: trip has
- *      departed its origin per the timetable but no live source
- *      confirms — same equivalence.
- *    - schedule-only with the soonest `tripStartMin > nowMin` per
- *      (route, direction): the trip about to start — equivalent to
- *      `tripPhase: 'next'`.
- *  Drops the `later`-equivalent rows (future trips that aren't the
- *  next one). */
-function filterDropOffByTripOriginPhase(rows: BoardRow[], nowMin: number): BoardRow[] {
-  const soonestFuture = new Map<string, number>();
-  for (const r of rows) {
-    const start = r.vehicle.schedule?.tripStartMin;
-    if (start == null || start <= nowMin) continue;
-    const key = dedupKey(r);
-    const cur = soonestFuture.get(key);
-    if (cur == null || start < cur) soonestFuture.set(key, start);
-  }
-  return rows.filter((r) => {
-    const v = r.vehicle;
-    if (v.kind === 'tracked' || v.kind === 'verified' || v.kind === 'gps-only') return true;
-    const start = v.schedule?.tripStartMin;
-    if (start == null) return true;
-    if (start <= nowMin) return true;
-    return start === soonestFuture.get(dedupKey(r));
-  });
-}
-
 /** Trim the bucketed row set to what the StationCard will render.
  *
  *  Algorithm:
@@ -180,19 +141,19 @@ function filterDropOffByTripOriginPhase(rows: BoardRow[], nowMin: number): Board
  *    3. Per-`(route, direction)` dedup inside each bucket — keep the
  *       soonest row per pair. Active only when step 1 said so.
  *    4. Drop-off filter (only when dedup is skipped): keep just the
- *       trip-origin "next" / "last" / "on-route" equivalents. See
- *       `filterDropOffByTripOriginPhase`.
+ *       trip-active rows — those whose `tripPhase` is anything but
+ *       `later`. Future trips that haven't departed origin yet are
+ *       pure timetable guesses with no useful position info, so
+ *       hiding them keeps the section focused on buses actually
+ *       arriving. `tripPhase` is set on every emitted row by
+ *       `scheduleScanner.assignTripPhases`.
  *    5. Per-bucket cap (`bucketCap`). Now-group and `off-route`
  *       buckets are uncapped; context buckets use `maxRows`.
  *    6. Re-sort with `compareForBoard` so the on-screen order matches
  *       the spec regardless of bucket-traversal order.
  *
  *  Pure. */
-export function capStationBoard(
-  rows: BoardRow[],
-  maxRows = DEFAULT_CONTEXT_BUCKET_CAP,
-  nowMin?: number,
-): BoardRow[] {
+export function capStationBoard(rows: BoardRow[], maxRows = DEFAULT_CONTEXT_BUCKET_CAP): BoardRow[] {
   if (rows.length === 0) return rows;
 
   const routes = new Set<string>();
@@ -218,8 +179,8 @@ export function capStationBoard(
         seen.add(k);
         kept.push(r);
       }
-    } else if (bucket === 'drop-off' && nowMin != null) {
-      kept = filterDropOffByTripOriginPhase(bucketRows, nowMin);
+    } else if (bucket === 'drop-off') {
+      kept = bucketRows.filter((r) => r.vehicle.schedule?.tripPhase !== 'later');
     } else {
       kept = bucketRows;
     }

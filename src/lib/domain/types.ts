@@ -116,8 +116,8 @@ export interface ScheduledRun {
    *  stops to show) and to treat the row as drop-off-only regardless
    *  of `pickup_type`. */
   isLastStop?: boolean;
-  /** When `isFirstStop === true`, classifies this trip's phase in
-   *  its daily lifecycle on the route, relative to `now`:
+  /** Classifies this trip's phase in its daily lifecycle on the
+   *  route, relative to `now`:
    *   - 'next'     → the next departure that hasn't left
    *   - 'last'     → the most recent departure that has left and is
    *                  still running (trip not yet at terminus)
@@ -125,8 +125,15 @@ export interface ScheduledRun {
    *                  running (not the most recent)
    *   - 'later'    → a future origin departure that is not the next
    *
-   *  Undefined when `isFirstStop === false`. Recomputed on every
-   *  snapshot regeneration because the phase is a function of `now`. */
+   *  Set on every emitted row (not only origin rows): tripPhase is a
+   *  property of the trip's lifecycle, independent of which stop's
+   *  row we're looking at. UI consumers (drop-off filter, action-
+   *  button gates) need the phase at terminus and midpoints, not
+   *  only at the origin stop.
+   *
+   *  Recomputed on every snapshot regeneration because the phase is
+   *  a function of `now`. Undefined only when `tripStartMin` is
+   *  unknown. */
   tripPhase?: 'next' | 'last' | 'on-route' | 'later';
   /** Minutes since local midnight at the trip's FIRST stop (origin
    *  departure time). Used by the reconciler to match live observations

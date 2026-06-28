@@ -47,8 +47,8 @@ Each entry also carries:
 
 ## Trip phase
 
-On rows where `isFirstStop === true`, `schedule.tripPhase` classifies
-how this origin departure relates to `now` on its route:
+`schedule.tripPhase` classifies how this trip's origin departure
+relates to `now` on its route:
 
 | Value | Meaning |
 |---|---|
@@ -58,8 +58,11 @@ how this origin departure relates to `now` on its route:
 | `later` | Any future origin departure that is not `next` |
 
 Exactly one `next` and at most one `last` per route. Tie-break on equal
-departure times by `tripId` lexicographic order. Undefined on non-origin
-rows.
+departure times by `tripId` lexicographic order. Set on every emitted
+row, not only origin rows — `tripPhase` is a property of the trip's
+lifecycle, independent of which stop's row we're looking at. UI
+consumers (drop-off filter at terminus, action-button gates at any
+stop) need the phase at midpoints too, so we classify uniformly.
 
 The role is recomputed on every snapshot regeneration because it is a
 function of `now`: at 14:59 a trip is `next`, at 15:00 (once its
@@ -79,9 +82,8 @@ in two colors: green for live-backed (`gps-only` / `tracked` /
 kind.
 
 The dot is **hidden** when `kind === 'scheduled' && tripPhase === 'later'`.
-At the origin stop those rows are future-but-not-next — the grey dot
-adds nothing the rider doesn't already know from the row being on
-the schedule. `next` / `last` / `on-route` keep the dot because the
-data-source distinction (parked-and-on-schedule vs running-without-GPS)
-is informative there. Intermediate-stop rows have no `tripPhase` and
-always show the dot.
+Those rows are future-but-not-next — the grey dot adds nothing the
+rider doesn't already know from the row being on the schedule.
+`next` / `last` / `on-route` rows keep the dot because the data-source
+distinction (parked-and-on-schedule vs running-without-GPS) is
+informative there.

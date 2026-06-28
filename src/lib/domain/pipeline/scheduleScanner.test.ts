@@ -171,8 +171,17 @@ describe('scanSchedule', () => {
 describe('scanSchedule tripPhase', () => {
   const now = 9 * 60; // 09:00
   const nowMs = new Date(2026, 5, 26, 9, 0, 0).getTime();
+  // Origin factory: at a trip's first stop, trip_start_time IS the row's
+  // departure_time, so we default trip_start_time to the override's
+  // arrival_time when a test specifies one. Keeps the test data
+  // consistent with how GTFS actually models origin rows.
   const origin = (overrides: Partial<ScheduleRow>): ScheduleRow =>
-    row({ stop_sequence: 1, first_seq: 1, ...overrides });
+    row({
+      stop_sequence: 1,
+      first_seq: 1,
+      trip_start_time: overrides.arrival_time ?? '09:00:00',
+      ...overrides,
+    });
 
   it('marks the next future origin departure as `next`', () => {
     const out = scanSchedule({
@@ -209,16 +218,25 @@ describe('scanSchedule tripPhase', () => {
     expect(out.find((v) => v.tripId === 'T1')?.schedule?.tripPhase).toBe('next');
   });
 
-  it('does NOT mark tripPhase on non-origin rows', () => {
+  it('marks tripPhase on non-origin rows based on the trip’s origin departure', () => {
+    // Non-origin row at stop_seq=3. trip_start_time='09:00:00' (= now), so
+    // the trip has just departed origin and is the only running trip on
+    // this route at this stop → phase is `last`.
     const out = scanSchedule({
       rows: [
-        row({ trip_id: 'T1', arrival_time: '09:05:00', stop_sequence: 3, first_seq: 1 }),
+        row({
+          trip_id: 'T1',
+          arrival_time: '09:05:00',
+          stop_sequence: 3,
+          first_seq: 1,
+          trip_start_time: '09:00:00',
+        }),
       ],
       nowMinSinceMidnight: now,
       nowMs,
       windowMinutes: 60,
     });
-    expect(out[0].schedule?.tripPhase).toBeUndefined();
+    expect(out[0].schedule?.tripPhase).toBe('last');
   });
 
   it('scopes next/last per route', () => {
@@ -350,15 +368,25 @@ describe('scanSchedule tripPhase', () => {
     expect(t0.eta?.confidence).toBe('medium');
   });
 
-  it('keeps intermediate-stop rows at low confidence regardless of phase', () => {
-    // Non-origin rows never get a phase, so the confidence bump never fires.
+  it('keeps intermediate-stop rows at low confidence even with a phase set', () => {
+    // Non-origin rows now do get a phase (per-row classification), but the
+    // confidence bump only fires on origin (`isFirstStop`) rows. So a
+    // downstream `next` row still reads at low confidence.
     const out = scanSchedule({
-      rows: [row({ trip_id: 'T1', arrival_time: '09:10:00', stop_sequence: 3, first_seq: 1 })],
+      rows: [
+        row({
+          trip_id: 'T1',
+          arrival_time: '09:10:00',
+          stop_sequence: 3,
+          first_seq: 1,
+          trip_start_time: '09:05:00',
+        }),
+      ],
       nowMinSinceMidnight: now,
       nowMs,
       windowMinutes: 60,
     });
-    expect(out[0].schedule?.tripPhase).toBeUndefined();
+    expect(out[0].schedule?.tripPhase).toBe('next');
     expect(out[0].confidence).toBe('low');
   });
 });

@@ -391,13 +391,10 @@ describe('capStationBoard', () => {
     expect(out.map((r) => r.vehicle.schedule?.tripId)).toEqual(['live-r24', 'r35-drop']);
   });
 
-  it('drop-off filter: single-route board keeps only running + next-to-start trips', () => {
-    // Terminus single-route case. 4 trips arriving as drop-off:
-    //   - live (kind:'tracked')        : bus on the road
-    //   - schedule, tripStartMin=545 (now=550): already started; running
-    //   - schedule, tripStartMin=555  : soonest future → 'next'
-    //   - schedule, tripStartMin=575  : later → DROPPED
-    const tNow = 550;
+  it('drop-off filter: single-route board drops `later` trips', () => {
+    // Terminus single-route case. 4 trips arriving as drop-off, with the
+    // `tripPhase` already assigned by the upstream scanner. The filter
+    // simply drops rows whose phase is `later`.
     const live: Vehicle = {
       kind: 'tracked',
       id: 'live-1',
@@ -412,15 +409,33 @@ describe('capStationBoard', () => {
     } as Vehicle;
     const running = {
       ...scheduled('running', r24, 15),
-      schedule: { tripId: 'running', scheduledDeparture: 565, tripStartMin: 545, directionId: 0 },
+      schedule: {
+        tripId: 'running',
+        scheduledDeparture: 565,
+        tripStartMin: 545,
+        directionId: 0,
+        tripPhase: 'last',
+      },
     } as Vehicle;
     const nextToStart = {
       ...scheduled('next-to-start', r24, 25),
-      schedule: { tripId: 'next-to-start', scheduledDeparture: 575, tripStartMin: 555, directionId: 0 },
+      schedule: {
+        tripId: 'next-to-start',
+        scheduledDeparture: 575,
+        tripStartMin: 555,
+        directionId: 0,
+        tripPhase: 'next',
+      },
     } as Vehicle;
     const laterTrip = {
       ...scheduled('later', r24, 35),
-      schedule: { tripId: 'later', scheduledDeparture: 585, tripStartMin: 575, directionId: 0 },
+      schedule: {
+        tripId: 'later',
+        scheduledDeparture: 585,
+        tripStartMin: 575,
+        directionId: 0,
+        tripPhase: 'later',
+      },
     } as Vehicle;
     const rows: BoardRow[] = [
       { vehicle: live, bucket: 'drop-off', etaMinutes: 2 },
@@ -428,7 +443,7 @@ describe('capStationBoard', () => {
       { vehicle: nextToStart, bucket: 'drop-off', etaMinutes: 25 },
       { vehicle: laterTrip, bucket: 'drop-off', etaMinutes: 35 },
     ];
-    const out = capStationBoard(rows, 10, tNow);
+    const out = capStationBoard(rows, 10);
     expect(out.map((r) => r.vehicle.schedule?.tripId)).toEqual(['live-1', 'running', 'next-to-start']);
   });
 
