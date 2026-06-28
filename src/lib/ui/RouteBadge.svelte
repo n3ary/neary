@@ -71,7 +71,7 @@
   const bg = $derived(useRouteColor ? route.color : 'var(--color-surface-elevated)');
   const fg = $derived(
     isFavorite
-      ? 'var(--color-primary)'
+      ? 'var(--color-favorite)'
       : useRouteColor
         ? (route.textColor ?? pickContrastingText(route.color))
         : 'var(--color-fg)',

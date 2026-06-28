@@ -18,6 +18,12 @@
   --color-border: oklch(90% 0 0);
   --color-primary: oklch(55% 0.18 255);
   --color-primary-fg: oklch(98% 0 0);
+  /* Favorite indicator for routes. Sits next to --color-primary but
+   * lighter / more sky-leaning so a blue shortName reads as "liked"
+   * rather than "primary action". Same hue family stays on-brand;
+   * separate token so we can re-tune it without touching every
+   * primary-coloured affordance. */
+  --color-favorite: oklch(50% 0.18 245);
   --color-danger: oklch(60% 0.21 25);
   --color-warning: oklch(75% 0.16 80);
   --color-success: oklch(60% 0.16 145);
@@ -52,6 +58,10 @@
   --color-primary-fg: oklch(15% 0 0);
 }
 
+[data-theme='dark'] {
+  --color-favorite: oklch(82% 0.13 240);
+}
+
 /* System-preference dark when user hasn't pinned */
 @media (prefers-color-scheme: dark) {
   [data-theme='auto'] {
@@ -62,6 +72,12 @@
     --color-border: oklch(30% 0 0);
     --color-primary: oklch(70% 0.16 255);
     --color-primary-fg: oklch(15% 0 0);
+  }
+}
+
+@media (prefers-color-scheme: dark) {
+  [data-theme='auto'] {
+    --color-favorite: oklch(82% 0.13 240);
   }
 }
 

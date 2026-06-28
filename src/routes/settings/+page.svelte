@@ -189,7 +189,7 @@
         <Stack direction="row" align="center" justify="between">
           <Box class="flex-1 min-w-0">
             <Typography variant="body2">Enable Debug</Typography>
-            <Typography variant="caption">Surface diagnostic info for debugging the live data: <code>tripId · kind · dir</code> on every vehicle card and map marker, plus the off-route bucket on station boards (vehicles too far from the route shape to match a trip).</Typography>
+            <Typography variant="caption">Diagnostic overlays for troubleshooting. Off unless asked.</Typography>
           </Box>
           <Switch
             checked={userPrefs.showDebugIds}
