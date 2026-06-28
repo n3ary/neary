@@ -283,7 +283,7 @@
                       mapHref={mapAction
                         ? `/map/route/${vehicle.route.id}_${vehicle.schedule?.directionId ?? 0}${vehicle.schedule?.tripId ? `/${encodeURIComponent(vehicle.schedule.tripId)}` : ''}`
                         : undefined}
-                      onRouteBadgeClick={stopsEligible ? () => toggleStops(vehicle) : undefined}
+                      onStopsExpand={stopsEligible ? () => toggleStops(vehicle) : undefined}
                       stopsExpanded={expandedVehicleId === vehicle.id || loadingVehicleId === vehicle.id}
                     />
                     {#if stopsEligible}
