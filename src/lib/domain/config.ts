@@ -64,7 +64,7 @@ export interface NearyConfig {
 export const DEFAULT_CONFIG: NearyConfig = {
   proximityAtStationM: 50,
   offRouteDistanceM: 200,
-  arrivingThresholdMin: 2,
+  arrivingThresholdMin: 1,
   imminentEtaThresholdMin: 10,
   departingSpeedKmh: 5,
   minDwellGapMin: 1,

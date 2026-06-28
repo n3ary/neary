@@ -19,7 +19,14 @@
  */
 
 import {
+  deadReckonGpsAlongShape,
+  type GpsObservation,
+  type PredictPositionFromGpsContext,
+} from './predictPosition';
+import {
   distAlongBetween,
+  measurePolyline,
+  pointAtDistance,
   projectOnPolyline,
   type LatLon,
   type Polyline,
@@ -55,6 +62,12 @@ export interface PredictArrivalInputs {
   /** Other reconciled vehicles for cascade tier 2 (fleet p60).
    *  Optional; empty / undefined short-circuits tier 2. */
   nearbyVehicles?: ReadonlyArray<NearbyVehicle>;
+  /** Optional stop distances (same trip shape), used to add dwell
+   *  time for intermediate stops between vehicle and target. Distances
+   *  must be cumulative metres along `polyline`. */
+  dwellStopDistAlongM?: ReadonlyArray<number>;
+  /** Flat dwell duration per intermediate stop. Defaults to 20 s. */
+  dwellSecondsPerStop?: number;
 }
 
 export interface ArrivalPrediction {
@@ -88,41 +101,135 @@ export function predictArrivalAlongShape(
   // Signed: positive when vehicle is before stop, negative when past.
   const signedDistM = distAlongBetween(vehProj, stopProj);
   const absDistM = Math.abs(signedDistM);
+  const useSegmentWalk = input.dwellStopDistAlongM != null;
+  const dwellStops = input.dwellStopDistAlongM ?? [];
 
-  // Speed: ask the cascade once for the segment containing the
-  // vehicle (segmentDistanceFromVehicleM = 0 forces tier 1 if the bus
-  // is moving). When the bus is stopped, the cascade falls through to
-  // tier 3 (TOD) automatically.
-  const sample = estimateSegmentSpeed({
-    segment: {
-      fromLat: input.vehiclePos.lat, fromLon: input.vehiclePos.lon,
-      toLat: input.stopPos.lat, toLon: input.stopPos.lon,
-    },
-    segmentDistanceFromVehicleM: 0,
-    vehicle:
-      input.vehicleSpeedMs != null && input.vehicleSpeedMs > 0
-        ? {
-            lat: input.vehiclePos.lat,
-            lon: input.vehiclePos.lon,
-            speedMs: input.vehicleSpeedMs,
-            directionId: input.vehicleDirectionId,
-          }
-        : undefined,
-    nearbyVehicles: input.nearbyVehicles,
-    todBucket: input.todBucket,
-    feedConfig: input.feedConfig,
-  });
+  if (signedDistM <= 0) {
+    const sample = estimateSegmentSpeed({
+      segment: {
+        fromLat: input.vehiclePos.lat, fromLon: input.vehiclePos.lon,
+        toLat: input.stopPos.lat, toLon: input.stopPos.lon,
+      },
+      segmentDistanceFromVehicleM: 0,
+      vehicle:
+        input.vehicleSpeedMs != null && input.vehicleSpeedMs > 0
+          ? {
+              lat: input.vehiclePos.lat,
+              lon: input.vehiclePos.lon,
+              speedMs: input.vehicleSpeedMs,
+              directionId: input.vehicleDirectionId,
+            }
+          : undefined,
+      nearbyVehicles: input.nearbyVehicles,
+      todBucket: input.todBucket,
+      feedConfig: input.feedConfig,
+    });
+    const minutes = (signedDistM / 1000) / sample.kmh * 60;
+    return {
+      minutes,
+      distanceMeters: absDistM,
+      source: sample.source,
+      confidence: downgradeForOffShape(sample.confidence, vehProj.perpDistM, stopProj.perpDistM),
+    };
+  }
 
-  // Time = (signed distance in km) / speed in km/h × 60 → minutes,
-  // signed so the bucketer can drop already-passed vehicles correctly.
-  const minutes = (signedDistM / 1000) / sample.kmh * 60;
+  if (!useSegmentWalk) {
+    const sample = estimateSegmentSpeed({
+      segment: {
+        fromLat: input.vehiclePos.lat, fromLon: input.vehiclePos.lon,
+        toLat: input.stopPos.lat, toLon: input.stopPos.lon,
+      },
+      segmentDistanceFromVehicleM: 0,
+      vehicle:
+        input.vehicleSpeedMs != null && input.vehicleSpeedMs > 0
+          ? {
+              lat: input.vehiclePos.lat,
+              lon: input.vehiclePos.lon,
+              speedMs: input.vehicleSpeedMs,
+              directionId: input.vehicleDirectionId,
+            }
+          : undefined,
+      nearbyVehicles: input.nearbyVehicles,
+      todBucket: input.todBucket,
+      feedConfig: input.feedConfig,
+    });
+    const minutes = (signedDistM / 1000) / sample.kmh * 60;
+    return {
+      minutes,
+      distanceMeters: absDistM,
+      source: sample.source,
+      confidence: downgradeForOffShape(sample.confidence, vehProj.perpDistM, stopProj.perpDistM),
+    };
+  }
 
+  const measured = measurePolyline(input.polyline);
+  const bounds: number[] = [vehProj.distAlongM];
+  for (let i = 1; i < measured.cumDistM.length - 1; i++) {
+    const d = measured.cumDistM[i];
+    if (d > vehProj.distAlongM && d < stopProj.distAlongM) bounds.push(d);
+  }
+  bounds.push(stopProj.distAlongM);
+
+  let totalMinutes = 0;
+  let firstSource: SpeedSample['source'] = 'tod';
+  let aggConfidence: Confidence = 'high';
+  let sampled = false;
+  for (let i = 0; i < bounds.length - 1; i++) {
+    const start = bounds[i];
+    const end = bounds[i + 1];
+    if (end <= start) continue;
+    const from = pointAtDistance(measured, start);
+    const to = pointAtDistance(measured, end);
+    const sample = estimateSegmentSpeed({
+      segment: {
+        fromLat: from.lat, fromLon: from.lon,
+        toLat: to.lat, toLon: to.lon,
+      },
+      segmentDistanceFromVehicleM: start - vehProj.distAlongM,
+      vehicle:
+        input.vehicleSpeedMs != null && input.vehicleSpeedMs > 0
+          ? {
+              lat: input.vehiclePos.lat,
+              lon: input.vehiclePos.lon,
+              speedMs: input.vehicleSpeedMs,
+              directionId: input.vehicleDirectionId,
+            }
+          : undefined,
+      nearbyVehicles: input.nearbyVehicles,
+      todBucket: input.todBucket,
+      feedConfig: input.feedConfig,
+    });
+    if (!sampled) {
+      firstSource = sample.source;
+      aggConfidence = sample.confidence;
+      sampled = true;
+    } else {
+      aggConfidence = lowerConfidence(aggConfidence, sample.confidence);
+    }
+    const segDistM = end - start;
+    totalMinutes += (segDistM / 1000) / sample.kmh * 60;
+  }
+
+  if (dwellStops.length > 0) {
+    const dwellSec = input.dwellSecondsPerStop ?? 20;
+    if (dwellSec > 0) {
+      const n = dwellStops.filter(
+        (d) => d > vehProj.distAlongM && d < stopProj.distAlongM,
+      ).length;
+      totalMinutes += (n * dwellSec) / 60;
+    }
+  }
   return {
-    minutes,
+    minutes: totalMinutes,
     distanceMeters: absDistM,
-    source: sample.source,
-    confidence: downgradeForOffShape(sample.confidence, vehProj.perpDistM, stopProj.perpDistM),
+    source: firstSource,
+    confidence: downgradeForOffShape(aggConfidence, vehProj.perpDistM, stopProj.perpDistM),
   };
+}
+
+function lowerConfidence(a: Confidence, b: Confidence): Confidence {
+  const rank: Record<Confidence, number> = { high: 3, medium: 2, low: 1 };
+  return rank[a] <= rank[b] ? a : b;
 }
 
 function downgradeForOffShape(
@@ -135,3 +242,58 @@ function downgradeForOffShape(
   if (worst < MEDIUM_CONF_PERP_M) return cascadeConf === 'high' ? 'medium' : cascadeConf;
   return 'low';
 }
+
+/**
+ * GPS observation → arrival prediction. Single entry point that
+ * encapsulates the "dead-reckon raw GPS onto the shape, then run
+ * predictArrivalAlongShape" pipeline.
+ *
+ * DRY contract: any caller that already has a raw GTFS-RT fix MUST
+ * call this helper. Do NOT re-implement the dead-reckon-then-predict
+ * pattern in views. Doing so risks double extrapolation when callers
+ * accidentally feed an already-projected position back into the
+ * predictor's dead-reckoner.
+ *
+ * `positionAtNow` is the dead-reckoned position on the polyline; null
+ * when the fix is older than VERY_STALE_MS (caller falls back).
+ */
+export interface PredictArrivalFromGpsInputs {
+  obs: GpsObservation;
+  polyline: Polyline;
+  stopPos: LatLon;
+  nowMs: number;
+  todBucket: TodBucket;
+  feedConfig: FeedSpeedConfig;
+  vehicleDirectionId?: 0 | 1 | -1;
+  nearbyVehicles?: ReadonlyArray<NearbyVehicle>;
+  dwellStopDistAlongM?: ReadonlyArray<number>;
+  dwellSecondsPerStop?: number;
+  ctx?: PredictPositionFromGpsContext;
+}
+
+export interface PredictArrivalFromGpsResult {
+  arrival: ArrivalPrediction;
+  positionAtNow: LatLon | null;
+}
+
+export function predictArrivalFromGps(
+  input: PredictArrivalFromGpsInputs,
+): PredictArrivalFromGpsResult {
+  const measured = measurePolyline(input.polyline);
+  const dr = deadReckonGpsAlongShape(input.obs, measured, input.nowMs, input.ctx);
+  const livePos: LatLon = dr?.position ?? { lat: input.obs.lat, lon: input.obs.lon };
+  const arrival = predictArrivalAlongShape({
+    vehiclePos: livePos,
+    stopPos: input.stopPos,
+    polyline: input.polyline,
+    vehicleSpeedMs: input.obs.speedMs,
+    vehicleDirectionId: input.vehicleDirectionId,
+    todBucket: input.todBucket,
+    feedConfig: input.feedConfig,
+    nearbyVehicles: input.nearbyVehicles,
+    dwellStopDistAlongM: input.dwellStopDistAlongM,
+    dwellSecondsPerStop: input.dwellSecondsPerStop,
+  });
+  return { arrival, positionAtNow: dr?.position ?? null };
+}
+

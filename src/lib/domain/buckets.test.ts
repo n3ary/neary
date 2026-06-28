@@ -38,9 +38,16 @@ describe('bucketOf', () => {
     expect(bucketOf('scheduled', inputs({ nowMin: now, etaMinutes: 10 }))).toBe('incoming');
   });
 
-  it('returns arriving when within 2 min', () => {
-    expect(bucketOf('scheduled', inputs({ nowMin: now, etaMinutes: 2 }))).toBe('arriving');
+  it('returns arriving when within 1 min', () => {
     expect(bucketOf('scheduled', inputs({ nowMin: now, etaMinutes: 1 }))).toBe('arriving');
+    expect(bucketOf('scheduled', inputs({ nowMin: now, etaMinutes: 0 }))).toBe('arriving');
+  });
+
+  it('returns incoming when 2 min away (above the threshold)', () => {
+    // Riders consistently saw 'in 2 min' rows inside the arriving
+    // section because the old threshold was ≤ 2. Dropped to ≤ 1 so a
+    // bus that's two minutes out reads as 'incoming' — not 'arriving'.
+    expect(bucketOf('scheduled', inputs({ nowMin: now, etaMinutes: 2 }))).toBe('incoming');
   });
 
   it('returns departed when in the past (scanner gates trip-end)', () => {

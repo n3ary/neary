@@ -8,8 +8,9 @@
  *
  *   departing    about to leave / picking up speed at the stop
  *   at-station   physically at the stop (or scheduled to be dwelling mid-stop)
- *   arriving     close to arrival (≤ 2 min OR within 1 min of scheduled arrival)
- *   incoming     future, > 2 min away
+ *   arriving     close to arrival (eta ≤ arrivingThresholdMin OR within
+ *                minDwellGapMin of scheduled arrival)
+ *   incoming     future, eta above arrivingThresholdMin
  *   drop-off     drop-off-only vehicles (cannot board). Shown as a dedicated
  *                section after incoming when showDropOffOnly is enabled.
  *   departed     already passed (within 5 min recency window). Hidden from

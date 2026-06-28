@@ -77,6 +77,7 @@
 
   let boards = $state<{ stop: StopWithDistance; vehicles: Vehicle[] }[] | null>(null);
   let shapes = $state<Record<string, Array<{ lat: number; lon: number }>>>({});
+  let stopDistancesByTrip = $state<Record<string, number[]>>({});
   let boardsError = $state<string | null>(null);
   let expandedStopId = $state<number | null>(null);
   // Per-stop route filter — click a route badge on a StationCard to scope
@@ -163,9 +164,15 @@
         // arrive.
         const tripIds = selection.boards.flatMap((b) => tripIdsFromVehicles(b.vehicles));
         if (tripIds.length > 0) {
-          shapes = await repo.getShapesForTrips(tripIds);
+          const [fetchedShapes, fetchedStopDistances] = await Promise.all([
+            repo.getShapesForTrips(tripIds),
+            repo.getStopDistancesForTrips(tripIds),
+          ]);
+          shapes = fetchedShapes;
+          stopDistancesByTrip = fetchedStopDistances;
         } else {
           shapes = {};
+          stopDistancesByTrip = {};
         }
         expandedStopId = selection.expandedStopId;
       } catch (e) {
@@ -201,8 +208,12 @@
     (async () => {
       try {
         const repo = getGtfsRepo();
-        const extra = await repo.getShapesForTrips(missing);
-        shapes = { ...shapes, ...extra };
+        const [extraShapes, extraStopDistances] = await Promise.all([
+          repo.getShapesForTrips(missing),
+          repo.getStopDistancesForTrips(missing),
+        ]);
+        shapes = { ...shapes, ...extraShapes };
+        stopDistancesByTrip = { ...stopDistancesByTrip, ...extraStopDistances };
       } catch {
         // Soft-fail: orphan ETAs fall back to the sibling shape via
         // assembleLiveBoard's shapesByRouteDir, or stay as "Live".
@@ -283,6 +294,7 @@
           stop: b.stop,
           reconciledVehicles: reconciledVehiclesStore.vehicles,
           shapes,
+          stopDistancesByTrip,
           prefs: userPrefs,
           nowMs,
           timezone: feedTimezone,
@@ -303,6 +315,7 @@
           stop,
           reconciledVehicles: reconciledVehiclesStore.vehicles,
           shapes,
+          stopDistancesByTrip,
           prefs: userPrefs,
           nowMs,
           timezone: feedTimezone,

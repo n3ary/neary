@@ -37,7 +37,7 @@ import { getActiveTrips } from './gtfs/queries/activeTrips';
 import { getRouteDirectionEndpoints } from './gtfs/queries/routeEndpoints';
 import { getRouteMapView } from './gtfs/queries/routeMapView';
 import { getRouteSchedule } from './gtfs/queries/routeSchedule';
-import { getStopsAlongTrip } from './gtfs/queries/routeStops';
+import { getStopDistancesForTrips, getStopsAlongTrip } from './gtfs/queries/routeStops';
 import { getRouteById, getRoutes, getRoutesForStop } from './gtfs/queries/routes';
 import { getShapesForTrips } from './gtfs/queries/shapes';
 import { getStationArrivals } from './gtfs/queries/stationArrivals';
@@ -153,6 +153,9 @@ const api: GtfsRepo = {
   },
   async getStopsAlongTrip(tripId) {
     return getStopsAlongTrip(await ensureDb(), tripId);
+  },
+  async getStopDistancesForTrips(tripIds) {
+    return getStopDistancesForTrips(await ensureDb(), tripIds);
   },
   async getWeeklySchedule(routeId, directionId) {
     return getWeeklySchedule(await ensureDb(), routeId, directionId);

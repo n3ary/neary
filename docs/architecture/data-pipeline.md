@@ -71,6 +71,26 @@ Lifecycle details (eviction, pinning, offline behavior) live in
 The three loops are decoupled. Refresh button reasoning: see
 [../plan/prediction-v2.md §6.5](../plan/prediction-v2.md).
 
+## ETA inputs shared by station + map
+
+GPS-backed rows (`kind: 'tracked'`, `kind: 'gps-only'`) run through one
+domain entry point in both views:
+[`predictArrivalFromGps`](../../src/lib/domain/predictArrivalAlongShape.ts).
+It encapsulates raw-GPS dead-reckon + per-segment + dwell walk. Views
+MUST NOT call `deadReckonGpsAlongShape` + `predictArrivalAlongShape`
+themselves — that risks double extrapolation.
+
+Inputs joined per trip:
+
+| Input | Worker query | Used by |
+|---|---|---|
+| Trip polyline | `getShapesForTrips` | Map markers and station ETA |
+| Per-stop `shape_dist_traveled[]` | `getStopDistancesForTrips` (station) / inline on `getRouteMapView` (map) | Per-segment + dwell walk |
+
+Values come from neary-gtfs's `stop_times.shape_dist_traveled` (Cluj
+writes it at build time via the timing/shape pipeline). Trips missing
+the column fall back to single-segment ETA.
+
 ## Storage layout
 
 - `feeds.json` → in-memory (small, refetched on launch).

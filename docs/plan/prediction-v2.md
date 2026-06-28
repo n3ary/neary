@@ -82,9 +82,24 @@ on page load — wasted CPU.
 
 ### [x] 2. `predictArrivalAlongShape.ts` — multi-tier ETA
 
-Shipped in **PR #77**. Single-segment v1 wired into `assembleLiveBoard`;
-the full per-segment walk + dwell is deferred to item 3 (continuous
-position rendering needs the same machinery).
+Shipped in **PR #77**; per-segment + dwell walk added on top in the
+PR #105 branch (opt-in via `dwellStopDistAlongM` to keep the single-
+segment fast path the default for callers that don't pass it).
+
+Station and map now consume one domain entry point for GPS-backed rows
+(`kind: 'tracked'` and `kind: 'gps-only'`):
+[`predictArrivalFromGps`](../../src/lib/domain/predictArrivalAlongShape.ts)
+encapsulates the dead-reckon + per-segment + dwell walk so views can't
+re-implement (or accidentally double-extrapolate) the pipeline.
+- Map popup `arriving in N min` row in
+  [src/routes/map/route/[id]/[[selected]]/+page.svelte](../../src/routes/map/route/%5Bid%5D/%5B%5Bselected%5D%5D/+page.svelte).
+- Station ETA in [`applyGpsEta`](../../src/lib/domain/stationBoard.ts).
+
+The shared input is per-trip `shape_dist_traveled[]`, fetched on the
+station side via a new repo batch method `getStopDistancesForTrips` in
+[src/lib/data/gtfs/types.ts](../../src/lib/data/gtfs/types.ts) /
+[src/lib/workers/gtfs/queries/routeStops.ts](../../src/lib/workers/gtfs/queries/routeStops.ts).
+Trips without that column fall back to single-segment ETA.
 
 Replaces today's single-tier [`predictEta.ts`](../../src/lib/domain/predictEta.ts).
 Composes the cascade (defined inline here) with the shape walk from

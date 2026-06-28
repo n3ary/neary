@@ -43,6 +43,10 @@
     buildTripShapePlan, predictPosition, predictPositionOnShape, predictPositionFromGps,
     type TripShapePlan,
   } from '$lib/domain/predictPosition';
+  import { predictArrivalFromGps } from '$lib/domain/predictArrivalAlongShape';
+  import { measurePolyline, projectOnPolyline } from '$lib/domain/shapeProjection';
+  import { DEFAULT_FEED_SPEED_CONFIG } from '$lib/domain/speedCascade';
+  import { clockToBucket, DEFAULT_TOD_PROFILE } from '$lib/domain/timeOfDay';
   import { feedsStore } from '$lib/stores/feedsStore.svelte';
   import { reconciledVehiclesStore } from '$lib/stores/reconciledVehiclesStore.svelte';
   import { locationStore } from '$lib/stores/locationStore.svelte';
@@ -224,12 +228,106 @@
      *  shows 'left at HH:MM' only when this is true — a 'left at'
      *  rendered from `nowMin` is a lie. */
     hasOriginTime: boolean;
+    /** Minutes until this vehicle reaches the rider's origin stop
+     *  (the `?from=<stopId>` station, painted green on the map),
+     *  or null when there's no from-stop selected, the vehicle is
+     *  the scheduled-next bubble at its own origin, or the vehicle
+     *  has already passed the from-stop. The popup renders this as
+     *  an extra `arriving in N min` line so a rider tracking a bus
+     *  can see how long until it reaches them, without leaving the
+     *  map. */
+    arrivingInMin: number | null;
   };
   const markers = $derived.by<VehicleMarker[]>(() => {
     if (!view) return [];
+    // Snapshot `view` into a non-null local so the nested closures
+    // below (computeArrivingInMin, the stop forEach inside the trips
+    // loop) narrow correctly under TypeScript's strict null checks.
+    const curView = view;
     const out: VehicleMarker[] = [];
     let nextScheduledShown = false;
     const nowMs = nowTicker.ms;
+
+    // Pre-compute the from-stop's position (when the URL carries
+    // `?from=<stopId>`) plus the speed-cascade context, so the
+    // per-marker arrival-to-from-stop ETA below is a one-liner
+    // instead of duplicating projection / TOD-bucket lookups per
+    // marker. fromTarget is null when there's no selected origin
+    // stop, in which case computeArrivingInMin always returns null.
+    const fromTarget = ((): { lat: number; lon: number } | null => {
+      if (fromStopId == null) return null;
+      const s = curView.stops.find((x) => Number(x.stopId) === fromStopId);
+      return s ? { lat: s.lat, lon: s.lon } : null;
+    })();
+    const arrivingTodBucket = clockToBucket(
+      minSinceMidnightInTz(nowMs, tz),
+      DEFAULT_TOD_PROFILE,
+    );
+    const measuredShape = curView.shape.length >= 2 ? measurePolyline(curView.shape) : null;
+    const stopDistCache = new Map<string, number[]>();
+    const stopDistAlongM = (tripId: string, stops: RouteMapView['trips'][number]['stops']): number[] => {
+      const cached = stopDistCache.get(tripId);
+      if (cached) return cached;
+      if (!measuredShape) return [];
+      const out = stops.map((s) =>
+        typeof s.distAlongM === 'number'
+          ? s.distAlongM
+          : projectOnPolyline({ lat: s.lat, lon: s.lon }, measuredShape.points).distAlongM,
+      );
+      stopDistCache.set(tripId, out);
+      return out;
+    };
+    // Single GPS-anchored ETA call site for the popup `arriving in N min`
+    // row. Delegates the dead-reckon + per-segment + dwell walk to the
+    // shared domain helper used by station applyGpsEta, so the two views
+    // can never diverge. Schedule-only fallback (no GPS) uses the trip's
+    // own scheduled arrival at the from-stop.
+    const computeArrivingInMin = (opts: {
+      rawGpsLat: number | null;
+      rawGpsLon: number | null;
+      scheduledAtOrigin: boolean;
+      etaSource: 'gps' | 'schedule';
+      speedMs: number | null;
+      gpsAsOfMs: number | null;
+      directionId: 0 | 1 | -1;
+      scheduledFromArrivalMin: number | null;
+      dwellStopDistAlongM: ReadonlyArray<number> | null;
+    }): number | null => {
+      if (!fromTarget || opts.scheduledAtOrigin) return null;
+      if (opts.etaSource === 'schedule') {
+        if (opts.scheduledFromArrivalMin == null) return null;
+        const m = opts.scheduledFromArrivalMin - nowMin;
+        return m > 0 ? m : null;
+      }
+      if (
+        curView.shape.length < 2 ||
+        opts.rawGpsLat == null ||
+        opts.rawGpsLon == null ||
+        opts.gpsAsOfMs == null
+      ) return null;
+      const { arrival } = predictArrivalFromGps({
+        obs: {
+          lat: opts.rawGpsLat,
+          lon: opts.rawGpsLon,
+          speedMs: opts.speedMs,
+          asOfMs: opts.gpsAsOfMs,
+        },
+        polyline: curView.shape,
+        stopPos: fromTarget,
+        nowMs,
+        todBucket: arrivingTodBucket,
+        feedConfig: DEFAULT_FEED_SPEED_CONFIG,
+        vehicleDirectionId: opts.directionId === -1 ? undefined : opts.directionId,
+        dwellStopDistAlongM: opts.dwellStopDistAlongM ?? undefined,
+        dwellSecondsPerStop: 20,
+        ctx: {
+          feedConfig: DEFAULT_FEED_SPEED_CONFIG,
+          timezone: tz,
+          todProfile: DEFAULT_TOD_PROFILE,
+        },
+      });
+      return arrival.minutes > 0 ? Math.round(arrival.minutes) : null;
+    };
 
     // Hard cap on GPS-fix age before we stop showing the orphan marker
     // at all — orphans don't go through `predictPositionFromGps` (no
@@ -306,6 +404,20 @@
         directionId: (reconciled?.directionId ?? (direction as 0 | 1)) as 0 | 1 | -1,
         gpsAsOfMs: reconciled?.position?.asOf ?? null,
         hasOriginTime: true,
+        arrivingInMin: computeArrivingInMin({
+          rawGpsLat: reconciled?.position?.lat ?? null,
+          rawGpsLon: reconciled?.position?.lon ?? null,
+          scheduledAtOrigin: p.status === 'before' || p.status === 'at-origin',
+          etaSource: reconciled?.position ? 'gps' : 'schedule',
+          speedMs: reconciled?.position?.speedMs ?? null,
+          gpsAsOfMs: reconciled?.position?.asOf ?? null,
+          directionId: (reconciled?.directionId ?? (direction as 0 | 1)) as 0 | 1 | -1,
+          scheduledFromArrivalMin:
+            fromStopId == null
+              ? null
+              : (t.stops.find((s) => Number(s.stopId) === fromStopId)?.arrivalMin ?? null),
+          dwellStopDistAlongM: stopDistAlongM(t.tripId, t.stops),
+        }),
       });
     }
 
@@ -342,6 +454,17 @@
         directionId: v.directionId ?? -1,
         gpsAsOfMs: v.position.asOf,
         hasOriginTime: v.schedule?.tripStartMin != null,
+        arrivingInMin: computeArrivingInMin({
+          rawGpsLat: v.position.lat,
+          rawGpsLon: v.position.lon,
+          scheduledAtOrigin: false,
+          etaSource: 'gps',
+          speedMs: v.position.speedMs ?? null,
+          gpsAsOfMs: v.position.asOf,
+          directionId: v.directionId ?? -1,
+          scheduledFromArrivalMin: null,
+          dwellStopDistAlongM: null,
+        }),
       });
     }
     return out;
@@ -506,6 +629,15 @@
         // always paint over stop circles, but below tooltipPane (650).
         const vehiclesPane = mapInstance.createPane('nearyVehicles');
         vehiclesPane.style.zIndex = '620';
+        // Stop debug-id tooltips live in their own pane below the
+        // vehicles pane (z=610 < nearyVehicles z=620) so vehicle
+        // badges and their debug overlays stay readable in debug
+        // mode and aren't covered by station ids. Tooltip pointer
+        // events are disabled too — riders can still tap stop
+        // circles through the label.
+        const stopDebugPane = mapInstance.createPane('nearyStopDebug');
+        stopDebugPane.style.zIndex = '610';
+        stopDebugPane.style.pointerEvents = 'none';
         // Future-resize listener (rotation, splitscreen, sidebar).
         if (typeof ResizeObserver !== 'undefined') {
           resizeObserver = new ResizeObserver(() => mapInstance?.invalidateSize());
@@ -643,6 +775,7 @@
             direction: 'right',
             offset: [4, 0],
             className: 'neary-stop-id-label',
+            pane: 'nearyStopDebug',
           });
         }
         m.addTo(sl);
@@ -751,16 +884,26 @@
       ? `<span style="font-weight:600;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escapeHtml(m.headsign)}</span>`
       : `<span style="flex:1;"></span>`;
     const topRow = `<div style="display:flex;align-items:center;gap:6px;margin-bottom:5px;">${headsignText}${dot}<a href="/schedule/route/${escapeHtml(rId)}_${dir}" title="View schedule" style="display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;border-radius:4px;background:rgba(0,0,0,0.07);color:#555;text-decoration:none;flex-shrink:0;">${schedSvg}</a></div>`;
+    // Shared row template for every line below `topRow`. Three callers:
+    // countdown (scheduled-at-origin "in X min"), leftAt (departed
+    // bus's wall-clock origin time), arrivingIn (ETA to the rider's
+    // ?from-stop). Same flex / icon / coloured-label layout, just
+    // different colour + label. Factor here so adding a fourth info
+    // line is one line of code.
+    const popupRow = (color: string, label: string): string =>
+      `<div style="display:flex;align-items:center;gap:2px;color:${color};font-size:11px;margin-top:3px;">${clockSvg}<span style="margin-left:2px;">${label}</span></div>`;
     // Countdown row, kept only for scheduled-at-origin / scheduled-
     // before bubbles: green clock + "in X min". Tells the rider when
     // the parked / not-yet-departed bus is expected to leave. On-route
     // vehicles don't get this line — their dot already conveys "live".
     const countdownHtml = m.scheduled
-      ? (() => {
-          const minsUntil = m.tripStartMin - nowMinVal;
-          const relLabel = minsUntil <= 0 ? 'now' : formatRelativeMin(minsUntil);
-          return `<span style="display:flex;align-items:center;gap:2px;color:#16a34a;font-size:11px;">${clockSvg}<span style="margin-left:2px;">${relLabel}</span></span>`;
-        })()
+      ? popupRow(
+          '#16a34a',
+          (() => {
+            const minsUntil = m.tripStartMin - nowMinVal;
+            return minsUntil <= 0 ? 'now' : formatRelativeMin(minsUntil);
+          })(),
+        )
       : '';
     // For vehicles that have ALREADY departed origin (everything but
     // the scheduled-at-origin / scheduled-before bubbles, which the
@@ -771,9 +914,20 @@
     // tripStartMin is a fallback (hasOriginTime === false) — rendering
     // 'left at <now>' there would be a lie.
     const leftAtHtml = !m.scheduled && m.hasOriginTime
-      ? `<div style="display:flex;align-items:center;gap:2px;color:#888;font-size:11px;margin-top:3px;">${clockSvg}<span style="margin-left:2px;">left at ${formatHHMM(m.tripStartMin)}</span></div>`
+      ? popupRow('#888', `left at ${formatHHMM(m.tripStartMin)}`)
       : '';
-    return `<div style="font:13px/1.3 ui-sans-serif,system-ui;min-width:150px;">${topRow}${countdownHtml}${leftAtHtml}</div>`;
+    // 'arriving in N min' line, surfaced only when the URL carries a
+    // `?from=<stopId>` (green-painted target station) AND the vehicle
+    // is still on its way toward that stop. predictArrivalAlongShape
+    // returns negative minutes once the vehicle passes the target;
+    // the marker setter (`computeArrivingInMin` in the markers
+    // derivation) drops the value to null in that case, so this
+    // string is empty for everything that's no longer 'incoming' to
+    // the rider's origin. Green to match the green stop highlight.
+    const arrivingHtml = m.arrivingInMin != null
+      ? popupRow('#16a34a', `arriving in ${m.arrivingInMin} min`)
+      : '';
+    return `<div style="font:13px/1.3 ui-sans-serif,system-ui;min-width:150px;">${topRow}${countdownHtml}${leftAtHtml}${arrivingHtml}</div>`;
   }
   function vehicleHtml(
     shortName: string,
@@ -1049,5 +1203,21 @@
         0 0 0 5px #111,
         0 0 0 9px rgba(17, 17, 17, 0.35);
     }
+  }
+
+  /* Stop debug-id tooltip (only rendered when userPrefs.showDebugIds
+     is on). Compact font + tight padding so the labels don't crowd
+     the route geometry, and so the vehicle markers + their own debug
+     labels (which paint above this pane) stay the eye's anchor. */
+  :global(.leaflet-tooltip.neary-stop-id-label) {
+    font: 600 8px/1.1 ui-monospace, SFMono-Regular, Menlo, monospace;
+    padding: 1px 3px;
+    background: rgba(255, 255, 255, 0.85);
+    border: none;
+    box-shadow: none;
+    color: #333;
+  }
+  :global(.leaflet-tooltip.neary-stop-id-label::before) {
+    display: none;
   }
 </style>
