@@ -319,27 +319,20 @@ export function formatHHMM(minutesSinceMidnight: number): string {
 
 /** Render a delta in minutes (target − now) as user-facing relative
  *  time: 'now', 'in 12 min', 'in 1h 30m', '3 min ago'.
- *  When `absoluteMin` is supplied and the delta exceeds 15 minutes,
- *  the clock time is appended: 'in 23 min (at 14:47)'.
- *  Shared by the schedule view, the vehicle card, and the map popup. */
-export function formatRelativeMin(deltaMin: number, absoluteMin?: number): string {
+ *  Pure string formatter — callers decide whether to show the
+ *  clock time alongside (in a dedicated chip or column), so this
+ *  function never repeats the absolute time. Shared by the
+ *  schedule view, the vehicle card, and the map popup. */
+export function formatRelativeMin(deltaMin: number): string {
   if (deltaMin <= -1) {
     const m = -deltaMin;
     return `${m} min ago`;
   }
   if (deltaMin < 1) return 'now';
-  let rel: string;
-  if (deltaMin < 60) {
-    rel = `in ${deltaMin} min`;
-  } else {
-    const h = Math.floor(deltaMin / 60);
-    const m = deltaMin % 60;
-    rel = m === 0 ? `in ${h}h` : `in ${h}h ${m}m`;
-  }
-  if (deltaMin > 15 && absoluteMin != null) {
-    return `${rel} (at ${formatHHMM(absoluteMin)})`;
-  }
-  return rel;
+  if (deltaMin < 60) return `in ${deltaMin} min`;
+  const h = Math.floor(deltaMin / 60);
+  const m = deltaMin % 60;
+  return m === 0 ? `in ${h}h` : `in ${h}h ${m}m`;
 }
 
 /** Per-feed convention: night routes have a short-name ending in 'N'

@@ -74,8 +74,23 @@
   );
 
   // ETA / scheduled-time secondary line.
+  //
+  // Unlike the schedule view (which renders the clock time as a
+  // dedicated chip on every row), VehicleCard has only this one slot
+  // for time info. So for far-out trips (>15 min, where 'in 1h 30m'
+  // is harder to translate into a concrete moment than the clock
+  // time itself), we append the scheduled HH:MM here. Close trips
+  // stay on the relative form alone — 'in 5 min' beats 'at 16:50'
+  // when the action window is now.
   const secondaryLine = $derived.by(() => {
-    if (vehicle.eta) return formatRelativeMin(vehicle.eta.minutes, vehicle.schedule?.scheduledDeparture);
+    if (vehicle.eta) {
+      const rel = formatRelativeMin(vehicle.eta.minutes);
+      const sched = vehicle.schedule?.scheduledDeparture;
+      if (sched != null && vehicle.eta.minutes > 15) {
+        return `${rel} (at ${formatHHMM(sched)})`;
+      }
+      return rel;
+    }
     if (vehicle.schedule) return `Scheduled ${formatHHMM(vehicle.schedule.scheduledDeparture)}`;
     // kind:'gps-only' orphans have a GPS position but no schedule/ETA — the bus
     // exists right now even though we don't have a precise per-stop timing
@@ -127,7 +142,7 @@
   onclick={handleCardClick}
   onkeydown={interactive ? (e) => { if (e.key === 'Enter' || e.key === ' ') onclick?.(); } : undefined}
   class={cn(
-    'flex items-center gap-3 px-3 py-2 border-2 border-solid rounded-md transition-colors',
+    'flex items-start gap-3 px-3 py-2 border-2 border-solid rounded-md transition-colors',
     'border-[color:var(--color-border)]',
     dim && 'opacity-60',
     interactive && 'cursor-pointer hover:bg-[color:var(--color-border)]/30',
@@ -165,31 +180,42 @@
     {@render routeBadge()}
   {/if}
 
-  <div class="flex-1 min-w-0">
-    <div class="text-sm font-medium truncate flex items-center gap-1">
-      <!-- Direction-of-travel cue. The headsign IS the destination, so
-           a small arrow in front reads as 'going to …' without any
-           extra label. Inline-flex so it scales with the text and
-           stays vertically centred. -->
-      <ArrowRight
-        size={14}
-        aria-hidden="true"
-        class="shrink-0 text-[color:var(--color-fg-muted)]"
-      />
-      <span class="truncate">{headsign}</span>
-    </div>
-    <div class={cn('text-xs truncate', etaClass)}>{secondaryLine}</div>
-  </div>
-
   <!--
-    Action + state column. Each slot reserves a fixed width so icons
-    sit in column-aligned positions even when one is hidden; adding
-    a new affordance later (debug toggles, anomaly indicators, …)
-    just plugs another fixed slot in. Order left → right:
-
-       drop-off (13px) · schedule (24px) · map (24px)
-       · expand-stops (24px) · state dot (13px)
+    Content column: text block + icon group, side-by-side when there's
+    room, wrapping the icon group onto a second line below the text
+    when there isn't. `min-w-[9rem]` on the text block sets the wrap
+    trigger — wrap fires before the headsign gets ellipsised down to a
+    few characters. When wrapped, the icon group sits inside the
+    content column (i.e. indented past the badge), so the badge stays
+    visually anchored to the row identity.
   -->
+  <div class="min-w-0 flex-1 flex flex-wrap items-center gap-x-3 gap-y-1">
+    <div class="min-w-[9rem] flex-1">
+      <div class="text-sm font-medium truncate flex items-center gap-1">
+        <!-- Direction-of-travel cue. The headsign IS the destination, so
+             a small arrow in front reads as 'going to …' without any
+             extra label. Inline-flex so it scales with the text and
+             stays vertically centred. -->
+        <ArrowRight
+          size={14}
+          aria-hidden="true"
+          class="shrink-0 text-[color:var(--color-fg-muted)]"
+        />
+        <span class="truncate">{headsign}</span>
+      </div>
+      <div class={cn('text-xs truncate', etaClass)}>{secondaryLine}</div>
+    </div>
+
+    <!--
+      Action + state column. Each slot reserves a fixed width so icons
+      sit in column-aligned positions even when one is hidden; adding
+      a new affordance later (debug toggles, anomaly indicators, …)
+      just plugs another fixed slot in. Order left → right:
+
+         drop-off (13px) · schedule (24px) · map (24px)
+         · expand-stops (24px) · state dot (13px)
+    -->
+    <div class="flex items-center shrink-0">
 
   <!-- Drop-off slot — surfaced for vehicles the rider can't board here. -->
   <span class="shrink-0 w-[13px] flex items-center justify-center">
@@ -278,4 +304,6 @@
       ></span>
     {/if}
   </span>
+    </div>
+  </div>
 </div>

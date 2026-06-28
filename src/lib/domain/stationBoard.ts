@@ -23,7 +23,8 @@ import {
 import { haversineMeters } from './distance';
 import { minSinceMidnightInTz } from './pipeline/timeUtils';
 import { predictArrivalAlongShape } from './predictArrivalAlongShape';
-import { projectOnPolyline, type Polyline } from './shapeProjection';
+import { deadReckonGpsAlongShape } from './predictPosition';
+import { measurePolyline, projectOnPolyline, type Polyline } from './shapeProjection';
 import {
   DEFAULT_FEED_SPEED_CONFIG,
   type FeedSpeedConfig,
@@ -503,8 +504,39 @@ export function applyGpsEta(
         proj.distAlongM < AT_ORIGIN_DIST_M && speed < AT_ORIGIN_SPEED_MS;
       if (atOrigin && v.eta != null) return v;
     }
+    // Dead-reckon the GPS fix forward along the shape so a stale
+    // observation doesn't anchor a bus that has already moved past
+    // the stop. SAME helper as `predictPositionFromGps` (the map
+    // view's marker): both pipelines now derive their "where is the
+    // bus right now?" from one place, so map and station can never
+    // disagree about it again (see issue #86).
+    //
+    // When the fix is older than `VERY_STALE_MS` the helper returns
+    // null — same contract as the map, which drops the marker. Here
+    // we fall back to the raw observation: the station view stays
+    // populated with a stale-but-best-available ETA rather than
+    // suddenly emptying. The row's confidence drops out of the
+    // `predictArrivalAlongShape` cascade naturally because the
+    // very-stale window is also where the cascade's vehicle-speed
+    // tier loses authority.
+    const measured = measurePolyline(polyline);
+    const deadReckoned = deadReckonGpsAlongShape(
+      {
+        lat: v.position.lat,
+        lon: v.position.lon,
+        speedMs: v.position.speedMs ?? null,
+        asOfMs: v.position.asOf,
+      },
+      measured,
+      ctx.nowMs,
+      { feedConfig, timezone: ctx.timezone, todProfile },
+    );
+    const livePos = deadReckoned?.position ?? {
+      lat: v.position.lat,
+      lon: v.position.lon,
+    };
     const p = predictArrivalAlongShape({
-      vehiclePos: { lat: v.position.lat, lon: v.position.lon },
+      vehiclePos: livePos,
       stopPos,
       polyline,
       vehicleSpeedMs: v.position.speedMs ?? null,
@@ -512,8 +544,29 @@ export function applyGpsEta(
       todBucket,
       feedConfig,
     });
+    // Also overwrite `position` with the dead-reckoned coords so the
+    // downstream bucketer's haversine distance-to-stop (see
+    // `assembleStationBoard`) reads the same "where is the bus right
+    // now?" the ETA does. Without this update, a stale fix could
+    // produce a dead-reckoned ETA that says "departed" while the
+    // bucketer still sees the bus 1 km from the stop and routes the
+    // row into `arriving`. `source: 'predicted-from-gps'` flags the
+    // mutation so consumers can tell apart "raw GTFS-RT fix" vs
+    // "projected to nowMs"; `asOf` advances to nowMs because that's
+    // when this position is true. Falls through unchanged when
+    // dead-reckon returned null (very-stale fix).
+    const position = deadReckoned
+      ? {
+          ...v.position,
+          lat: deadReckoned.position.lat,
+          lon: deadReckoned.position.lon,
+          source: 'predicted-from-gps' as const,
+          asOf: ctx.nowMs,
+        }
+      : v.position;
     return {
       ...v,
+      position,
       eta: {
         minutes: Math.round(p.minutes),
         distanceMeters: p.distanceMeters,

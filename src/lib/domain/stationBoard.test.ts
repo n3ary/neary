@@ -257,6 +257,101 @@ describe('applyGpsEta', () => {
     expect(out[0].eta?.minutes).toBeGreaterThan(5);
     expect(out[0].eta?.minutes).toBeLessThan(10);
   });
+
+  // ── Dead-reckoning a stale GPS fix (issue #86) ─────────────────────
+  //
+  // The map view extrapolates a vehicle's position forward by
+  // (now - fix.asOf) * speed; the station view used to ignore the
+  // fix age entirely, so a 2-minute-old fix on a fast-moving bus
+  // would still anchor the bus at its OLD position even though the
+  // map already had it past the stop. Both views now derive their
+  // live position from `deadReckonGpsAlongShape`.
+
+  it('dead-reckons a stale GPS fix forward so a passed bus shows negative ETA', () => {
+    // ~2 km east-west polyline, stop at the far (east) end.
+    // GPS observation: bus reported at vertex 0 (west end, 2 km west
+    // of stop), 120 s ago, moving east at 20 m/s.
+    // Dead-reckon: 120 s × 20 m/s = 2400 m forward → past the stop
+    // (clamped to totalDistM ≈ 2000 m at the eastern end).
+    // ETA should be negative (or 0): "bus is at / past the stop".
+    const v: Vehicle = {
+      kind: 'tracked',
+      id: 'trip:T-stale',
+      route: r24,
+      type: 'bus',
+      tripId: 'T-stale',
+      directionId: 0,
+      confidence: 'medium',
+      schedule: {
+        tripId: 'T-stale',
+        scheduledDeparture: 540,
+        directionId: 0,
+        tripStartMin: 530,
+        isFirstStop: false,
+      },
+      eta: { distanceMeters: 0, minutes: 99, confidence: 'low' },
+      position: {
+        lat: 46.770,
+        lon: 23.580,
+        source: 'gps',
+        asOf: 0,
+        speedMs: 20,
+      },
+      liveSources: ['gtfs-rt'],
+    } as Vehicle;
+    const out = applyGpsEta([v], { 'T-stale': POLY }, STOP, {}, {
+      nowMs: 120_000,
+      timezone: 'UTC',
+    });
+    // Without dead-reckoning: 2 km @ 20 m/s = 100 s ≈ 2 min ahead.
+    // With dead-reckoning: bus extrapolated to / past stop → ≤ 0 min.
+    expect(out[0].eta?.minutes).toBeLessThanOrEqual(0);
+    // Position also reflects the dead-reckoning so the downstream
+    // bucketer's haversine distance reads "at the stop", not "1 km
+    // before". `source` flips to 'predicted-from-gps' to signal the
+    // mutation; `asOf` advances to `nowMs`.
+    expect(out[0].position?.source).toBe('predicted-from-gps');
+    expect(out[0].position?.asOf).toBe(120_000);
+    expect(out[0].position?.lon).toBeGreaterThan(23.580);
+  });
+
+  it('agrees with the map when a fresh GPS fix has bus mid-route', () => {
+    // Fresh fix (asOf = now), no extrapolation needed: result must
+    // match the pre-#86 behaviour exactly. Sanity-check that the
+    // refactor didn't shift fresh-fix ETAs.
+    const v: Vehicle = {
+      kind: 'tracked',
+      id: 'trip:T-fresh',
+      route: r24,
+      type: 'bus',
+      tripId: 'T-fresh',
+      directionId: 0,
+      confidence: 'medium',
+      schedule: {
+        tripId: 'T-fresh',
+        scheduledDeparture: 540,
+        directionId: 0,
+        tripStartMin: 530,
+        isFirstStop: false,
+      },
+      eta: { distanceMeters: 0, minutes: 99, confidence: 'low' },
+      position: {
+        lat: 46.770,
+        lon: 23.580,
+        source: 'gps',
+        asOf: 1_000,
+        speedMs: 5,
+      },
+      liveSources: ['gtfs-rt'],
+    } as Vehicle;
+    const out = applyGpsEta([v], { 'T-fresh': POLY }, STOP, {}, {
+      nowMs: 1_000,
+      timezone: 'UTC',
+    });
+    // 2 km @ 5 m/s = 400 s ≈ 7 min.
+    expect(out[0].eta?.minutes).toBeGreaterThan(5);
+    expect(out[0].eta?.minutes).toBeLessThan(10);
+  });
 });
 
 describe('capStationBoard', () => {

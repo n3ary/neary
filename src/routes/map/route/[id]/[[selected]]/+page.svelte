@@ -618,7 +618,7 @@
     let infoHtml: string;
     if (m.scheduled) {
       const minsUntil = m.tripStartMin - nowMinVal;
-      const relLabel = minsUntil <= 0 ? 'now' : formatRelativeMin(minsUntil, m.tripStartMin);
+      const relLabel = minsUntil <= 0 ? 'now' : formatRelativeMin(minsUntil);
       infoHtml = `<span style="display:flex;align-items:center;gap:2px;color:#16a34a;font-size:11px;">${clockSvg}<span style="margin-left:2px;">${relLabel}</span></span>`;
     } else if (m.gpsConfidence) {
       const c =

@@ -251,15 +251,64 @@ const VERY_STALE_MS = 15 * 60_000;
  *  to the TOD-bucket speed instead of dragging the marker to zero. */
 const STOPPED_KMH = 5;
 
+/** Result of dead-reckoning a GPS observation forward along a route
+ *  shape. Both the map view's bus marker and the station view's ETA
+ *  consume this same projection so the two pipelines can never
+ *  disagree about where the bus currently is — same `(dtMs, kmh,
+ *  forward)` math, same on-shape position, every render tick. */
+export interface DeadReckonedAlongShape {
+  /** Dead-reckoned position projected back onto the shape. */
+  position: LatLon;
+  /** Distance along the polyline from origin, in metres. */
+  distAlongM: number;
+  /** Wall-clock delta from the GPS fix to `nowMs`. */
+  dtMs: number;
+  freshness: GpsFreshness;
+}
+
+/** Project a GPS observation onto a measured polyline, then walk
+ *  forward along the polyline by `(nowMs − obs.asOfMs) × speed`. Speed
+ *  picked by the cascade: the vehicle's own speed when moving, the
+ *  TOD-bucket speed when parked (red light, stop dwell).
+ *
+ *  Returns `null` when the fix is older than `VERY_STALE_MS` — at that
+ *  point the prediction is too noisy to trust. The map view hides the
+ *  marker; `applyGpsEta` in `stationBoard.ts` falls back to the row's
+ *  schedule-only ETA. Without this consistency the station view kept
+ *  treating a stale-fix vehicle as "still approaching" while the map
+ *  had already extrapolated it past the stop (issue #86). */
+export function deadReckonGpsAlongShape(
+  obs: GpsObservation,
+  measured: MeasuredPolyline,
+  nowMs: number,
+  ctx: PredictPositionFromGpsContext = {},
+): DeadReckonedAlongShape | null {
+  const dt = nowMs - obs.asOfMs;
+  if (dt > VERY_STALE_MS) return null;
+  if (measured.points.length < 2) return null;
+  const proj = projectOnPolyline(
+    { lat: obs.lat, lon: obs.lon },
+    measured.points,
+  );
+  const freshness: GpsFreshness =
+    dt < FRESH_MS ? 'fresh' : dt < STALE_MS ? 'stale' : 'very-stale';
+  const kmh = pickWalkKmh(obs, ctx, nowMs);
+  const speedMs = (kmh * 1000) / 3600;
+  const forward = Math.min(
+    MAX_DEAD_RECKON_M,
+    (speedMs * Math.max(0, dt)) / 1000,
+  );
+  const distAlongM = Math.min(measured.totalDistM, proj.distAlongM + forward);
+  const p = pointAtDistance(measured, distAlongM);
+  return { position: p, distAlongM, dtMs: dt, freshness };
+}
+
 /**
  * Position from live GPS, dead-reckoned forward along the trip's shape.
  *
- * Why: the reconciler matches a live observation to a scheduled trip, but
- * the observation is a snapshot — between polls the marker shouldn't sit
- * still. Project the GPS fix onto the shape, then walk forward along the
- * polyline at a speed picked by the cascade (own speed when moving;
- * otherwise TOD-bucket speed from feed config) so the marker glides
- * until the next observation lands.
+ * Thin wrapper over `deadReckonGpsAlongShape` — same physics, just the
+ * map-marker-shaped output. Returns `null` when the fix is too stale
+ * to project (mirrors the helper's contract).
  *
  * Freshness bands let the UI hint at trust:
  *   - 'fresh' (< 3 min):       high trust.
@@ -273,28 +322,14 @@ export function predictPositionFromGps(
   nowMs: number,
   ctx: PredictPositionFromGpsContext = {},
 ): GpsPredictedPosition | null {
-  const dt = nowMs - obs.asOfMs;
-  if (dt > VERY_STALE_MS) return null;
-  if (plan.measured.points.length < 2) return null;
-
-  const proj = projectOnPolyline(
-    { lat: obs.lat, lon: obs.lon },
-    plan.measured.points,
-  );
-
-  const freshness: GpsFreshness =
-    dt < FRESH_MS ? 'fresh' : dt < STALE_MS ? 'stale' : 'very-stale';
-
-  const kmh = pickWalkKmh(obs, ctx, nowMs);
-  const speedMs = (kmh * 1000) / 3600;
-  const forward = Math.min(
-    MAX_DEAD_RECKON_M,
-    (speedMs * Math.max(0, dt)) / 1000,
-  );
-  const distAlongM = Math.min(plan.measured.totalDistM, proj.distAlongM + forward);
-
-  const p = pointAtDistance(plan.measured, distAlongM);
-  return { lat: p.lat, lon: p.lon, status: 'active', freshness };
+  const result = deadReckonGpsAlongShape(obs, plan.measured, nowMs, ctx);
+  if (!result) return null;
+  return {
+    lat: result.position.lat,
+    lon: result.position.lon,
+    status: 'active',
+    freshness: result.freshness,
+  };
 }
 
 function pickWalkKmh(
