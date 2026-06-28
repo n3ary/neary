@@ -558,7 +558,15 @@
       // change — the popup, hit target, and trip data are identical.
       const originStopId = fromStopId;
       currentView.stops.forEach((s) => {
-        const isOrigin = originStopId != null && s.stopId === originStopId;
+        // Coerce both sides through Number(). The TypeScript types
+        // say `number === number`, but at runtime SQLite-wasm sometimes
+        // surfaces stop_id as a string (the JSON serialisation in the
+        // worker → main thread Comlink hop loses the original numeric
+        // typing for some columns). Number() handles both shapes
+        // uniformly without resorting to '==='. NaN guarded by the
+        // originStopId != null check above (fromStopId is already a
+        // parsed number).
+        const isOrigin = originStopId != null && Number(s.stopId) === originStopId;
         const m = Lref.circleMarker([s.lat, s.lon], {
           // Stops are already drawn ON TOP of the route polyline:
           // both live in overlayPane, the polyline is added by this
