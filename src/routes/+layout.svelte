@@ -8,7 +8,7 @@
   import '$lib/styles/app.css';
   import { goto } from '$app/navigation';
   import { page, updated } from '$app/state';
-  import { Heart, Home, MapPin, Settings } from 'lucide-svelte';
+  import { Heart, MapPin, Settings } from 'lucide-svelte';
   import { AppLayout, type HeaderHealth } from '$lib/ui';
   import { connectionStore } from '$lib/stores/connectionStore.svelte';
   import { feedsStore } from '$lib/stores/feedsStore.svelte';
@@ -118,19 +118,17 @@
       });
   });
 
-  type NavValue = '/' | '/favorites' | '/planner' | '/settings';
+  type NavValue = '/' | '/favorites' | '/settings';
 
   const NAV_ITEMS = [
     { value: '/', label: 'Stations', icon: stationsIcon },
     { value: '/favorites', label: 'Favorites', icon: favoritesIcon },
-    { value: '/planner', label: 'Planner', icon: plannerIcon },
     { value: '/settings', label: 'Settings', icon: settingsIcon },
   ] as const;
 
   const TITLES: Record<NavValue, string> = {
     '/': 'Stations',
     '/favorites': 'Favorites',
-    '/planner': 'Planner',
     '/settings': 'Settings',
   };
 
@@ -189,7 +187,6 @@
 
 {#snippet stationsIcon()}<MapPin size={20} />{/snippet}
 {#snippet favoritesIcon()}<Heart size={20} />{/snippet}
-{#snippet plannerIcon()}<Home size={20} />{/snippet}
 {#snippet settingsIcon()}<Settings size={20} />{/snippet}
 
 <AppLayout
