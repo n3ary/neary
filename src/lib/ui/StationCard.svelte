@@ -305,12 +305,18 @@
                     && vehicle.schedule?.tripId != null
                     && mapEligibleIds.has(vehicle.id)
                     && !vehicle.schedule.isLastStop}
+                  {@const isMapEligible = mapEligibleIds.has(vehicle.id)}
+                  {@const phase = vehicle.schedule?.tripPhase}
+                  {@const scheduleAction =
+                    isMapEligible && (phase == null || phase === 'next' || phase === 'later')}
+                  {@const mapAction =
+                    isMapEligible && (phase == null || phase === 'last' || phase === 'on-route')}
                   <Box class="flex flex-col gap-1">
                     <VehicleCard
                       {vehicle}
                       urgency={etaUrgency(group.bucket, vehicle.eta?.minutes ?? 0)}
-                      scheduleHref={mapEligibleIds.has(vehicle.id) ? `/schedule/route/${vehicle.route.id}_${vehicle.schedule?.directionId ?? 0}` : undefined}
-                      mapHref={mapEligibleIds.has(vehicle.id)
+                      scheduleHref={scheduleAction ? `/schedule/route/${vehicle.route.id}_${vehicle.schedule?.directionId ?? 0}` : undefined}
+                      mapHref={mapAction
                         ? `/map/route/${vehicle.route.id}_${vehicle.schedule?.directionId ?? 0}${vehicle.schedule?.tripId ? `/${encodeURIComponent(vehicle.schedule.tripId)}` : ''}`
                         : undefined}
                       onRouteBadgeClick={stopsEligible ? () => toggleStops(vehicle) : undefined}
