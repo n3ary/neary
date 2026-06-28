@@ -499,7 +499,7 @@
                 isNext ? 'next' : '',
                 isLast ? 'last' : '',
               ].filter(Boolean).join(' ')}>
-                {cell.has ? formatHHMM(t) : '—'}
+                {cell.has ? formatHHMM(t) : ''}
               </td>
             {/each}
           </tr>
@@ -749,10 +749,13 @@
   }
 
   /* Weekly schedule matrix table. Rows are unique HH:MM values across
-     all three day-columns; a missing cell shows an em-dash so the
-     pattern reads at a glance. Today's column stays at full opacity
-     and uses the foreground color; the other two columns plus any
-     already-passed time in today's column are muted. */
+     all three day-columns; a missing cell renders as blank space. A
+     rider reads each column top-to-bottom to find departures for one
+     day — never scans a single time row across columns — so filler
+     glyphs (em-dashes) only add visual noise without aiding the scan.
+     Today's column stays at full opacity and uses the foreground
+     color; the other two columns plus any already-passed time in
+     today's column are muted. */
   .week-table {
     width: 100%;
     border-collapse: collapse;
