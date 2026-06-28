@@ -10,6 +10,7 @@ is in the code, there's no spec doc here.
 | [multi-feed-data-lifecycle.md](multi-feed-data-lifecycle.md) | OPFS storage model, switch flow, eviction policy, pin-for-offline. Cross-layer contract (worker ↔ UI) |
 | [feeds-json.md](feeds-json.md) | feeds.json schema published by the separate `neary-gtfs` repo. Cross-repo contract |
 | [live-data-pipeline.md](live-data-pipeline.md) | Reconciler rationale, Cluj direction-id workaround, source-of-truth for tz handling |
+| [multi-source-live-data.md](multi-source-live-data.md) | Multi-URL `realtime.vehicle_positions`, per-tick merge, no provider-specific clients, no client-side keys |
 | [ci-and-versioning.md](ci-and-versioning.md) | Auto-bump policy, release trigger, version sequencing — easy to misread from workflow YAML |
 | [pwa.md](pwa.md) | SvelteKit version polling, Netlify cache headers, iOS safe-area |
 
