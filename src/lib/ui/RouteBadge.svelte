@@ -7,13 +7,15 @@
     - isStart  : a "▶" wedge on the left edge (route departs here).
     - isEnd    : a "■" cap on the right edge (route terminates here).
     - isTurnaround = isStart AND isEnd → both markers, signalling the loop point.
-    - isFavorite: a small heart pip in the upper-right.
+    - isFavorite: shortName text turns brand-blue. Replaces the v1
+                  heart-pip overlay — the pip duplicated information
+                  the in-badge text already carries and ate space at
+                  the corner of every favorited row.
 
   Color comes from `route.color`. The text foreground is either an explicit
   `route.textColor` or computed via pickContrastingText (sRGB luminance).
 -->
 <script lang="ts">
-  import { Heart } from 'lucide-svelte';
   import type { Route } from '$lib/domain/types';
   import { pickContrastingText } from '$lib/domain/types';
   import { cn } from './cn';
@@ -60,16 +62,18 @@
 
   // In 'route' mode the badge always paints itself with the route's
   // own color. In 'neutral' mode every line flattens to a uniform
-  // surface so a long line-up doesn't read like a clown car;
-  // favorites then call attention to themselves with green text
-  // (success-color — favorites are a positive cue, not an alarm).
+  // surface so a long line-up doesn't read like a clown car.
+  // Favorited routes call attention to themselves by switching the
+  // shortName to brand-blue text (`--color-primary`), regardless of
+  // colorMode. The badge background stays whatever it would otherwise
+  // be so route identity is preserved.
   const useRouteColor = $derived(colorMode === 'route');
   const bg = $derived(useRouteColor ? route.color : 'var(--color-surface-elevated)');
   const fg = $derived(
-    useRouteColor
-      ? (route.textColor ?? pickContrastingText(route.color))
-      : isFavorite
-        ? 'var(--color-success)'
+    isFavorite
+      ? 'var(--color-primary)'
+      : useRouteColor
+        ? (route.textColor ?? pickContrastingText(route.color))
         : 'var(--color-fg)',
   );
 
@@ -114,18 +118,6 @@
       class="absolute right-0.5 top-1/2 -translate-y-1/2 w-1.5 h-1.5 opacity-90"
       style={`background:${fg};`}
     ></span>
-  {/if}
-  <!-- Favorite pip: small heart in the upper-right corner. Shown only
-       in route-color mode — in neutral mode the red text inside the
-       badge is signal enough and the pip just becomes noise. -->
-  {#if isFavorite && useRouteColor}
-    <span
-      aria-hidden="true"
-      class="absolute -top-1 -right-1 inline-flex items-center justify-center rounded-full bg-[color:var(--color-danger)] text-white"
-      style="width:14px;height:14px;"
-    >
-      <Heart size={9} strokeWidth={3} />
-    </span>
   {/if}
 
   {route.shortName}
