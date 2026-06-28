@@ -116,10 +116,13 @@ On top of the badge fill, a ring conveys live-data state:
 |---|---|
 | white (default) | no live GPS, or live fix expired |
 | green | live GPS, fresh fix |
-| yellow | live GPS, stale fix |
-| white inner + dark outer | the currently selected vehicle |
+| yellow | live GPS, stale (3–5 min) |
+| red | live GPS, very-stale (5–15 min) |
 
-Fresh vs stale vs expired thresholds live in [`predictPosition.ts`](../../src/lib/domain/predictPosition.ts) (`predictPositionFromGps`).
+Selection adds a **dark outer ring** around the existing ring as a
+"you tapped this one" highlight; the inner ring keeps the GPS-state
+colour so the rider can still read data source while a vehicle is
+selected. Fresh vs stale vs expired thresholds live in [`predictPosition.ts`](../../src/lib/domain/predictPosition.ts) (`predictPositionFromGps`).
 
 ### One scheduled marker, not many
 

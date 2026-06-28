@@ -698,7 +698,16 @@
       });
       // pane: 'nearyVehicles' (z=620) keeps vehicles above stop markers
       // (markerPane z=600) so they're never hidden behind station icons.
-      const marker = Lref.marker([m.lat, m.lon], { icon, pane: 'nearyVehicles' });
+      // zIndexOffset stacks vehicles within the pane so a schedule-only
+      // marker never covers a live (GPS-backed) marker, and the
+      // selected vehicle floats above both. Leaflet otherwise uses
+      // insertion order, which is non-deterministic across ticks.
+      const stackOffset = m.selected ? 1000 : m.scheduled ? -100 : 0;
+      const marker = Lref.marker([m.lat, m.lon], {
+        icon,
+        pane: 'nearyVehicles',
+        zIndexOffset: stackOffset,
+      });
       // offset: [0, -16] anchors the popup tail just above the badge
       // top edge so it floats above the vehicle rather than covering it.
       marker.bindPopup(vehiclePopupHtml(m, rid, dir, nowMinSnap), {
@@ -779,12 +788,23 @@
     scheduled: boolean,
     gpsConfidence: 'good' | 'stale' | 'very-stale' | null,
   ): string {
+    // Inner ring colour reflects GPS data source so the same green /
+    // yellow / red signal a rider reads from any vehicle stays
+    // visible when the vehicle is selected. When unselected this is
+    // the only ring; selection adds a dark outer ring around it as
+    // the "you tapped this one" highlight.
+    //   good        → green   stale       → yellow   very-stale → red
+    //   null (schedule-only): white.
+    const inner =
+      gpsConfidence === 'good' ? '#22c55e' :
+      gpsConfidence === 'stale' ? '#eab308' :
+      gpsConfidence === 'very-stale' ? '#ef4444' :
+      '#fff';
     const ring = selected
-      ? 'box-shadow:0 0 0 3px #fff, 0 0 0 5px #111;'
-      : gpsConfidence === 'good'       ? 'box-shadow:0 0 0 2.5px #22c55e;'
-      : gpsConfidence === 'stale'      ? 'box-shadow:0 0 0 2.5px #eab308;'
-      : gpsConfidence === 'very-stale' ? 'box-shadow:0 0 0 2.5px #ef4444;'
-      :                                  'box-shadow:0 0 0 2px #fff;';
+      ? `box-shadow:0 0 0 3px ${inner}, 0 0 0 5px #111;`
+      : gpsConfidence != null
+        ? `box-shadow:0 0 0 2.5px ${inner};`
+        : 'box-shadow:0 0 0 2px #fff;';
     // Scheduled vehicles (at-origin / next 'before'): outlined badge so
     // the user can distinguish "waiting to depart" from "en route".
     const colors = scheduled

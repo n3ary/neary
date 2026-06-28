@@ -298,12 +298,6 @@
                 >
                   {group.label}
                 </Typography>
-                <span
-                  aria-label={`${group.vehicles.length} ${group.label.toLowerCase()} vehicle${group.vehicles.length === 1 ? '' : 's'}`}
-                  class="ml-auto inline-flex items-center justify-center min-w-5 h-5 px-1.5 text-[11px] font-mono rounded-full bg-[color:var(--color-border)]/50 text-[color:var(--color-fg-muted)]"
-                >
-                  {group.vehicles.length}
-                </span>
               </Stack>
               <Stack spacing={0.5} class="pt-1">
                 {#each group.vehicles as vehicle (vehicle.id)}
