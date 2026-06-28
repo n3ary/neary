@@ -43,6 +43,9 @@
     buildTripShapePlan, predictPosition, predictPositionOnShape, predictPositionFromGps,
     type TripShapePlan,
   } from '$lib/domain/predictPosition';
+  import { predictArrivalAlongShape } from '$lib/domain/predictArrivalAlongShape';
+  import { DEFAULT_FEED_SPEED_CONFIG } from '$lib/domain/speedCascade';
+  import { clockToBucket, DEFAULT_TOD_PROFILE } from '$lib/domain/timeOfDay';
   import { feedsStore } from '$lib/stores/feedsStore.svelte';
   import { reconciledVehiclesStore } from '$lib/stores/reconciledVehiclesStore.svelte';
   import { locationStore } from '$lib/stores/locationStore.svelte';
@@ -224,12 +227,72 @@
      *  shows 'left at HH:MM' only when this is true — a 'left at'
      *  rendered from `nowMin` is a lie. */
     hasOriginTime: boolean;
+    /** Minutes until this vehicle reaches the rider's origin stop
+     *  (the `?from=<stopId>` station, painted green on the map),
+     *  or null when there's no from-stop selected, the vehicle is
+     *  the scheduled-next bubble at its own origin, or the vehicle
+     *  has already passed the from-stop. The popup renders this as
+     *  an extra `arriving in N min` line so a rider tracking a bus
+     *  can see how long until it reaches them, without leaving the
+     *  map. */
+    arrivingInMin: number | null;
   };
   const markers = $derived.by<VehicleMarker[]>(() => {
     if (!view) return [];
+    // Snapshot `view` into a non-null local so the nested closures
+    // below (computeArrivingInMin, the stop forEach inside the trips
+    // loop) narrow correctly under TypeScript's strict null checks.
+    const curView = view;
     const out: VehicleMarker[] = [];
     let nextScheduledShown = false;
     const nowMs = nowTicker.ms;
+
+    // Pre-compute the from-stop's position (when the URL carries
+    // `?from=<stopId>`) plus the speed-cascade context, so the
+    // per-marker arrival-to-from-stop ETA below is a one-liner
+    // instead of duplicating projection / TOD-bucket lookups per
+    // marker. fromTarget is null when there's no selected origin
+    // stop, in which case computeArrivingInMin always returns null.
+    const fromTarget = ((): { lat: number; lon: number } | null => {
+      if (fromStopId == null) return null;
+      const s = curView.stops.find((x) => Number(x.stopId) === fromStopId);
+      return s ? { lat: s.lat, lon: s.lon } : null;
+    })();
+    const arrivingTodBucket = clockToBucket(
+      minSinceMidnightInTz(nowMs, tz),
+      DEFAULT_TOD_PROFILE,
+    );
+    const computeArrivingInMin = (opts: {
+      lat: number;
+      lon: number;
+      scheduled: boolean;
+      speedMs: number | null;
+      directionId: 0 | 1 | -1;
+    }): number | null => {
+      // Excluded cases:
+      //  - no from-stop selected,
+      //  - scheduled-next at origin (the popup already says 'in X min'
+      //    via the countdown row; an 'arriving in' line would be
+      //    confusing on a parked bus that hasn't departed yet).
+      //  - missing or too-short route shape (predictor would bail).
+      if (!fromTarget || opts.scheduled) return null;
+      if (curView.shape.length < 2) return null;
+      const p = predictArrivalAlongShape({
+        vehiclePos: { lat: opts.lat, lon: opts.lon },
+        stopPos: fromTarget,
+        polyline: curView.shape,
+        vehicleSpeedMs: opts.speedMs,
+        vehicleDirectionId: opts.directionId === -1 ? undefined : opts.directionId,
+        todBucket: arrivingTodBucket,
+        feedConfig: DEFAULT_FEED_SPEED_CONFIG,
+      });
+      // Vehicle already past the stop → negative signedDist → negative
+      // minutes from predictArrivalAlongShape. Drop the row entirely
+      // in that case so the popup stops showing 'arriving in' once
+      // the bus has crossed the green marker. Round 0 up to null too
+      // (the marker is essentially at the stop, no remaining ETA).
+      return p.minutes > 0 ? Math.round(p.minutes) : null;
+    };
 
     // Hard cap on GPS-fix age before we stop showing the orphan marker
     // at all — orphans don't go through `predictPositionFromGps` (no
@@ -306,6 +369,13 @@
         directionId: (reconciled?.directionId ?? (direction as 0 | 1)) as 0 | 1 | -1,
         gpsAsOfMs: reconciled?.position?.asOf ?? null,
         hasOriginTime: true,
+        arrivingInMin: computeArrivingInMin({
+          lat: p.lat,
+          lon: p.lon,
+          scheduled: p.status === 'before' || p.status === 'at-origin',
+          speedMs: reconciled?.position?.speedMs ?? null,
+          directionId: (reconciled?.directionId ?? (direction as 0 | 1)) as 0 | 1 | -1,
+        }),
       });
     }
 
@@ -342,6 +412,13 @@
         directionId: v.directionId ?? -1,
         gpsAsOfMs: v.position.asOf,
         hasOriginTime: v.schedule?.tripStartMin != null,
+        arrivingInMin: computeArrivingInMin({
+          lat: v.position.lat,
+          lon: v.position.lon,
+          scheduled: false,
+          speedMs: v.position.speedMs ?? null,
+          directionId: v.directionId ?? -1,
+        }),
       });
     }
     return out;
@@ -773,7 +850,18 @@
     const leftAtHtml = !m.scheduled && m.hasOriginTime
       ? `<div style="display:flex;align-items:center;gap:2px;color:#888;font-size:11px;margin-top:3px;">${clockSvg}<span style="margin-left:2px;">left at ${formatHHMM(m.tripStartMin)}</span></div>`
       : '';
-    return `<div style="font:13px/1.3 ui-sans-serif,system-ui;min-width:150px;">${topRow}${countdownHtml}${leftAtHtml}</div>`;
+    // 'arriving in N min' line, surfaced only when the URL carries a
+    // `?from=<stopId>` (green-painted target station) AND the vehicle
+    // is still on its way toward that stop. predictArrivalAlongShape
+    // returns negative minutes once the vehicle passes the target;
+    // the marker setter (`computeArrivingInMin` in the markers
+    // derivation) drops the value to null in that case, so this
+    // string is empty for everything that's no longer 'incoming' to
+    // the rider's origin. Green to match the green stop highlight.
+    const arrivingHtml = m.arrivingInMin != null
+      ? `<div style="display:flex;align-items:center;gap:2px;color:#16a34a;font-size:11px;margin-top:3px;">${clockSvg}<span style="margin-left:2px;">arriving in ${m.arrivingInMin} min</span></div>`
+      : '';
+    return `<div style="font:13px/1.3 ui-sans-serif,system-ui;min-width:150px;">${topRow}${countdownHtml}${leftAtHtml}${arrivingHtml}</div>`;
   }
   function vehicleHtml(
     shortName: string,
