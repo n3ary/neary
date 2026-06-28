@@ -188,20 +188,8 @@
 
         <Stack direction="row" align="center" justify="between">
           <Box class="flex-1 min-w-0">
-            <Typography variant="body2">Show off-route vehicles</Typography>
-            <Typography variant="caption">Diagnostic: vehicles too far from the route shape to match a trip.</Typography>
-          </Box>
-          <Switch
-            checked={userPrefs.showOffRouteVehicles}
-            onchange={(v) => (userPrefs.showOffRouteVehicles = v)}
-            aria-label="Show off-route vehicles"
-          />
-        </Stack>
-
-        <Stack direction="row" align="center" justify="between">
-          <Box class="flex-1 min-w-0">
             <Typography variant="body2">Enable Debug</Typography>
-            <Typography variant="caption">Render <code>tripId · kind · dir</code> on every vehicle card and map marker. Use when reporting cross-view discrepancies so screenshots can be correlated.</Typography>
+            <Typography variant="caption">Surface diagnostic info for debugging the live data: <code>tripId · kind · dir</code> on every vehicle card and map marker, plus the off-route bucket on station boards (vehicles too far from the route shape to match a trip).</Typography>
           </Box>
           <Switch
             checked={userPrefs.showDebugIds}
