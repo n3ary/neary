@@ -32,7 +32,7 @@ class UserPrefs {
    *  `incoming` / `drop-off` / `departed` sections; the now-group
    *  (`departing` / `at-station` / `arriving`) and `off-route`
    *  diagnostic are always uncapped. See `capStationBoard`. */
-  stationBoardMaxRows = $state(5);
+  stationBoardMaxRows = $state(3);
   /** User's optional Tranzy API key — when set, live data layer activates. */
   apiKey = $state<string | null>(null);
 

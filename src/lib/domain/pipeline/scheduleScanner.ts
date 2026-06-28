@@ -156,45 +156,54 @@ export function scanSchedule(inputs: ScheduleScannerInputs): Vehicle[] {
   return out;
 }
 
-/** Mark origin-stop rows (isFirstStop) with the trip's lifecycle phase
- *  on its route relative to `now`. Mutates the rows in place because
+/** Classify each emitted row by the trip's lifecycle phase on its
+ *  route relative to `now`. Mutates the rows in place because
  *  `schedule` is the local object pushed onto each emitted vehicle.
  *
- *  Per route, among rows whose `isFirstStop` is true:
- *    - exactly one `next`     → smallest `scheduledDeparture > now`
- *    - at most one `last`     → largest `scheduledDeparture <= now`
+ *  Per route, among the rows emitted at this stop:
+ *    - exactly one `next`     → smallest `tripStartMin > now`
+ *    - at most one `last`     → largest `tripStartMin <= now`
  *      (the trip is still running because the scanner already filtered
  *      out past trips whose `tripEnd <= now`)
  *    - `on-route`             → any earlier past departure still running
  *    - `later`                → any future departure that is not `next`
  *
- *  Also bumps the row's confidence to `high` for the `next` phase: at
- *  the origin, the imminent departure is the most reliable thing we
- *  can show — schedule IS authoritative for a parked bus and the rider
- *  is acting on that information now. `last` / `on-route` / `later`
- *  rows keep their default `medium` confidence.
+ *  Applied to every row, not only origin rows: tripPhase is a property
+ *  of the trip's lifecycle (when it left origin vs `now`), independent
+ *  of which stop's row we're looking at. At a terminus, a row's
+ *  tripPhase reads "this trip's bus has just left origin / is on the
+ *  road / is the next one to start", which is what UI consumers
+ *  (drop-off filter, action-button gates) actually want.
  *
  *  Tie-break by `tripId` lexicographic order when two trips share a
- *  scheduled departure time (rare but GTFS-legal). */
+ *  scheduled departure time (rare but GTFS-legal).
+ *
+ *  Scoped per `(routeId, directionId)`: a stop that's the origin for
+ *  one direction of a route AND the terminus for the other direction
+ *  will see rows for BOTH directions in the same emission set. Each
+ *  direction needs its own `next` / `last` — otherwise a dir-1 arrival
+ *  with an earlier `tripStartMin` would steal the `next` slot from
+ *  the soonest dir-0 origin departure. */
 function assignTripPhases(vehicles: Vehicle[], nowMin: number): void {
-  const byRoute = new Map<string, Vehicle[]>();
+  const byCohort = new Map<string, Vehicle[]>();
   for (const v of vehicles) {
-    if (!v.schedule?.isFirstStop) continue;
-    const list = byRoute.get(v.route.id);
+    if (v.schedule?.tripStartMin == null) continue;
+    const key = `${v.route.id}_${v.directionId ?? -1}`;
+    const list = byCohort.get(key);
     if (list) list.push(v);
-    else byRoute.set(v.route.id, [v]);
+    else byCohort.set(key, [v]);
   }
-  for (const list of byRoute.values()) {
+  for (const list of byCohort.values()) {
     list.sort((a, b) => {
-      const da = a.schedule!.scheduledDeparture;
-      const db = b.schedule!.scheduledDeparture;
+      const da = a.schedule!.tripStartMin!;
+      const db = b.schedule!.tripStartMin!;
       if (da !== db) return da - db;
       return a.schedule!.tripId.localeCompare(b.schedule!.tripId);
     });
     let lastIdx = -1;
     let nextIdx = -1;
     for (let i = 0; i < list.length; i += 1) {
-      const dep = list[i].schedule!.scheduledDeparture;
+      const dep = list[i].schedule!.tripStartMin!;
       if (dep <= nowMin) lastIdx = i;
       else {
         nextIdx = i;
@@ -206,8 +215,14 @@ function assignTripPhases(vehicles: Vehicle[], nowMin: number): void {
       const schedule = v.schedule!;
       if (i === nextIdx) {
         schedule.tripPhase = 'next';
-        v.confidence = 'high';
-        if (v.eta) v.eta.confidence = 'high';
+        // Only bump confidence at the trip's origin: the `next` bus is
+        // parked there and schedule IS the position. At downstream
+        // stops the bus is somewhere on the road and the schedule is
+        // just a prediction, so confidence stays at its default.
+        if (schedule.isFirstStop) {
+          v.confidence = 'high';
+          if (v.eta) v.eta.confidence = 'high';
+        }
       } else if (i === lastIdx) {
         schedule.tripPhase = 'last';
       } else if (lastIdx >= 0 && i < lastIdx) {

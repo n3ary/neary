@@ -102,8 +102,6 @@
   let error = $state<string | null>(null);
   // Last departed trip on today's tab: non-expandable separator row shown above upcoming trips.
   let lastDepartedTrip = $state<ScheduleTrip | null>(null);
-  // Whether the week table is fully expanded (showing all times including past ones).
-  let weekExpanded = $state(false);
   // Guard kept for back-compat but auto-expand is intentionally disabled — trips start collapsed.
   let todayAutoExpanded = $state(true);
   // Whether the today list is expanded past the initial visible window.
@@ -232,7 +230,6 @@
     weeklyLoading = true;
     weekly = null;
     weeklyDirection = direction;
-    weekExpanded = false;
     const rid = routeId;
     const dir = direction;
     (async () => {
@@ -288,29 +285,38 @@
   const isFav = $derived(route ? favoritesStore.has(route.id) : false);
 
   // ── Week-table derived ──────────────────────────────────────────────
-  // All unique departure minutes across the three day-patterns, sorted.
-  // Lives in the script so the weekColumns snippet is pure markup.
-  const weekAllTimes = $derived.by<number[]>(() => {
-    if (!weekly) return [];
-    return Array.from(new Set([...weekly.weekday, ...weekly.saturday, ...weekly.sunday]))
-      .sort((a, b) => a - b);
-  });
-  const weekdaySet = $derived(new Set(weekly?.weekday ?? []));
-  const saturdaySet = $derived(new Set(weekly?.saturday ?? []));
-  const sundaySet  = $derived(new Set(weekly?.sunday  ?? []));
-  // The set for today's column — drives the "first upcoming" search.
-  const weekTodaySet = $derived<Set<number>>(
-    todayCol === 'weekday' ? weekdaySet : todayCol === 'saturday' ? saturdaySet : sundaySet,
+  // Each column is independent: rendered top-to-bottom from its own
+  // sorted times. The table just zips the three arrays by row index;
+  // shorter columns leave trailing cells blank. The rider scans one
+  // column per day, never reads across rows.
+  const weekdayTimes = $derived((weekly?.weekday ?? []).slice().sort((a, b) => a - b));
+  const saturdayTimes = $derived((weekly?.saturday ?? []).slice().sort((a, b) => a - b));
+  const sundayTimes = $derived((weekly?.sunday ?? []).slice().sort((a, b) => a - b));
+  const weekRowCount = $derived(
+    Math.max(weekdayTimes.length, saturdayTimes.length, sundayTimes.length),
   );
-  // Index of the first time in today's column that is ≥ nowMin.
-  // When no such time exists (service over for today), collapse to 0
-  // so the full table is visible rather than collapsing to an empty tail.
-  const weekCollapseAt = $derived.by(() => {
-    const idx = weekAllTimes.findIndex(t => weekTodaySet.has(t) && t >= nowMin);
-    return idx <= 0 ? 0 : idx;
+  const todayTimes = $derived<number[]>(
+    todayCol === 'weekday' ? weekdayTimes
+    : todayCol === 'saturday' ? saturdayTimes
+    : sundayTimes,
+  );
+  // Today-column `next` / `last` anchors — same semantics as
+  // `schedule.tripPhase` on origin rows (see docs/concepts/vehicle.md).
+  // `next` is the soonest today-time at or after `nowMin`; `last` is
+  // the latest today-time strictly before `nowMin`. Both are null
+  // when there's no such time (e.g. service hasn't started or has
+  // wrapped past terminus).
+  const weekNextTime = $derived<number | null>(
+    todayTimes.find((t) => t >= nowMin) ?? null,
+  );
+  const weekLastTime = $derived.by<number | null>(() => {
+    let found: number | null = null;
+    for (const t of todayTimes) {
+      if (t < nowMin) found = t;
+      else break;
+    }
+    return found;
   });
-  const weekHiddenCount = $derived(weekCollapseAt);
-  const weekVisibleTimes = $derived(weekExpanded ? weekAllTimes : weekAllTimes.slice(weekCollapseAt));
 
   // ── Title / subtitle ────────────────────────────────────────────────
   // Title is the origin station — that's what THIS schedule is about
@@ -363,7 +369,7 @@
   // Trip start times are minutes-since-midnight of the view's *target*
   // calendar day, which is tomorrow for the Tomorrow tab. nowMin is
   // always today's frame, so we shift the trip value by 24h when the
-  // view is Tomorrow before computing the delta \u2014 otherwise a
+  // view is Tomorrow before computing the delta — otherwise a
   // tomorrow-23:00 trip displays as '16 min ago' against a
   // today-23:16 clock instead of the ~24h-away truth.
   const viewDayOffsetMin = $derived(view === 'tomorrow' ? 24 * 60 : 0);
@@ -413,13 +419,13 @@
 </script>
 
 
-<!-- Weekly schedule view: rendered as a true matrix table so a
-     given clock time lines up horizontally across day columns.
-     Today's column stays full-color; the other two are greyed so
-     the user reads 'this is what runs today' at a glance. Within
-     today's column, times that have already passed are also greyed.
-     Rows before today's first upcoming departure are hidden by default;
-     an expand button above the table reveals the full history. -->
+<!-- Weekly schedule view. Each day column lists its own sorted times
+     top-to-bottom; the three columns are zipped by row index, so
+     shorter columns end with blank cells. Today's column stays
+     full-color; the other two are greyed so the user reads 'this
+     is what runs today' at a glance. Within today's column, times
+     that have already passed are also greyed. No expand / collapse
+     — the full day is always visible. -->
 {#snippet weekColumns()}
   {#if weekly == null}
     <Stack direction="row" spacing={1} align="center" class="py-2">
@@ -428,7 +434,7 @@
         Loading weekly schedule…
       </Typography>
     </Stack>
-  {:else if weekAllTimes.length === 0}
+  {:else if weekRowCount === 0}
     <Typography variant="caption" class="text-[color:var(--color-fg-muted)] py-2">
       No service defined for this direction in calendar.txt.
     </Typography>
@@ -451,30 +457,25 @@
         </tr>
       </thead>
       <tbody>
-        {#if !weekExpanded && weekHiddenCount > 0}
-          <tr class="week-expand-row">
-            <td colspan="3">
-              <button
-                type="button"
-                onclick={() => { weekExpanded = true; }}
-                class="w-full text-xs text-[color:var(--color-primary)] hover:text-[color:var(--color-fg)] py-1"
-              >
-                ↑ Show {weekHiddenCount} earlier departure{weekHiddenCount !== 1 ? 's' : ''}
-              </button>
-            </td>
-          </tr>
-        {/if}
-        {#each weekVisibleTimes as t (t)}
+        {#each Array.from({ length: weekRowCount }, (_, i) => i) as i (i)}
           <tr>
             {#each [
-              { col: 'weekday', has: weekdaySet.has(t) },
-              { col: 'saturday', has: saturdaySet.has(t) },
-              { col: 'sunday', has: sundaySet.has(t) },
+              { col: 'weekday', time: weekdayTimes[i] ?? null },
+              { col: 'saturday', time: saturdayTimes[i] ?? null },
+              { col: 'sunday', time: sundayTimes[i] ?? null },
             ] as cell (cell.col)}
               {@const isToday = cell.col === todayCol}
-              {@const isPast = isToday && t < nowMin - 1}
-              <td class={`${isToday ? 'today' : 'other'} ${isPast ? 'past' : ''}`}>
-                {cell.has ? formatHHMM(t) : '—'}
+              {@const hasTime = cell.time != null}
+              {@const isPast = isToday && hasTime && cell.time! < nowMin - 1}
+              {@const isNext = isToday && hasTime && cell.time === weekNextTime}
+              {@const isLast = isToday && hasTime && cell.time === weekLastTime}
+              <td class={[
+                isToday ? 'today' : 'other',
+                isPast && !isLast ? 'past' : '',
+                isNext ? 'next' : '',
+                isLast ? 'last' : '',
+              ].filter(Boolean).join(' ')}>
+                {hasTime ? formatHHMM(cell.time!) : ''}
               </td>
             {/each}
           </tr>
@@ -723,11 +724,14 @@
     user-select: none;
   }
 
-  /* Weekly schedule matrix table. Rows are unique HH:MM values across
-     all three day-columns; a missing cell shows an em-dash so the
-     pattern reads at a glance. Today's column stays at full opacity
-     and uses the foreground color; the other two columns plus any
-     already-passed time in today's column are muted. */
+  /* Weekly schedule table. Each column lists its own sorted times
+     top-to-bottom; the three columns are zipped by row index, so
+     shorter columns end with blank cells. A rider scans one column
+     per day; there is no left-to-right relationship between cells
+     in the same row, and clock times do NOT line up horizontally.
+     Today's column stays at full opacity and uses the foreground
+     color; the other two columns plus any already-passed time in
+     today's column are muted. */
   .week-table {
     width: 100%;
     border-collapse: collapse;
@@ -768,8 +772,20 @@
     text-decoration-color: color-mix(in srgb, var(--color-fg-muted) 50%, transparent);
     opacity: 0.7;
   }
-  .week-table .week-expand-row td {
-    padding: 0;
-    border-bottom: 1px solid var(--color-border);
+  /* `next` and `last` anchors mirror `schedule.tripPhase` on origin
+     rows (see docs/concepts/vehicle.md). `next` is the imminent
+     departure — bold accent so a rider scanning the day's grid sees
+     "now" instantly. `last` is the most recent past departure —
+     kept in the accent colour but struck through, distinct from
+     fully-past rows which fade to muted. */
+  .week-table .next {
+    color: var(--color-primary);
+    font-weight: 700;
+  }
+  .week-table .last {
+    color: var(--color-primary);
+    text-decoration: line-through;
+    text-decoration-color: var(--color-primary);
+    opacity: 0.85;
   }
 </style>

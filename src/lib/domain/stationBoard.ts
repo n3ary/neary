@@ -97,7 +97,7 @@ export function assembleStationBoard(
  *  `departed`) when the user hasn't picked a value. Now-group buckets
  *  (`departing` / `at-station` / `arriving`) and the diagnostic
  *  `off-route` bucket are always uncapped. */
-export const DEFAULT_CONTEXT_BUCKET_CAP = 5;
+export const DEFAULT_CONTEXT_BUCKET_CAP = 3;
 
 /** Per-bucket cap. Returns `null` for buckets the rider should always
  *  see in full:
@@ -140,9 +140,16 @@ function dedupKey(row: BoardRow): string {
  *       pre-sorted by `compareForBoard`).
  *    3. Per-`(route, direction)` dedup inside each bucket — keep the
  *       soonest row per pair. Active only when step 1 said so.
- *    4. Per-bucket cap (`bucketCap`). Now-group and `off-route`
+ *    4. Drop-off filter (only when dedup is skipped): keep just the
+ *       trip-active rows — those whose `tripPhase` is anything but
+ *       `later`. Future trips that haven't departed origin yet are
+ *       pure timetable guesses with no useful position info, so
+ *       hiding them keeps the section focused on buses actually
+ *       arriving. `tripPhase` is set on every emitted row by
+ *       `scheduleScanner.assignTripPhases`.
+ *    5. Per-bucket cap (`bucketCap`). Now-group and `off-route`
  *       buckets are uncapped; context buckets use `maxRows`.
- *    5. Re-sort with `compareForBoard` so the on-screen order matches
+ *    6. Re-sort with `compareForBoard` so the on-screen order matches
  *       the spec regardless of bucket-traversal order.
  *
  *  Pure. */
@@ -172,6 +179,8 @@ export function capStationBoard(rows: BoardRow[], maxRows = DEFAULT_CONTEXT_BUCK
         seen.add(k);
         kept.push(r);
       }
+    } else if (bucket === 'drop-off') {
+      kept = bucketRows.filter((r) => r.vehicle.schedule?.tripPhase !== 'later');
     } else {
       kept = bucketRows;
     }
@@ -301,9 +310,15 @@ export function mergeReconciledIntoStationBoard(inputs: StationMergeInputs): Veh
   // travelTimeMin = scheduledArrival at THIS stop − tripStartMin at
   // origin. Same recipe the old reconciler used per-station, just
   // moved here since the worker doesn't know the consumer's stop.
+  // `dropOffOnly` also tracked here so live orphans at a terminus or
+  // a drop-off-only stop inherit the flag from their scheduled
+  // siblings — without it the orphan would leak into the now-group
+  // buckets (arriving / at-station / departing) instead of routing
+  // to `drop-off` in `assembleStationBoard`.
   const repByKey = new Map<string, {
     headsign: string | undefined;
     travelTimeMin: number | undefined;
+    dropOffOnly: boolean | undefined;
   }>();
   for (const v of perStopVehicles) {
     if (v.kind !== 'scheduled') continue;
@@ -320,11 +335,13 @@ export function mergeReconciledIntoStationBoard(inputs: StationMergeInputs): Veh
     if (
       !existing ||
       (!existing.headsign && v.headsign) ||
-      (existing.travelTimeMin == null && travelTimeMin != null)
+      (existing.travelTimeMin == null && travelTimeMin != null) ||
+      (existing.dropOffOnly !== true && v.dropOffOnly === true)
     ) {
       repByKey.set(key, {
         headsign: v.headsign ?? existing?.headsign,
         travelTimeMin: travelTimeMin ?? existing?.travelTimeMin,
+        dropOffOnly: v.dropOffOnly === true ? true : existing?.dropOffOnly,
       });
     }
   }
@@ -384,6 +401,10 @@ export function mergeReconciledIntoStationBoard(inputs: StationMergeInputs): Veh
       ...v,
       headsign: v.headsign ?? rep.headsign,
       eta: etaSeed,
+      // At a terminus or drop-off-only stop the matched sibling
+      // carries dropOffOnly=true; propagate so this orphan routes
+      // to the `drop-off` bucket in assembleStationBoard.
+      dropOffOnly: v.dropOffOnly ?? rep.dropOffOnly,
     });
   }
 

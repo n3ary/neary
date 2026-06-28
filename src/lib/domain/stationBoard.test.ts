@@ -61,7 +61,7 @@ describe('assembleStationBoard', () => {
   it('single-route board skips dedup (cap still applies)', () => {
     // Same route+direction everywhere: dedup is a no-op (the board
     // already represents the rider's chosen view). 1 at-station +
-    // 1 arriving + 4 incoming = 6 rows; default context cap is 5.
+    // 1 arriving uncapped + 4 incoming capped at the default of 3 = 5 rows.
     const vehicles: Vehicle[] = [
       scheduled('arr', r24, 1),
       {
@@ -80,9 +80,9 @@ describe('assembleStationBoard', () => {
       scheduled('i4', r24, 10),
     ];
     const board = assembleStationBoard(vehicles, { lat: 46.7712, lon: 23.6236 }, allowAll, nowMs, 'UTC');
-    expect(board).toHaveLength(6);
+    expect(board).toHaveLength(5);
     expect(board.map((r) => r.bucket)).toEqual([
-      'at-station', 'arriving', 'incoming', 'incoming', 'incoming', 'incoming',
+      'at-station', 'arriving', 'incoming', 'incoming', 'incoming',
     ]);
   });
 
@@ -314,14 +314,16 @@ describe('capStationBoard', () => {
     // Real-world Cluj case: a mid-line stop serves the same route in
     // both directions. The board is still "one route" from the
     // rider's POV, so dedup must NOT collapse the two directions.
+    // Pass an explicit maxRows large enough that the cap doesn't
+    // confound the dedup-skip assertion.
     const rows: BoardRow[] = [
       { vehicle: scheduled('north-1', r24, 3, 0), bucket: 'incoming', etaMinutes: 3 },
       { vehicle: scheduled('north-2', r24, 8, 0), bucket: 'incoming', etaMinutes: 8 },
       { vehicle: scheduled('south-1', r24, 5, 1), bucket: 'incoming', etaMinutes: 5 },
       { vehicle: scheduled('south-2', r24, 11, 1), bucket: 'incoming', etaMinutes: 11 },
     ];
-    const out = capStationBoard(rows, DEFAULT_CONTEXT_BUCKET_CAP);
-    // Single route → dedup skipped → all 4 rows visible (cap is 5).
+    const out = capStationBoard(rows, 10);
+    // Single route → dedup skipped → all 4 rows visible.
     expect(out).toHaveLength(4);
   });
 
@@ -387,6 +389,62 @@ describe('capStationBoard', () => {
     const out = capStationBoard(rows, DEFAULT_CONTEXT_BUCKET_CAP);
     // r24 dedups to the live (sooner) row; r35 keeps its own.
     expect(out.map((r) => r.vehicle.schedule?.tripId)).toEqual(['live-r24', 'r35-drop']);
+  });
+
+  it('drop-off filter: single-route board drops `later` trips', () => {
+    // Terminus single-route case. 4 trips arriving as drop-off, with the
+    // `tripPhase` already assigned by the upstream scanner. The filter
+    // simply drops rows whose phase is `later`.
+    const live: Vehicle = {
+      kind: 'tracked',
+      id: 'live-1',
+      route: r24,
+      type: 'bus',
+      directionId: 0,
+      confidence: 'medium',
+      schedule: { tripId: 'live-1', scheduledDeparture: 552, tripStartMin: 500, directionId: 0 },
+      eta: { distanceMeters: 0, minutes: 2, confidence: 'medium' },
+      position: { lat: 0, lon: 0, source: 'gps', asOf: nowMs },
+      liveSources: ['gtfs-rt'],
+    } as Vehicle;
+    const running = {
+      ...scheduled('running', r24, 15),
+      schedule: {
+        tripId: 'running',
+        scheduledDeparture: 565,
+        tripStartMin: 545,
+        directionId: 0,
+        tripPhase: 'last',
+      },
+    } as Vehicle;
+    const nextToStart = {
+      ...scheduled('next-to-start', r24, 25),
+      schedule: {
+        tripId: 'next-to-start',
+        scheduledDeparture: 575,
+        tripStartMin: 555,
+        directionId: 0,
+        tripPhase: 'next',
+      },
+    } as Vehicle;
+    const laterTrip = {
+      ...scheduled('later', r24, 35),
+      schedule: {
+        tripId: 'later',
+        scheduledDeparture: 585,
+        tripStartMin: 575,
+        directionId: 0,
+        tripPhase: 'later',
+      },
+    } as Vehicle;
+    const rows: BoardRow[] = [
+      { vehicle: live, bucket: 'drop-off', etaMinutes: 2 },
+      { vehicle: running, bucket: 'drop-off', etaMinutes: 15 },
+      { vehicle: nextToStart, bucket: 'drop-off', etaMinutes: 25 },
+      { vehicle: laterTrip, bucket: 'drop-off', etaMinutes: 35 },
+    ];
+    const out = capStationBoard(rows, 10);
+    expect(out.map((r) => r.vehicle.schedule?.tripId)).toEqual(['live-1', 'running', 'next-to-start']);
   });
 
   it('preserves compareForBoard order in the output', () => {
@@ -566,5 +624,27 @@ describe('mergeReconciledIntoStationBoard', () => {
     expect(orphan).toBeTruthy();
     // 520 + 0 − 555 = -35 (bus's scheduled origin departure was 35 min ago).
     expect(orphan?.eta?.minutes).toBe(-35);
+  });
+
+  it('propagates dropOffOnly from per-stop siblings to orphan rows', () => {
+    // At a terminus / drop-off-only stop, every per-stop scheduled
+    // row has dropOffOnly=true. A live orphan emitted into the same
+    // station context must inherit the flag so it routes to the
+    // `drop-off` bucket downstream instead of leaking into the now-
+    // group buckets.
+    const perStop: Vehicle[] = [
+      {
+        ...perStopScheduled('T1', r24, 0, 500, 540, 'Centru'),
+        dropOffOnly: true,
+      } as Vehicle,
+    ];
+    const reconciled = [liveOrphan('LIVE-1', r24, 0, 520, 46.79, 23.60)];
+    const out = mergeReconciledIntoStationBoard({
+      perStopVehicles: perStop,
+      reconciledVehicles: reconciled,
+      nowMin: 555,
+    });
+    const orphan = out.find((v) => v.kind === 'gps-only');
+    expect(orphan?.dropOffOnly).toBe(true);
   });
 });

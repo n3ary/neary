@@ -42,10 +42,6 @@
     buildTripShapePlan, predictPosition, predictPositionOnShape, predictPositionFromGps,
     type TripShapePlan,
   } from '$lib/domain/predictPosition';
-  import {
-    measurePolyline, pointAtDistance,
-    type MeasuredPolyline,
-  } from '$lib/domain/shapeProjection';
   import { feedsStore } from '$lib/stores/feedsStore.svelte';
   import { favoritesStore } from '$lib/stores/favoritesStore.svelte';
   import { reconciledVehiclesStore } from '$lib/stores/reconciledVehiclesStore.svelte';
@@ -151,14 +147,6 @@
       map.set(t.tripId, buildTripShapePlan(t.stops, view.shape));
     }
     return map;
-  });
-
-  // Measured route polyline (cumulative distances) for the direction
-  // arrows. One pass per page mount; the arrow positions / bearings
-  // below all read from it.
-  const measuredShape = $derived.by<MeasuredPolyline | null>(() => {
-    if (!view || view.shape.length < 2) return null;
-    return measurePolyline(view.shape);
   });
 
   // Live observations on (routeId, direction) whose trip didn't
@@ -321,44 +309,6 @@
     return out;
   });
 
-  /** Active stop-to-stop segments per vehicle: the leg between the
-   *  stop a vehicle just passed and the one it's heading to next.
-   *  The traveling-dots animation rides these segments so the flow
-   *  hints at where each vehicle is currently going \u2014 instead of an
-   *  ambient pulse along the whole route that's unrelated to live
-   *  positions. Only shape-aware (planned) trips contribute; the
-   *  no-shape fallback skips the trail since we can't translate
-   *  stops to polyline distances without a projection. */
-  type VehicleTrail = { fromDistM: number; toDistM: number };
-  const vehicleTrails = $derived.by<VehicleTrail[]>(() => {
-    if (!view || !measuredShape) return [];
-    void nowMin; // declare dependency so trails refresh per tick
-    const trails: VehicleTrail[] = [];
-    for (const t of view.trips) {
-      const plan = tripPlans.get(t.tripId);
-      if (!plan) continue;
-      const { legs } = plan;
-      if (legs.length < 2) continue;
-      // Skip not-yet-started and finished trips \u2014 no active leg.
-      if (nowMin < legs[0].arrivalMin) continue;
-      if (nowMin >= legs[legs.length - 1].arrivalMin) continue;
-      for (let i = 0; i < legs.length - 1; i++) {
-        if (nowMin >= legs[i].arrivalMin && nowMin <= legs[i + 1].arrivalMin) {
-          const fromDistM = legs[i].distAlongM;
-          const toDistM = legs[i + 1].distAlongM;
-          // Drop segments that are degenerate on the shape (out-and-
-          // back projections or near-coincident stops) \u2014 a dot
-          // hovering in place reads as a glitch.
-          if (Math.abs(toDistM - fromDistM) >= 20) {
-            trails.push({ fromDistM, toDistM });
-          }
-          break;
-        }
-      }
-    }
-    return trails;
-  });
-
   // ── Title / subtitle ───────────────────────────────────────────────
   // Mirrors the schedule view: title is the origin station name
   // (i.e. 'departures from here'), subtitle is the headsign —
@@ -433,7 +383,6 @@
   let mapInstance = $state<import('leaflet').Map | null>(null);
   let shapeLayer: import('leaflet').Polyline | null = null;
   let stopsLayer: import('leaflet').LayerGroup | null = null;
-  let arrowsLayer: import('leaflet').LayerGroup | null = null;
   let vehiclesLayer: import('leaflet').LayerGroup | null = null;
   let userMarker: import('leaflet').Marker | null = null;
   let hasFitOnce = false;
@@ -477,18 +426,7 @@
           attribution: '© OpenStreetMap contributors',
         }).addTo(mapInstance);
         stopsLayer = Lref.layerGroup().addTo(mapInstance);
-        arrowsLayer = Lref.layerGroup().addTo(mapInstance);
         vehiclesLayer = Lref.layerGroup().addTo(mapInstance);
-        // Dedicated pane for the traveling-dots flow animation,
-        // sitting above overlayPane (400) so the dots paint over
-        // the route polyline + stop circles, but below markerPane
-        // (600) so vehicle badges stay on top. Without this the
-        // dots are drawn underneath the 5px route line and read as
-        // invisible. pointerEvents:none keeps them from stealing
-        // hover / click from the markers below.
-        const dotsPane = mapInstance.createPane('nearyDots');
-        dotsPane.style.zIndex = '450';
-        dotsPane.style.pointerEvents = 'none';
         // Vehicles pane sits above markerPane (600) so vehicle badges
         // always paint over stop circles, but below tooltipPane (650).
         const vehiclesPane = mapInstance.createPane('nearyVehicles');
@@ -569,111 +507,25 @@
     stopsLayer?.clearLayers();
     const sl = stopsLayer;
     if (sl) {
-      const lastIdx = currentView.stops.length - 1;
-      currentView.stops.forEach((s, i) => {
-        // Origin gets a play-triangle disc, terminus a square cap
-        // — same convention RouteBadge uses for isStart/isEnd, so a
-        // user who's seen the badge already reads these icons at a
-        // glance. Middle stops stay as the small circleMarker so
-        // the endpoint hierarchy is unmistakable.
-        const isOrigin = i === 0;
-        const isTerminus = i === lastIdx;
-        const m = (isOrigin || isTerminus)
-          ? Lref.marker([s.lat, s.lon], {
-              icon: Lref.divIcon({
-                className: isOrigin ? 'neary-origin' : 'neary-terminus',
-                html: isOrigin
-                  ? endpointHtml(currentView.route.color, 'origin')
-                  : endpointHtml(currentView.route.color, 'terminus'),
-                iconSize: isOrigin ? [18, 18] : [16, 16],
-                iconAnchor: isOrigin ? [9, 9] : [8, 8],
-              }),
-              keyboard: false,
-              riseOnHover: true,
-            })
-          : Lref.circleMarker([s.lat, s.lon], {
-              radius: 5,
-              color: '#fff',
-              weight: 1.5,
-              fillColor: currentView.route.color,
-              fillOpacity: 1,
-            });
+      // Every stop renders as the same small circleMarker — origin and
+      // terminus get no special treatment. The route badge in the
+      // header already names origin + destination, and "next at
+      // origin" surfaces via the scheduled vehicle bubble; a separate
+      // play / square endpoint glyph was redundant.
+      currentView.stops.forEach((s) => {
+        const m = Lref.circleMarker([s.lat, s.lon], {
+          radius: 5,
+          color: '#fff',
+          weight: 1.5,
+          fillColor: currentView.route.color,
+          fillOpacity: 1,
+        });
         m.bindPopup(stopPopupHtml(s.stopId, s.stopName, currentRoutes.get(s.stopId) ?? []), {
           closeButton: false,
         });
         m.addTo(sl);
       });
     }
-  });
-
-  // Traveling dots, scoped per-vehicle: each active stop-to-stop
-  // segment gets one dot that slides from the previous station to
-  // the next, fades in / out across the cycle, then loops. So the
-  // dots actually mean something live — they trace where buses are
-  // moving right now — instead of a generic ambient pulse along
-  // the full route. Quiet by design: 1 dot per vehicle, small,
-  // peak opacity ~0.4. Cleanup cancels the RAF and clears the
-  // layer; the effect re-runs whenever vehicleTrails changes
-  // (i.e. when a vehicle advances to the next stop).
-  const DOTS_PER_TRAIL = 3;
-  const DOT_CYCLE_MS = 3000;
-  const DOT_PEAK_OPACITY = 0.45;
-  $effect(() => {
-    if (!L || !mapInstance || !arrowsLayer) return;
-    arrowsLayer.clearLayers();
-    if (!measuredShape || vehicleTrails.length === 0) return;
-    const Lref = L;
-    const layer = arrowsLayer;
-    const measured = measuredShape;
-    const trails = vehicleTrails;
-    const renderer = Lref.svg({ pane: 'nearyDots' });
-    type Dot = {
-      marker: import('leaflet').CircleMarker;
-      fromDistM: number;
-      toDistM: number;
-      phaseOffset: number;
-    };
-    const dots: Dot[] = [];
-    for (const trail of trails) {
-      for (let i = 0; i < DOTS_PER_TRAIL; i++) {
-        const marker = Lref.circleMarker(
-          [measured.points[0].lat, measured.points[0].lon],
-          {
-            renderer,
-            radius: 2.5,
-            stroke: false,
-            fillColor: '#fff',
-            fillOpacity: 0,
-            interactive: false,
-          },
-        ).addTo(layer);
-        dots.push({
-          marker,
-          fromDistM: trail.fromDistM,
-          toDistM: trail.toDistM,
-          phaseOffset: i / DOTS_PER_TRAIL,
-        });
-      }
-    }
-    const start = performance.now();
-    let rafId = 0;
-    const tick = (t: number) => {
-      const elapsed = (t - start) / DOT_CYCLE_MS;
-      for (const d of dots) {
-        const p = (elapsed + d.phaseOffset) % 1;
-        const dist = d.fromDistM + p * (d.toDistM - d.fromDistM);
-        const opacity = Math.sin(p * Math.PI) * DOT_PEAK_OPACITY;
-        const pt = pointAtDistance(measured, dist);
-        d.marker.setLatLng([pt.lat, pt.lon]);
-        d.marker.setStyle({ fillOpacity: opacity });
-      }
-      rafId = requestAnimationFrame(tick);
-    };
-    rafId = requestAnimationFrame(tick);
-    return () => {
-      cancelAnimationFrame(rafId);
-      layer.clearLayers();
-    };
   });
 
   // Re-paint vehicles every nowMin tick.
@@ -841,27 +693,6 @@
         </a>
       </div>${badgesHtml}
     </div>`;
-  }
-  /** Origin / terminus marker glyph. Origin shows a white play
-   *  triangle (▶) — the same convention RouteBadge encodes as
-   *  isStart, instantly readable as 'departures begin here'.
-   *  Terminus shows a white square (■) — RouteBadge's isEnd cap. */
-  function endpointHtml(routeColor: string, kind: 'origin' | 'terminus'): string {
-    const fg = pickContrastingText(routeColor);
-    // Origin: 18×18 — play-styled, stands out but leaves room for the
-    // scheduled vehicle badge that usually sits on top of it.
-    // Terminus: 16×16 — slightly special (square glyph) but smaller so
-    // the hierarchy origin > terminus > regular stop is clear.
-    const size = kind === 'origin' ? 18 : 16;
-    const glyph = kind === 'origin'
-      ? `<svg width="8" height="8" viewBox="0 0 24 24" fill="${fg}" style="margin-left:1px;"><polygon points="6 4 20 12 6 20"/></svg>`
-      : `<svg width="8" height="8" viewBox="0 0 24 24" fill="${fg}"><rect x="4" y="4" width="16" height="16" rx="1.5"/></svg>`;
-    return `<div style="
-      width:${size}px;height:${size}px;border-radius:50%;
-      background:${routeColor};
-      display:inline-flex;align-items:center;justify-content:center;
-      box-shadow:0 0 0 2px #fff, 0 1px 3px rgba(0,0,0,0.3);
-    ">${glyph}</div>`;
   }
   function escapeHtml(s: string): string {
     return s

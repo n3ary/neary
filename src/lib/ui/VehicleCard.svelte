@@ -13,7 +13,7 @@
   union; this component reads it.
 -->
 <script lang="ts">
-  import { ArrowDownLeft, ArrowRight, Calendar, Map as MapIcon } from 'lucide-svelte';
+  import { ArrowDownLeft, ArrowRight, Calendar, ChevronDown, Map as MapIcon } from 'lucide-svelte';
   import type { Vehicle } from '$lib/domain/types';
   import { formatHHMM, formatRelativeMin } from '$lib/domain/types';
   import type { Urgency } from '$lib/domain/buckets';
@@ -27,29 +27,24 @@
      *  omitted (map popup, standalone), the secondary line stays muted. */
     urgency?: Urgency;
     onclick?: () => void;
-    /** When set, the round kind-badge becomes a link to this URL.
-     *  Used by StationCard to deep-link into /schedule/route/[id].
-     *  Keeping URL-knowledge out of the component lets each consumer
-     *  decide what the icon should navigate to (or omit it). */
+    /** When set, the schedule icon button is shown and links here.
+     *  Used by StationCard to deep-link into /schedule/route/[id]. */
     scheduleHref?: string;
-    /** When set, renders a separate map-icon button that opens the
-     *  route map (with this trip pre-selected when the URL includes
-     *  the trip id). The consumer composes the href so this card
-     *  stays free of route-URL convention knowledge. */
+    /** When set, the map icon button is shown and links here. */
     mapHref?: string;
-    /** When set, the route badge becomes tappable and fires this
-     *  callback. Used by StationCard to toggle the upcoming-stop
-     *  list for this vehicle. */
-    onRouteBadgeClick?: () => void;
-    /** Reflects the expanded state of the stop list panel, passed
-     *  back from the consumer so the badge shows a pressed ring. */
+    /** When set, the expand icon button is shown and fires this
+     *  callback. Used by StationCard to toggle the per-vehicle
+     *  upcoming-stops list. The route badge stays identity-only. */
+    onStopsExpand?: () => void;
+    /** Reflects the expanded state of the stops list panel; rotates
+     *  the chevron when true. */
     stopsExpanded?: boolean;
     class?: string;
   };
 
   let {
     vehicle, urgency, onclick, scheduleHref, mapHref,
-    onRouteBadgeClick, stopsExpanded = false,
+    onStopsExpand, stopsExpanded = false,
     class: className,
   }: Props = $props();
 
@@ -142,21 +137,33 @@
 >
   <!-- Fixed-width badge so a row of vehicles in different routes
        (3-char '32B', 1-char '9', 4-char '102L') reads as a single
-       column. The headsign + ETA columns to the right then align
-       across rows. min-w-14 ≈ 56 px fits four glyphs at the
-       medium badge text size; longer ids grow the badge but stay
-       centered.
-
-       Badge is identity-only — navigation lives on the dedicated
-       map / schedule icon buttons to the right so users learn one
-       affordance per destination (consistent with favorites). -->
-  <RouteBadge
-    route={vehicle.route}
-    size="medium"
-    class="min-w-14"
-    selected={onRouteBadgeClick ? stopsExpanded : undefined}
-    onclick={onRouteBadgeClick ? (e) => { e.stopPropagation(); onRouteBadgeClick!(); } : undefined}
-  />
+       column. When the row has a `mapHref` (actionable trip), the
+       badge becomes an extra tap target for the map — same destination
+       as the dedicated map icon to the right, just a larger easier-to-
+       hit surface for the most common action. NB: deliberately no
+       `e.stopPropagation` on the anchor — SvelteKit's client router
+       intercepts link clicks during bubble at the document level, so
+       stopping propagation forces a full page reload. The card's
+       `handleCardClick` already bails for clicks coming from any
+       inner anchor, so the row's onclick won't fire either. -->
+  {#snippet routeBadge()}
+    <RouteBadge
+      route={vehicle.route}
+      size="medium"
+      class="min-w-14"
+    />
+  {/snippet}
+  {#if mapHref}
+    <a
+      href={mapHref}
+      aria-label={`Open ${vehicle.route.shortName} on the map`}
+      class="shrink-0 rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--color-primary)]"
+    >
+      {@render routeBadge()}
+    </a>
+  {:else}
+    {@render routeBadge()}
+  {/if}
 
   <div class="flex-1 min-w-0">
     <div class="text-sm font-medium truncate flex items-center gap-1">
@@ -174,7 +181,17 @@
     <div class={cn('text-xs truncate', etaClass)}>{secondaryLine}</div>
   </div>
 
-  <!-- Drop-off slot — always reserves space so the icon columns stay aligned -->
+  <!--
+    Action + state column. Each slot reserves a fixed width so icons
+    sit in column-aligned positions even when one is hidden; adding
+    a new affordance later (debug toggles, anomaly indicators, …)
+    just plugs another fixed slot in. Order left → right:
+
+       drop-off (13px) · schedule (24px) · map (24px)
+       · expand-stops (24px) · state dot (13px)
+  -->
+
+  <!-- Drop-off slot — surfaced for vehicles the rider can't board here. -->
   <span class="shrink-0 w-[13px] flex items-center justify-center">
     {#if vehicle.dropOffOnly}
       <ArrowDownLeft
@@ -185,55 +202,80 @@
     {/if}
   </span>
 
-  <!--
-    Action + state column order: [schedule btn] [map btn] [state dot].
-    Schedule / map are neutral icon BUTTONS — visible only when a target
-    exists, hidden entirely otherwise. The state dot on the right is
-    non-interactive; green = GPS-backed, grey = schedule-derived.
-  -->
-  {#if scheduleHref}
-    <a
-      href={scheduleHref}
-      title="Open route schedule"
-      aria-label={`Open ${vehicle.route.shortName} schedule`}
-      class={cn(
-        'inline-flex items-center justify-center w-6 h-6 rounded-md shrink-0',
-        'bg-[color:var(--color-border)]/40 text-[color:var(--color-fg)]',
-        'hover:bg-[color:var(--color-border)]/70',
-        'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--color-primary)]',
-      )}
-    >
-      <Calendar size={13} strokeWidth={2.25} />
-    </a>
-  {/if}
+  <!-- Schedule button slot. -->
+  <span class="shrink-0 w-6 flex items-center justify-center">
+    {#if scheduleHref}
+      <a
+        href={scheduleHref}
+        title="Open route schedule"
+        aria-label={`Open ${vehicle.route.shortName} schedule`}
+        class={cn(
+          'inline-flex items-center justify-center w-6 h-6 rounded-md',
+          'bg-[color:var(--color-border)]/40 text-[color:var(--color-fg)]',
+          'hover:bg-[color:var(--color-border)]/70',
+          'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--color-primary)]',
+        )}
+      >
+        <Calendar size={13} strokeWidth={2.25} />
+      </a>
+    {/if}
+  </span>
 
-  {#if mapHref}
-    <a
-      href={mapHref}
-      title="Open route map"
-      aria-label={`Open ${vehicle.route.shortName} on the map`}
-      class={cn(
-        'inline-flex items-center justify-center w-6 h-6 rounded-md shrink-0',
-        'bg-[color:var(--color-border)]/40 text-[color:var(--color-fg)]',
-        'hover:bg-[color:var(--color-border)]/70',
-        'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--color-primary)]',
-      )}
-    >
-      <MapIcon size={14} strokeWidth={2.25} />
-    </a>
-  {/if}
+  <!-- Map button slot. -->
+  <span class="shrink-0 w-6 flex items-center justify-center">
+    {#if mapHref}
+      <a
+        href={mapHref}
+        title="Open route map"
+        aria-label={`Open ${vehicle.route.shortName} on the map`}
+        class={cn(
+          'inline-flex items-center justify-center w-6 h-6 rounded-md',
+          'bg-[color:var(--color-border)]/40 text-[color:var(--color-fg)]',
+          'hover:bg-[color:var(--color-border)]/70',
+          'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--color-primary)]',
+        )}
+      >
+        <MapIcon size={14} strokeWidth={2.25} />
+      </a>
+    {/if}
+  </span>
 
-  <!-- State dot: non-interactive. Color = GPS health.
+  <!-- Expand-stops slot. Chevron rotates 180° when expanded. -->
+  <span class="shrink-0 w-6 flex items-center justify-center">
+    {#if onStopsExpand}
+      <button
+        type="button"
+        title={stopsExpanded ? 'Hide upcoming stops' : 'Show upcoming stops'}
+        aria-label={stopsExpanded ? 'Hide upcoming stops' : 'Show upcoming stops'}
+        aria-expanded={stopsExpanded}
+        onclick={(e) => { e.stopPropagation(); onStopsExpand!(); }}
+        class={cn(
+          'inline-flex items-center justify-center w-6 h-6 rounded-md',
+          'bg-[color:var(--color-border)]/40 text-[color:var(--color-fg)]',
+          'hover:bg-[color:var(--color-border)]/70',
+          'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--color-primary)]',
+          'transition-transform',
+          stopsExpanded && 'rotate-180',
+        )}
+      >
+        <ChevronDown size={14} strokeWidth={2.25} />
+      </button>
+    {/if}
+  </span>
+
+  <!-- State dot slot: non-interactive. Color = GPS health.
        Hidden for `scheduled` rows with `tripPhase: later` (future
        non-next origin rows) — see `showKindDot` above. -->
-  {#if showKindDot}
-    <span
-      title={KIND.label}
-      aria-label={KIND.label}
-      class={cn(
-        'inline-block w-2.5 h-2.5 rounded-full shrink-0',
-        KIND.dotBg,
-      )}
-    ></span>
-  {/if}
+  <span class="shrink-0 w-[13px] flex items-center justify-center">
+    {#if showKindDot}
+      <span
+        title={KIND.label}
+        aria-label={KIND.label}
+        class={cn(
+          'inline-block w-2.5 h-2.5 rounded-full',
+          KIND.dotBg,
+        )}
+      ></span>
+    {/if}
+  </span>
 </div>

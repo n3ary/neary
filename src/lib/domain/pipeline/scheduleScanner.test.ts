@@ -171,8 +171,17 @@ describe('scanSchedule', () => {
 describe('scanSchedule tripPhase', () => {
   const now = 9 * 60; // 09:00
   const nowMs = new Date(2026, 5, 26, 9, 0, 0).getTime();
+  // Origin factory: at a trip's first stop, trip_start_time IS the row's
+  // departure_time, so we default trip_start_time to the override's
+  // arrival_time when a test specifies one. Keeps the test data
+  // consistent with how GTFS actually models origin rows.
   const origin = (overrides: Partial<ScheduleRow>): ScheduleRow =>
-    row({ stop_sequence: 1, first_seq: 1, ...overrides });
+    row({
+      stop_sequence: 1,
+      first_seq: 1,
+      trip_start_time: overrides.arrival_time ?? '09:00:00',
+      ...overrides,
+    });
 
   it('marks the next future origin departure as `next`', () => {
     const out = scanSchedule({
@@ -209,16 +218,25 @@ describe('scanSchedule tripPhase', () => {
     expect(out.find((v) => v.tripId === 'T1')?.schedule?.tripPhase).toBe('next');
   });
 
-  it('does NOT mark tripPhase on non-origin rows', () => {
+  it('marks tripPhase on non-origin rows based on the trip’s origin departure', () => {
+    // Non-origin row at stop_seq=3. trip_start_time='09:00:00' (= now), so
+    // the trip has just departed origin and is the only running trip on
+    // this route at this stop → phase is `last`.
     const out = scanSchedule({
       rows: [
-        row({ trip_id: 'T1', arrival_time: '09:05:00', stop_sequence: 3, first_seq: 1 }),
+        row({
+          trip_id: 'T1',
+          arrival_time: '09:05:00',
+          stop_sequence: 3,
+          first_seq: 1,
+          trip_start_time: '09:00:00',
+        }),
       ],
       nowMinSinceMidnight: now,
       nowMs,
       windowMinutes: 60,
     });
-    expect(out[0].schedule?.tripPhase).toBeUndefined();
+    expect(out[0].schedule?.tripPhase).toBe('last');
   });
 
   it('scopes next/last per route', () => {
@@ -235,6 +253,55 @@ describe('scanSchedule tripPhase', () => {
     expect(out.find((v) => v.tripId === 'A1')?.schedule?.tripPhase).toBe('next');
     expect(out.find((v) => v.tripId === 'A2')?.schedule?.tripPhase).toBe('later');
     expect(out.find((v) => v.tripId === 'B1')?.schedule?.tripPhase).toBe('next');
+  });
+
+  it('scopes next/last per direction within the same route', () => {
+    // Stop that's the origin for dir 0 AND the terminus for dir 1 of
+    // the same route: both directions emit rows in the same scan, but
+    // each direction must get its own `next` / `last`. Without
+    // direction in the cohort key, an earlier dir-1 arrival would
+    // steal `next` from the soonest dir-0 origin departure and leave
+    // it classified `later`, hiding its action buttons.
+    const out = scanSchedule({
+      rows: [
+        // dir 0 origin trips: depart 09:20, 09:40 from this stop.
+        origin({
+          trip_id: 'D0-1',
+          direction_id: 0,
+          arrival_time: '09:20:00',
+          departure_time: '09:20:00',
+        }),
+        origin({
+          trip_id: 'D0-2',
+          direction_id: 0,
+          arrival_time: '09:40:00',
+          departure_time: '09:40:00',
+        }),
+        // dir 1 terminus trips: started from the other end at 09:00,
+        // arrive here at 09:15. tripStartMin (09:00) is smaller than
+        // any dir 0 trip's, so without the direction scope this row
+        // would win the route-wide `next` slot.
+        row({
+          trip_id: 'D1-1',
+          direction_id: 1,
+          arrival_time: '09:15:00',
+          departure_time: '09:15:00',
+          trip_start_time: '09:00:00',
+          stop_sequence: 12,
+          last_seq: 12,
+          first_seq: 1,
+        }),
+      ],
+      nowMinSinceMidnight: now,
+      nowMs,
+      windowMinutes: 60,
+    });
+    expect(out.find((v) => v.tripId === 'D0-1')?.schedule?.tripPhase).toBe('next');
+    expect(out.find((v) => v.tripId === 'D0-2')?.schedule?.tripPhase).toBe('later');
+    // The dir-1 terminus trip started at 09:00 (past); it's the only
+    // trip in its cohort, so it's classified `last` (most recent past
+    // departure on dir 1, still running).
+    expect(out.find((v) => v.tripId === 'D1-1')?.schedule?.tripPhase).toBe('last');
   });
 
   it('tie-breaks equal departure times by tripId lexicographic order', () => {
@@ -350,15 +417,25 @@ describe('scanSchedule tripPhase', () => {
     expect(t0.eta?.confidence).toBe('medium');
   });
 
-  it('keeps intermediate-stop rows at low confidence regardless of phase', () => {
-    // Non-origin rows never get a phase, so the confidence bump never fires.
+  it('keeps intermediate-stop rows at low confidence even with a phase set', () => {
+    // Non-origin rows now do get a phase (per-row classification), but the
+    // confidence bump only fires on origin (`isFirstStop`) rows. So a
+    // downstream `next` row still reads at low confidence.
     const out = scanSchedule({
-      rows: [row({ trip_id: 'T1', arrival_time: '09:10:00', stop_sequence: 3, first_seq: 1 })],
+      rows: [
+        row({
+          trip_id: 'T1',
+          arrival_time: '09:10:00',
+          stop_sequence: 3,
+          first_seq: 1,
+          trip_start_time: '09:05:00',
+        }),
+      ],
       nowMinSinceMidnight: now,
       nowMs,
       windowMinutes: 60,
     });
-    expect(out[0].schedule?.tripPhase).toBeUndefined();
+    expect(out[0].schedule?.tripPhase).toBe('next');
     expect(out[0].confidence).toBe('low');
   });
 });
