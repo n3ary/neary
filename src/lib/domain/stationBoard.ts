@@ -544,8 +544,29 @@ export function applyGpsEta(
       todBucket,
       feedConfig,
     });
+    // Also overwrite `position` with the dead-reckoned coords so the
+    // downstream bucketer's haversine distance-to-stop (see
+    // `assembleStationBoard`) reads the same "where is the bus right
+    // now?" the ETA does. Without this update, a stale fix could
+    // produce a dead-reckoned ETA that says "departed" while the
+    // bucketer still sees the bus 1 km from the stop and routes the
+    // row into `arriving`. `source: 'predicted-from-gps'` flags the
+    // mutation so consumers can tell apart "raw GTFS-RT fix" vs
+    // "projected to nowMs"; `asOf` advances to nowMs because that's
+    // when this position is true. Falls through unchanged when
+    // dead-reckon returned null (very-stale fix).
+    const position = deadReckoned
+      ? {
+          ...v.position,
+          lat: deadReckoned.position.lat,
+          lon: deadReckoned.position.lon,
+          source: 'predicted-from-gps' as const,
+          asOf: ctx.nowMs,
+        }
+      : v.position;
     return {
       ...v,
+      position,
       eta: {
         minutes: Math.round(p.minutes),
         distanceMeters: p.distanceMeters,

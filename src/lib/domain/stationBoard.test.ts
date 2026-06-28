@@ -306,6 +306,13 @@ describe('applyGpsEta', () => {
     // Without dead-reckoning: 2 km @ 20 m/s = 100 s ≈ 2 min ahead.
     // With dead-reckoning: bus extrapolated to / past stop → ≤ 0 min.
     expect(out[0].eta?.minutes).toBeLessThanOrEqual(0);
+    // Position also reflects the dead-reckoning so the downstream
+    // bucketer's haversine distance reads "at the stop", not "1 km
+    // before". `source` flips to 'predicted-from-gps' to signal the
+    // mutation; `asOf` advances to `nowMs`.
+    expect(out[0].position?.source).toBe('predicted-from-gps');
+    expect(out[0].position?.asOf).toBe(120_000);
+    expect(out[0].position?.lon).toBeGreaterThan(23.580);
   });
 
   it('agrees with the map when a fresh GPS fix has bus mid-route', () => {
