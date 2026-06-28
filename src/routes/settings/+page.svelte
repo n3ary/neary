@@ -198,6 +198,18 @@
           />
         </Stack>
 
+        <Stack direction="row" align="center" justify="between">
+          <Box class="flex-1 min-w-0">
+            <Typography variant="body2">Show debug ids</Typography>
+            <Typography variant="caption">Render <code>tripId · kind · dir</code> on every vehicle card and map marker. Use when reporting cross-view discrepancies so screenshots can be correlated.</Typography>
+          </Box>
+          <Switch
+            checked={userPrefs.showDebugIds}
+            onchange={(v) => (userPrefs.showDebugIds = v)}
+            aria-label="Show debug ids"
+          />
+        </Stack>
+
         <Stack spacing={0.5}>
           <Typography variant="body2">App version</Typography>
           <Typography variant="caption">

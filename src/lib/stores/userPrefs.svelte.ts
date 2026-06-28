@@ -28,6 +28,12 @@ class UserPrefs {
    *  vehicles can land in this bucket, so it's a no-op until live
    *  tracking is wired — the toggle reserves the contract. */
   showOffRouteVehicles = $state(false);
+  /** Diagnostic — render a small monospace line on each vehicle card
+   *  and map marker carrying `tripId · kind · dir`. Lets screenshots
+   *  taken in different views (station card vs map marker) be
+   *  correlated to the same physical trip when reports of
+   *  divergence come in. Default off; persisted. */
+  showDebugIds = $state(false);
   /** Per-context-bucket cap on the station board. Applies to the
    *  `incoming` / `drop-off` / `departed` sections; the now-group
    *  (`departing` / `at-station` / `arriving`) and `off-route`
@@ -47,6 +53,7 @@ class UserPrefs {
         showDropOffOnly: boolean;
         showDepartedVehicles: boolean;
         showOffRouteVehicles: boolean;
+        showDebugIds: boolean;
         apiKey: string | null;
         stationBoardMaxRows: number;
       }>;
@@ -55,6 +62,7 @@ class UserPrefs {
       if (typeof o.showDropOffOnly === 'boolean') this.showDropOffOnly = o.showDropOffOnly;
       if (typeof o.showDepartedVehicles === 'boolean') this.showDepartedVehicles = o.showDepartedVehicles;
       if (typeof o.showOffRouteVehicles === 'boolean') this.showOffRouteVehicles = o.showOffRouteVehicles;
+      if (typeof o.showDebugIds === 'boolean') this.showDebugIds = o.showDebugIds;
       if (typeof o.apiKey === 'string' || o.apiKey === null) this.apiKey = o.apiKey;
       if (typeof o.stationBoardMaxRows === 'number' && o.stationBoardMaxRows > 0) this.stationBoardMaxRows = o.stationBoardMaxRows;
     } catch {
@@ -70,6 +78,7 @@ class UserPrefs {
       showDropOffOnly: this.showDropOffOnly,
       showDepartedVehicles: this.showDepartedVehicles,
       showOffRouteVehicles: this.showOffRouteVehicles,
+      showDebugIds: this.showDebugIds,
       apiKey: this.apiKey,
       stationBoardMaxRows: this.stationBoardMaxRows,
     };

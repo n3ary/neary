@@ -20,6 +20,7 @@
   import RouteBadge from './RouteBadge.svelte';
   import { urgencyClass } from './urgencyClass';
   import { cn } from './cn';
+  import { userPrefs } from '$lib/stores/userPrefs.svelte';
 
   type Props = {
     vehicle: Vehicle;
@@ -204,6 +205,16 @@
         <span class="truncate">{headsign}</span>
       </div>
       <div class={cn('text-xs truncate', etaClass)}>{secondaryLine}</div>
+      {#if userPrefs.showDebugIds}
+        <!-- Diagnostic id line. Surfaces the trip identity so a
+             screenshot of the station card can be matched against
+             a screenshot of the same vehicle's map marker, which
+             renders the same string. Off by default; toggled in
+             Settings > Advanced > 'Show debug ids'. -->
+        <div class="text-[10px] font-mono text-[color:var(--color-fg-muted)] truncate">
+          {vehicle.tripId ?? vehicle.id} · {vehicle.kind[0]}{vehicle.directionId == null || vehicle.directionId === -1 ? '' : vehicle.directionId}
+        </div>
+      {/if}
     </div>
 
     <!--

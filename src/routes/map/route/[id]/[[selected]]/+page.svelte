@@ -36,6 +36,7 @@
   import {
     formatHHMM, formatRelativeMin, isNightRoute, pickContrastingText, vehicleTypeLabel,
     type Route,
+    type Vehicle,
   } from '$lib/domain/types';
   import { minSinceMidnightInTz } from '$lib/domain/pipeline/timeUtils';
   import {
@@ -194,6 +195,14 @@
      *   - 'very-stale': 5–15 min old — low trust (red border).
      *   - null:         schedule-estimated. */
     gpsConfidence: 'good' | 'stale' | 'very-stale' | null;
+    /** Reconciled vehicle kind, surfaced only for the debug-ids line
+     *  rendered when `userPrefs.showDebugIds` is on. Same identity
+     *  string appears on the station's VehicleCard so screenshots
+     *  of the two views can be correlated. */
+    kind: Vehicle['kind'];
+    /** GTFS direction_id (0 / 1), or -1 when unknown. Joins `kind`
+     *  on the debug line. */
+    directionId: 0 | 1 | -1;
   };
   const markers = $derived.by<VehicleMarker[]>(() => {
     if (!view) return [];
@@ -272,6 +281,8 @@
         tripStartMin: t.tripStartMin,
         scheduled: p.status === 'before' || p.status === 'at-origin',
         gpsConfidence,
+        kind: reconciled?.kind ?? 'scheduled',
+        directionId: (reconciled?.directionId ?? (direction as 0 | 1)) as 0 | 1 | -1,
       });
     }
 
@@ -304,6 +315,8 @@
           age < 3 * 60_000 ? 'good'
           : age < 5 * 60_000 ? 'stale'
           : 'very-stale',
+        kind: v.kind,
+        directionId: v.directionId ?? -1,
       });
     }
     return out;
@@ -541,7 +554,10 @@
     const labelFg = pickContrastingText(routeColor);
     const nowMinSnap = nowMin;
     for (const m of markers) {
-      const html = vehicleHtml(view.route.shortName, routeColor, labelFg, m.selected, m.opacity, m.scheduled, m.gpsConfidence);
+      const debugId = userPrefs.showDebugIds
+        ? `${m.tripId} · ${m.kind[0]}${m.directionId === -1 ? '' : m.directionId}`
+        : '';
+      const html = vehicleHtml(view.route.shortName, routeColor, labelFg, m.selected, m.opacity, m.scheduled, m.gpsConfidence, debugId);
       const icon = Lref.divIcon({
         className: 'neary-vehicle',
         html,
@@ -639,6 +655,7 @@
     opacity: number,
     scheduled: boolean,
     gpsConfidence: 'good' | 'stale' | 'very-stale' | null,
+    debugId: string,
   ): string {
     // Inner ring colour reflects GPS data source so the same green /
     // yellow / red signal a rider reads from any vehicle stays
@@ -662,12 +679,12 @@
     const colors = scheduled
       ? `background:rgba(255,255,255,0.92);color:${bg};border:1.5px solid ${bg};`
       : `background:${bg};color:${fg};`;
-    return `<div style="
+    return `<div style="position:relative;"><div style="
       display:inline-flex;align-items:center;justify-content:center;
       min-width:32px;height:22px;padding:0 6px;border-radius:6px;
       ${colors}font:600 12px/1 ui-sans-serif,system-ui;
       opacity:${opacity};${ring}
-    ">${escapeHtml(shortName)}</div>`;
+    ">${escapeHtml(shortName)}</div>${debugId ? `<div style="position:absolute;top:24px;left:50%;transform:translateX(-50%);white-space:nowrap;font:600 9px/1.1 ui-monospace,SFMono-Regular,Menlo,monospace;color:#111;background:rgba(255,255,255,0.9);border-radius:3px;padding:1px 3px;pointer-events:none;">${escapeHtml(debugId)}</div>` : ''}</div>`;
   }
   function routeBadgeHtml(r: Route): string {
     const fg = pickContrastingText(r.color);
