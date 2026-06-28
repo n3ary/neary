@@ -542,6 +542,39 @@ describe('capStationBoard', () => {
     expect(out.map((r) => r.vehicle.schedule?.tripId)).toEqual(['live-1', 'running', 'next-to-start']);
   });
 
+  it('`later` filter applies to every bucket on a single-route board, not just drop-off', () => {
+    // Single-route incoming bucket with one `next` row and one `later`
+    // row. The later row should be dropped even when the cap (10) is
+    // big enough to keep both — the rule is "single-route = focus on
+    // what's NOW", schedule view answers the next-after-next case.
+    const nextRow = {
+      ...scheduled('inc-next', r24, 8),
+      schedule: {
+        tripId: 'inc-next',
+        scheduledDeparture: 538,
+        tripStartMin: 530,
+        directionId: 0,
+        tripPhase: 'next',
+      },
+    } as Vehicle;
+    const laterRow = {
+      ...scheduled('inc-later', r24, 18),
+      schedule: {
+        tripId: 'inc-later',
+        scheduledDeparture: 548,
+        tripStartMin: 540,
+        directionId: 0,
+        tripPhase: 'later',
+      },
+    } as Vehicle;
+    const rows: BoardRow[] = [
+      { vehicle: nextRow, bucket: 'incoming', etaMinutes: 8 },
+      { vehicle: laterRow, bucket: 'incoming', etaMinutes: 18 },
+    ];
+    const out = capStationBoard(rows, 10);
+    expect(out.map((r) => r.vehicle.schedule?.tripId)).toEqual(['inc-next']);
+  });
+
   it('preserves compareForBoard order in the output', () => {
     // Departing should come first, then at-station, then arriving, etc.
     const rows: BoardRow[] = [

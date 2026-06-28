@@ -392,8 +392,11 @@
   });
   function rowLabel(t: ScheduleTrip, dir: 0 | 1): string {
     const base = relText(t.tripStartMin);
-    if (t.tripId !== lastTripIdByDir[dir]) return base;
-    return base ? `${base} · last` : 'last';
+    const isLast = t.tripId === lastTripIdByDir[dir];
+    const text = isLast ? (base ? `${base} · last` : 'last') : base;
+    return userPrefs.showDebugIds
+      ? (text ? `${text} · ${t.tripId}` : t.tripId)
+      : text;
   }
 
   // Build a /schedule/route/... URL from the structured params and
@@ -582,10 +585,29 @@
                    recently departed trip. -->
               <Stack spacing={0.5}>
                 {#if view === 'today' && lastDepartedTrip != null}
-                  <!-- Last departed trip: non-interactive, heavily muted. -->
-                  <div class="flex items-center gap-2 px-2 py-1 rounded-md departed-row">
-                    <Chip size="small" class="font-mono shrink-0 opacity-50">{formatHHMM(lastDepartedTrip.tripStartMin)}</Chip>
-                    <span class="flex-1 min-w-0 text-xs text-[color:var(--color-fg-muted)] italic">Departed</span>
+                  <!-- Last departed trip: non-interactive label, heavily
+                       muted. Map icon on the right so a rider can still
+                       hop on the bus that just left (it's still on the
+                       road by definition — scheduleScanner only emits
+                       trips whose trip_end_time > now). Debug mode
+                       appends the tripId for cross-view correlation. -->
+                  <div class="flex items-center gap-1">
+                    <div class="flex flex-1 items-center gap-2 px-2 py-1 rounded-md departed-row min-w-0">
+                      <Chip size="small" class="font-mono shrink-0 opacity-50">{formatHHMM(lastDepartedTrip.tripStartMin)}</Chip>
+                      <span class="flex-1 min-w-0 text-xs text-[color:var(--color-fg-muted)] italic truncate">
+                        Departed{userPrefs.showDebugIds ? ` · ${lastDepartedTrip.tripId}` : ''}
+                      </span>
+                    </div>
+                    {#if direction != null}
+                      <a
+                        href={`/map/route/${routeId}_${direction}/${encodeURIComponent(lastDepartedTrip.tripId)}`}
+                        aria-label="View on map"
+                        title="View on map"
+                        class="shrink-0 inline-flex items-center justify-center w-7 h-7 rounded-md text-[color:var(--color-fg-muted)] hover:text-[color:var(--color-fg)] hover:bg-[color:var(--color-border)]/40 transition-colors"
+                      >
+                        <MapIcon size={15} />
+                      </a>
+                    {/if}
                   </div>
                 {/if}
                 {#if trips.length === 0}
@@ -625,7 +647,7 @@
                             class={`shrink-0 transition-transform text-[color:var(--color-fg-muted)] ${isOpen ? 'rotate-180' : ''}`}
                           />
                         </button>
-                        {#if isNext && direction != null}
+                        {#if isNext && view === 'today' && direction != null}
                           <a
                             href={`/map/route/${routeId}_${direction}/${encodeURIComponent(t.tripId)}`}
                             aria-label="View on map"

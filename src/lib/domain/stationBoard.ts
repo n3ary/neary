@@ -141,13 +141,15 @@ function dedupKey(row: BoardRow): string {
  *       pre-sorted by `compareForBoard`).
  *    3. Per-`(route, direction)` dedup inside each bucket — keep the
  *       soonest row per pair. Active only when step 1 said so.
- *    4. Drop-off filter (only when dedup is skipped): keep just the
- *       trip-active rows — those whose `tripPhase` is anything but
- *       `later`. Future trips that haven't departed origin yet are
- *       pure timetable guesses with no useful position info, so
- *       hiding them keeps the section focused on buses actually
- *       arriving. `tripPhase` is set on every emitted row by
- *       `scheduleScanner.assignTripPhases`.
+ *    4. `later`-trip filter (only when dedup is skipped): drop rows
+ *       whose `tripPhase` is `later` — future trips that haven't
+ *       departed origin yet. Pure timetable guesses, no useful
+ *       position info; the station card focuses on what's happening
+ *       NOW for this route. The schedule view answers "when does
+ *       this route run next-after-next". Applies uniformly across
+ *       every bucket (incoming, drop-off, departed, …) — wherever a
+ *       `later` row would surface, it gets hidden. `tripPhase` is set
+ *       on every emitted row by `scheduleScanner.assignTripPhases`.
  *    5. Per-bucket cap (`bucketCap`). Now-group and `off-route`
  *       buckets are uncapped; context buckets use `maxRows`.
  *    6. Re-sort with `compareForBoard` so the on-screen order matches
@@ -180,10 +182,8 @@ export function capStationBoard(rows: BoardRow[], maxRows = DEFAULT_CONTEXT_BUCK
         seen.add(k);
         kept.push(r);
       }
-    } else if (bucket === 'drop-off') {
-      kept = bucketRows.filter((r) => r.vehicle.schedule?.tripPhase !== 'later');
     } else {
-      kept = bucketRows;
+      kept = bucketRows.filter((r) => r.vehicle.schedule?.tripPhase !== 'later');
     }
     const cap = bucketCap(bucket, maxRows);
     if (cap != null) kept = kept.slice(0, cap);
