@@ -120,7 +120,8 @@
   // Dedup routes from `allRoutes` if supplied (so all routes serving the
   // station show even when capped out of the 5-row board), otherwise
   // fall back to deriving from the rows that survived filtering + cap.
-  // Numeric short-names sort numerically; alpha after. Lives here (not
+  // Sort: favorites first, then the rest. Within each partition,
+  // numeric short-names sort numerically; alpha after. Lives here (not
   // in the page) so every StationCard consumer gets the same badge-row
   // contract for free.
   const routes = $derived.by(() => {
@@ -130,11 +131,18 @@
     } else {
       for (const r of rows) map.set(r.vehicle.route.id, r.vehicle.route);
     }
-    return Array.from(map.values()).sort((a, b) => {
+    const favs = favoriteRouteIds;
+    const byShortName = (a: Route, b: Route): number => {
       const an = Number(a.shortName);
       const bn = Number(b.shortName);
       if (Number.isFinite(an) && Number.isFinite(bn) && an !== bn) return an - bn;
       return a.shortName.localeCompare(b.shortName);
+    };
+    return Array.from(map.values()).sort((a, b) => {
+      const aFav = favs?.has(a.id) ?? false;
+      const bFav = favs?.has(b.id) ?? false;
+      if (aFav !== bFav) return aFav ? -1 : 1;
+      return byShortName(a, b);
     });
   });
 
