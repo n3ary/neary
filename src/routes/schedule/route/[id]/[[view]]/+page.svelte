@@ -376,10 +376,27 @@
   function relText(min: number): string {
     const delta = min + viewDayOffsetMin - nowMin;
     if (delta < 1 && delta > -1) return 'Departing';
-    return formatRelativeMin(delta, min);
+    return formatRelativeMin(delta);
   }
   function relClass(min: number): string {
     return urgencyClass(scheduleUrgency(min + viewDayOffsetMin - nowMin));
+  }
+
+  // Last departure of the day, per direction. The today / tomorrow
+  // window is wide enough (18 h / 24 h) that the list's final trip is
+  // typically the last service of the calendar day, so it gets a
+  // small ' · last' qualifier appended to its relative-time text — a
+  // soft warning so a rider scanning the column doesn't miss their
+  // last shot home without doing the mental math 'is the next one
+  // tomorrow?'.
+  const lastTripIdByDir = $derived<{ 0: string | null; 1: string | null }>({
+    0: tripsByDir[0].at(-1)?.tripId ?? null,
+    1: tripsByDir[1].at(-1)?.tripId ?? null,
+  });
+  function rowLabel(t: ScheduleTrip, dir: 0 | 1): string {
+    const base = relText(t.tripStartMin);
+    if (t.tripId !== lastTripIdByDir[dir]) return base;
+    return base ? `${base} · last` : 'last';
   }
 
   // Build a /schedule/route/... URL from the structured params and
@@ -604,7 +621,7 @@
                         >
                           <Chip size="small" class="font-mono shrink-0">{formatHHMM(t.tripStartMin)}</Chip>
                           <span class={`flex-1 min-w-0 text-xs ${relClass(t.tripStartMin)}`}>
-                            {relText(t.tripStartMin)}
+                            {rowLabel(t, direction!)}
                           </span>
                           <ChevronDown
                             size={16}
@@ -690,7 +707,7 @@
                       <Stack direction="row" spacing={1} align="center" class="px-2 py-1">
                         <Chip size="small" class="font-mono shrink-0">{formatHHMM(t.tripStartMin)}</Chip>
                         <span class={`flex-1 min-w-0 text-xs ${relClass(t.tripStartMin)}`}>
-                          {relText(t.tripStartMin)}
+                          {rowLabel(t, dir as 0 | 1)}
                         </span>
                       </Stack>
                     {/each}
