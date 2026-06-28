@@ -74,8 +74,23 @@
   );
 
   // ETA / scheduled-time secondary line.
+  //
+  // Unlike the schedule view (which renders the clock time as a
+  // dedicated chip on every row), VehicleCard has only this one slot
+  // for time info. So for far-out trips (>15 min, where 'in 1h 30m'
+  // is harder to translate into a concrete moment than the clock
+  // time itself), we append the scheduled HH:MM here. Close trips
+  // stay on the relative form alone — 'in 5 min' beats 'at 16:50'
+  // when the action window is now.
   const secondaryLine = $derived.by(() => {
-    if (vehicle.eta) return formatRelativeMin(vehicle.eta.minutes);
+    if (vehicle.eta) {
+      const rel = formatRelativeMin(vehicle.eta.minutes);
+      const sched = vehicle.schedule?.scheduledDeparture;
+      if (sched != null && vehicle.eta.minutes > 15) {
+        return `${rel} (at ${formatHHMM(sched)})`;
+      }
+      return rel;
+    }
     if (vehicle.schedule) return `Scheduled ${formatHHMM(vehicle.schedule.scheduledDeparture)}`;
     // kind:'gps-only' orphans have a GPS position but no schedule/ETA — the bus
     // exists right now even though we don't have a precise per-stop timing
