@@ -268,18 +268,24 @@
                 {#each group.vehicles as vehicle (vehicle.id)}
                   {@const hasTripId = vehicle.schedule?.tripId != null}
                   {@const phase = vehicle.schedule?.tripPhase}
+                  <!-- A row is "actionable" when it represents a trip
+                       the rider can still do something with: it has a
+                       tripId, and it isn't a future-but-not-next
+                       departure (those rows sit beside a `next` of
+                       the same route which already exposes the same
+                       schedule, map, and stops list). All three of
+                       schedule, map, and stops-expansion gate off
+                       this — same predicate, one name. -->
+                  {@const actionable = hasTripId && phase !== 'later'}
                   {@const stopsEligible = getUpcomingStops != null
-                    && hasTripId
-                    && !vehicle.schedule?.isLastStop
-                    && phase !== 'later'}
-                  {@const scheduleAction = hasTripId && phase !== 'later'}
-                  {@const mapAction = hasTripId && phase !== 'later'}
+                    && actionable
+                    && !vehicle.schedule?.isLastStop}
                   <Box class="flex flex-col gap-1">
                     <VehicleCard
                       {vehicle}
                       urgency={etaUrgency(group.bucket, vehicle.eta?.minutes ?? 0)}
-                      scheduleHref={scheduleAction ? `/schedule/route/${vehicle.route.id}_${vehicle.schedule?.directionId ?? 0}` : undefined}
-                      mapHref={mapAction
+                      scheduleHref={actionable ? `/schedule/route/${vehicle.route.id}_${vehicle.schedule?.directionId ?? 0}` : undefined}
+                      mapHref={actionable
                         ? `/map/route/${vehicle.route.id}_${vehicle.schedule?.directionId ?? 0}${vehicle.schedule?.tripId ? `/${encodeURIComponent(vehicle.schedule.tripId)}` : ''}`
                         : undefined}
                       onStopsExpand={stopsEligible ? () => toggleStops(vehicle) : undefined}
