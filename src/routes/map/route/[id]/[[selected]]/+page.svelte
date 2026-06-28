@@ -695,31 +695,36 @@
   // purely the Leaflet `divIcon` payload). ──────────────────────────
   function vehiclePopupHtml(m: VehicleMarker, rId: string, dir: 0 | 1, nowMinVal: number): string {
     // Source icons.
-    const calSvg = `<svg xmlns="http://www.w3.org/2000/svg" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="display:block;flex-shrink:0;"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>`;
-    const gpsSvg = `<svg xmlns="http://www.w3.org/2000/svg" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="display:block;flex-shrink:0;"><circle cx="12" cy="12" r="3"/><path d="M12 2v4"/><path d="M12 18v4"/><path d="M2 12h4"/><path d="M18 12h4"/></svg>`;
     const clockSvg = `<svg xmlns="http://www.w3.org/2000/svg" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="display:block;flex-shrink:0;"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>`;
     const schedSvg = `<svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="display:block;flex-shrink:0;"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/><circle cx="8" cy="14" r="1" fill="currentColor"/><circle cx="12" cy="14" r="1" fill="currentColor"/><circle cx="16" cy="14" r="1" fill="currentColor"/><circle cx="8" cy="18" r="1" fill="currentColor"/><circle cx="12" cy="18" r="1" fill="currentColor"/></svg>`;
-    // Headsign + schedule button on the same row.
+    // Kind dot beside the headsign, matching the VehicleCard one on
+    // the station view so the visual language stays consistent across
+    // surfaces. Green for any kind backed by GPS (tracked / verified /
+    // gps-only), grey for schedule-only. Replaces the dedicated
+    // "est." / "gps" info row that used to live below — same signal
+    // in less vertical space.
+    const dotColor = m.kind === 'scheduled' ? '#888' : '#22c55e';
+    const dotTitle = m.kind === 'scheduled' ? 'Scheduled'
+      : m.kind === 'tracked' ? 'Tracked'
+      : m.kind === 'verified' ? 'Verified'
+      : 'GPS only';
+    const dot = `<span title="${dotTitle}" aria-label="${dotTitle}" style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${dotColor};flex-shrink:0;"></span>`;
+    // Headsign + kind dot + schedule button on the same row.
     const headsignText = m.headsign
       ? `<span style="font-weight:600;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escapeHtml(m.headsign)}</span>`
       : `<span style="flex:1;"></span>`;
-    const topRow = `<div style="display:flex;align-items:center;gap:6px;margin-bottom:5px;">${headsignText}<a href="/schedule/route/${escapeHtml(rId)}_${dir}" title="View schedule" style="display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;border-radius:4px;background:rgba(0,0,0,0.07);color:#555;text-decoration:none;flex-shrink:0;">${schedSvg}</a></div>`;
-    // Info row: scheduled → green clock + countdown (outlined badge already signals waiting,
-    //           no need for "est." label); GPS → coloured gps label; otherwise → est.
-    let infoHtml: string;
-    if (m.scheduled) {
-      const minsUntil = m.tripStartMin - nowMinVal;
-      const relLabel = minsUntil <= 0 ? 'now' : formatRelativeMin(minsUntil);
-      infoHtml = `<span style="display:flex;align-items:center;gap:2px;color:#16a34a;font-size:11px;">${clockSvg}<span style="margin-left:2px;">${relLabel}</span></span>`;
-    } else if (m.gpsConfidence) {
-      const c =
-        m.gpsConfidence === 'good' ? '#16a34a'
-        : m.gpsConfidence === 'stale' ? '#ca8a04'
-        : '#dc2626';
-      infoHtml = `<span style="display:flex;align-items:center;gap:2px;color:${c};font-size:11px;opacity:0.85;">${gpsSvg}<span>gps</span></span>`;
-    } else {
-      infoHtml = `<span style="display:flex;align-items:center;gap:2px;color:#888;font-size:11px;opacity:0.85;">${calSvg}<span>est.</span></span>`;
-    }
+    const topRow = `<div style="display:flex;align-items:center;gap:6px;margin-bottom:5px;">${headsignText}${dot}<a href="/schedule/route/${escapeHtml(rId)}_${dir}" title="View schedule" style="display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;border-radius:4px;background:rgba(0,0,0,0.07);color:#555;text-decoration:none;flex-shrink:0;">${schedSvg}</a></div>`;
+    // Countdown row, kept only for scheduled-at-origin / scheduled-
+    // before bubbles: green clock + "in X min". Tells the rider when
+    // the parked / not-yet-departed bus is expected to leave. On-route
+    // vehicles don't get this line — their dot already conveys "live".
+    const countdownHtml = m.scheduled
+      ? (() => {
+          const minsUntil = m.tripStartMin - nowMinVal;
+          const relLabel = minsUntil <= 0 ? 'now' : formatRelativeMin(minsUntil);
+          return `<span style="display:flex;align-items:center;gap:2px;color:#16a34a;font-size:11px;">${clockSvg}<span style="margin-left:2px;">${relLabel}</span></span>`;
+        })()
+      : '';
     // For vehicles that have ALREADY departed origin (everything but
     // the scheduled-at-origin / scheduled-before bubbles, which the
     // 'in X min' label above already covers), append the wall-clock
@@ -731,7 +736,7 @@
     const leftAtHtml = !m.scheduled && m.hasOriginTime
       ? `<div style="display:flex;align-items:center;gap:2px;color:#888;font-size:11px;margin-top:3px;">${clockSvg}<span style="margin-left:2px;">left at ${formatHHMM(m.tripStartMin)}</span></div>`
       : '';
-    return `<div style="font:13px/1.3 ui-sans-serif,system-ui;min-width:150px;">${topRow}${infoHtml}${leftAtHtml}</div>`;
+    return `<div style="font:13px/1.3 ui-sans-serif,system-ui;min-width:150px;">${topRow}${countdownHtml}${leftAtHtml}</div>`;
   }
   function vehicleHtml(
     shortName: string,
@@ -765,12 +770,13 @@
     const colors = scheduled
       ? `background:rgba(255,255,255,0.92);color:${bg};border:1.5px solid ${bg};`
       : `background:${bg};color:${fg};`;
-    // Pulsing CSS class for the selected badge — the keyframe lives in
-    // the page <style> block and animates an additional box-shadow on
-    // top of the static one above, so the dark outer ring breathes
-    // outward without the badge moving. `--neary-inner` carries the
-    // GPS-confidence ring colour into the animation so the inner ring
-    // stays at its semantic colour through the pulse.
+    // Pulsing CSS class for the selected badge — the keyframe lives
+    // in the page-level style block and animates an additional
+    // box-shadow on top of the static one above, so the dark outer
+    // ring breathes outward without the badge moving. The
+    // `--neary-inner` custom property carries the GPS-confidence
+    // ring colour into the animation so the inner ring stays at its
+    // semantic colour through the pulse.
     const selectedClass = selected ? ' neary-vehicle-selected' : '';
     const selectedVar = selected ? `--neary-inner:${inner};` : '';
     return `<div style="position:relative;"><div class="neary-vehicle-badge${selectedClass}" style="
