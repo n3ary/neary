@@ -162,6 +162,28 @@
   });
   const isEmpty = $derived(groups.length === 0);
 
+  // Schedule-button gate: shown on the FIRST visible row per
+  // (route, direction) in board order. Subsequent rows for the
+  // same route+dir would link to the same /schedule/route/... URL,
+  // so an extra button on each row is just redundant clutter. The
+  // first row is whichever appears earliest after the
+  // compareForBoard sort — typically the row in the most-actionable
+  // bucket (departing > at-station > arriving > incoming > drop-off
+  // > departed). Map button gating stays per-row (driven by
+  // tripPhase) so each trip's specific position remains reachable.
+  const primaryRowIds = $derived.by<Set<string>>(() => {
+    const seen = new Set<string>();
+    const primary = new Set<string>();
+    for (const row of rows) {
+      const v = row.vehicle;
+      const key = `${v.route.id}_${v.directionId ?? -1}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      primary.add(v.id);
+    }
+    return primary;
+  });
+
   // Per-bucket section header styling. The icon mirrors the bucket
   // verb (incoming → clock, departing → outbound arrow, etc.) and
   // the accent color matches the urgency band the VehicleCards in
@@ -271,10 +293,10 @@
                     && hasTripId
                     && !vehicle.schedule?.isLastStop}
                   {@const phase = vehicle.schedule?.tripPhase}
-                  {@const scheduleAction =
-                    hasTripId && (phase == null || phase === 'next' || phase === 'later')}
+                  {@const isPrimary = primaryRowIds.has(vehicle.id)}
+                  {@const scheduleAction = hasTripId && isPrimary}
                   {@const mapAction =
-                    hasTripId && (phase == null || phase === 'next' || phase === 'last' || phase === 'on-route')}
+                    hasTripId && phase !== 'later'}
                   <Box class="flex flex-col gap-1">
                     <VehicleCard
                       {vehicle}
