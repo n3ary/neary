@@ -581,6 +581,25 @@
         m.bindPopup(stopPopupHtml(s.stopId, s.stopName, currentRoutes.get(s.stopId) ?? []), {
           closeButton: false,
         });
+        // Debug overlay: render the stop_id as a permanent tooltip
+        // next to each stop circle when `userPrefs.showDebugIds` is
+        // on. Lets the rider compare against the `?from=<id>` query
+        // param (and against the station-card stop they came from)
+        // when investigating why the from-stop highlight didn't
+        // appear. The origin stop gets a `★` prefix so we can also
+        // see whether the isOrigin check itself is firing — if the
+        // star appears but the dot is still route-coloured, the
+        // match works and it's a rendering bug; if no star appears
+        // on the stop you came from, the match itself is failing.
+        // Suppressed in production so the map stays readable.
+        if (userPrefs.showDebugIds) {
+          m.bindTooltip(`${isOrigin ? '★ ' : ''}${s.stopId}`, {
+            permanent: true,
+            direction: 'right',
+            offset: [4, 0],
+            className: 'neary-stop-id-label',
+          });
+        }
         m.addTo(sl);
       });
     }
