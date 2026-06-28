@@ -372,7 +372,7 @@
         <RouteBadge route={route24} isStart />
         <RouteBadge route={route24} isEnd />
         <RouteBadge route={route24} isStart isEnd aria-label="Turnaround route 24" />
-        <RouteBadge route={route9} isFavorite />
+        <RouteBadge route={route9} />
         <RouteBadge route={route35} selected onclick={() => statusBus.push({ id: 'rb-click', kind: 'info', message: 'Route 35 clicked' })} />
         <RouteBadge route={routeM} />
       </Stack>

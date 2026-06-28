@@ -229,7 +229,6 @@
                   colorMode="route"
                   isStart={originRouteIds?.has(route.id) ?? false}
                   selected={selectedRouteId === route.id}
-                  isFavorite={favoriteRouteIds?.has(route.id) ?? false}
                   onclick={onRouteClick ? () => onRouteClick(route.id) : undefined}
                 />
               {/each}

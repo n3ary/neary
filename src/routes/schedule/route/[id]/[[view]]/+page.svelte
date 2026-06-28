@@ -48,7 +48,6 @@
     dayOfWeekInTz, minSinceMidnightInTz, scheduleWindowFor,
   } from '$lib/domain/pipeline/timeUtils';
   import { feedsStore } from '$lib/stores/feedsStore.svelte';
-  import { favoritesStore } from '$lib/stores/favoritesStore.svelte';
   import { nowTicker } from '$lib/stores/nowTicker.svelte';
   import { refreshBus } from '$lib/stores/refreshBus.svelte';
   import { userPrefs } from '$lib/stores/userPrefs.svelte';
@@ -281,8 +280,6 @@
   const todayHiddenCount = $derived(
     view === 'today' ? Math.max(0, trips.length - TODAY_TRIP_LIMIT) : 0,
   );
-
-  const isFav = $derived(route ? favoritesStore.has(route.id) : false);
 
   // ── Week-table derived ──────────────────────────────────────────────
   // Each column is independent: rendered top-to-bottom from its own
@@ -531,7 +528,7 @@
         <CardContent>
           <Stack direction="row" spacing={1.5} align="center" wrap>
             <BackButton />
-            <RouteBadge route={route} size="large" isFavorite={isFav} />
+            <RouteBadge route={route} size="large" />
             <Stack spacing={0.5} class="flex-1 min-w-0">
               <Stack direction="row" spacing={1} align="center" wrap>
                 <Typography variant="h5" class="truncate">{headerTitle}</Typography>

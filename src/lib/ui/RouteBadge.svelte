@@ -7,13 +7,14 @@
     - isStart  : a "▶" wedge on the left edge (route departs here).
     - isEnd    : a "■" cap on the right edge (route terminates here).
     - isTurnaround = isStart AND isEnd → both markers, signalling the loop point.
-    - isFavorite: shortName text turns brand-blue. Replaces the v1
-                  heart-pip overlay — the pip duplicated information
-                  the in-badge text already carries and ate space at
-                  the corner of every favorited row.
 
   Color comes from `route.color`. The text foreground is either an explicit
   `route.textColor` or computed via pickContrastingText (sRGB luminance).
+
+  Favorites are NOT styled here — the StationCard sorts favorites first
+  in the badge row, which is enough on its own. A second visual hint on
+  the badge itself was tried (heart pip, then brand-blue text) and both
+  fought with route identity. The bare badge is the right answer.
 -->
 <script lang="ts">
   import type { Route } from '$lib/domain/types';
@@ -39,7 +40,6 @@
     colorMode?: ColorMode;
     isStart?: boolean;
     isEnd?: boolean;
-    isFavorite?: boolean;
     selected?: boolean;
     onclick?: (event: MouseEvent) => void;
     class?: string;
@@ -53,7 +53,6 @@
     colorMode = 'route',
     isStart = false,
     isEnd = false,
-    isFavorite = false,
     selected = false,
     onclick,
     class: className,
@@ -63,18 +62,12 @@
   // In 'route' mode the badge always paints itself with the route's
   // own color. In 'neutral' mode every line flattens to a uniform
   // surface so a long line-up doesn't read like a clown car.
-  // Favorited routes call attention to themselves by switching the
-  // shortName to brand-blue text (`--color-primary`), regardless of
-  // colorMode. The badge background stays whatever it would otherwise
-  // be so route identity is preserved.
   const useRouteColor = $derived(colorMode === 'route');
   const bg = $derived(useRouteColor ? route.color : 'var(--color-surface-elevated)');
   const fg = $derived(
-    isFavorite
-      ? 'var(--color-favorite)'
-      : useRouteColor
-        ? (route.textColor ?? pickContrastingText(route.color))
-        : 'var(--color-fg)',
+    useRouteColor
+      ? (route.textColor ?? pickContrastingText(route.color))
+      : 'var(--color-fg)',
   );
 
   const SIZE: Record<Size, string> = {

@@ -105,7 +105,7 @@
   {@const type = route.type ?? 'unknown'}
   {@const typeLabel = vehicleTypeLabel(type)}
   <Stack direction="row" spacing={1} align="center" class="px-1 py-1 rounded-md hover:bg-[color:var(--color-border)]/30">
-    <RouteBadge {route} size="medium" isFavorite={isFav} class="min-w-14" />
+    <RouteBadge {route} size="medium" class="min-w-14" />
     <Typography variant="body2" class="flex-1 truncate">
       <span style={`color:${route.color}`} class="font-semibold">{typeLabel}</span>
       <span class="text-[color:var(--color-fg-muted)]">{route.shortName}</span>

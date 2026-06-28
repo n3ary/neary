@@ -44,7 +44,6 @@
     type TripShapePlan,
   } from '$lib/domain/predictPosition';
   import { feedsStore } from '$lib/stores/feedsStore.svelte';
-  import { favoritesStore } from '$lib/stores/favoritesStore.svelte';
   import { reconciledVehiclesStore } from '$lib/stores/reconciledVehiclesStore.svelte';
   import { locationStore } from '$lib/stores/locationStore.svelte';
   import { nowTicker } from '$lib/stores/nowTicker.svelte';
@@ -118,7 +117,6 @@
   });
 
   const route = $derived(view?.route ?? null);
-  const isFav = $derived(route ? favoritesStore.has(route.id) : false);
   const nightRoute = $derived(route ? isNightRoute(route) : false);
 
   // Routes per stop — fetched once when the view payload arrives so
@@ -748,7 +746,7 @@
         <CardContent>
           <Stack direction="row" spacing={1.5} align="center" wrap>
             <BackButton />
-            <RouteBadge route={view.route} size="large" isFavorite={isFav} />
+            <RouteBadge route={view.route} size="large" />
             <Stack spacing={0.5} class="flex-1 min-w-0">
               <Stack direction="row" spacing={1} align="center" wrap>
                 <Typography variant="h5" class="truncate">{headerTitle}</Typography>
