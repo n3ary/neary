@@ -58,6 +58,17 @@
   const routeId = $derived(parsed.routeId);
   const direction = $derived(parsed.direction);
   const selectedTripId = $derived(page.params.selected ?? null);
+  // Origin stop the user came from when they tapped 'map' on a station-card
+  // vehicle row. Painted in green on the route so the rider can recognise
+  // 'this is the stop I was at'. Null when the URL has no `?from` param
+  // (e.g. arriving via favorites, browser history, deep link). Parsed as
+  // a number because Station.id is numeric in our schema.
+  const fromStopId = $derived.by<number | null>(() => {
+    const v = page.url.searchParams.get('from');
+    if (v == null) return null;
+    const n = Number(v);
+    return Number.isFinite(n) ? n : null;
+  });
 
   // Remember the original direction + trip so that swapping twice restores
   // the highlight. Captured once on first arrival; swapping to the other
@@ -531,12 +542,24 @@
       // header already names origin + destination, and "next at
       // origin" surfaces via the scheduled vehicle bubble; a separate
       // play / square endpoint glyph was redundant.
+      //
+      // Exception: when the user navigated here from a station card
+      // (`?from=<stopId>` query param), that stop renders in the
+      // success-green colour so the rider can recognise where they
+      // were standing. Pure visual marker; no other behavioural
+      // change — the popup, hit target, and trip data are identical.
+      const originStopId = fromStopId;
       currentView.stops.forEach((s) => {
+        const isOrigin = originStopId != null && s.stopId === originStopId;
         const m = Lref.circleMarker([s.lat, s.lon], {
-          radius: 5,
+          radius: isOrigin ? 6 : 5,
           color: '#fff',
           weight: 1.5,
-          fillColor: currentView.route.color,
+          // Hardcoded green hex (not var(--color-success)) because
+          // Leaflet's SVG renderer doesn't parse CSS custom properties
+          // or oklch() — keep parity with the GPS-good ring used in
+          // vehicleHtml below.
+          fillColor: isOrigin ? '#22c55e' : currentView.route.color,
           fillOpacity: 1,
         });
         m.bindPopup(stopPopupHtml(s.stopId, s.stopName, currentRoutes.get(s.stopId) ?? []), {

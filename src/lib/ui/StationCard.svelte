@@ -293,7 +293,7 @@
                       urgency={etaUrgency(group.bucket, vehicle.eta?.minutes ?? 0)}
                       scheduleHref={actionable ? `/schedule/route/${vehicle.route.id}_${vehicle.schedule?.directionId ?? 0}` : undefined}
                       mapHref={actionable
-                        ? `/map/route/${vehicle.route.id}_${vehicle.schedule?.directionId ?? 0}${vehicle.schedule?.tripId ? `/${encodeURIComponent(vehicle.schedule.tripId)}` : ''}`
+                        ? `/map/route/${vehicle.route.id}_${vehicle.schedule?.directionId ?? 0}${vehicle.schedule?.tripId ? `/${encodeURIComponent(vehicle.schedule.tripId)}` : ''}?from=${station.id}`
                         : undefined}
                       onStopsExpand={stopsEligible ? () => toggleStops(vehicle) : undefined}
                       stopsExpanded={expandedVehicleId === vehicle.id || loadingVehicleId === vehicle.id}
