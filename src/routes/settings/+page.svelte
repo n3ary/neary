@@ -25,7 +25,12 @@
   let versionFirstSeenAt = $state<number | null>(null);
 
   onMount(() => {
-    void feedsStore.load();
+    // Always re-check the registry when the user opens Settings
+    // (rather than `load()`, which short-circuits when the in-memory
+    // copy is already populated). SPA navigation here from anywhere
+    // else doesn't reload the page, so without `refresh()` we'd be
+    // showing the snapshot from first app boot.
+    void feedsStore.refresh();
 
     if (typeof localStorage === 'undefined') return;
     try {

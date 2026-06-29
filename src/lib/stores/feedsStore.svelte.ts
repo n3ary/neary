@@ -34,6 +34,30 @@ class FeedsStore {
     }
   }
 
+  /**
+   * Force a re-fetch even when the registry is already in memory.
+   * SPA navigation to the settings view doesn't reload the page, so
+   * without this the user sees whatever snapshot the registry had on
+   * first app boot — including a stale `generated_at` per feed.
+   *
+   * Concurrent calls coalesce: if a refresh is in flight, callers
+   * await the same network round-trip. The previous feeds list stays
+   * visible during the fetch (no flash) and only swaps once the new
+   * payload lands; on failure the previous list is preserved.
+   */
+  async refresh(): Promise<void> {
+    if (this.loading) return;
+    this.loading = true;
+    this.error = null;
+    try {
+      this.feeds = await fetchFeeds();
+    } catch (e) {
+      this.error = e instanceof Error ? e.message : String(e);
+    } finally {
+      this.loading = false;
+    }
+  }
+
   byId(id: string | null | undefined): Feed | null {
     if (!id || !this.feeds) return null;
     return this.feeds.find((f) => f.id === id) ?? null;
