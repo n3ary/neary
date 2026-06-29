@@ -75,9 +75,18 @@ export interface FeedsRegistry {
   feeds: Feed[];
 }
 
-/** Fetch and parse the live registry. Throws on network/parse failure. */
+/**
+ * Fetch and parse the live registry. Throws on network/parse failure.
+ *
+ * `cache: 'no-cache'` forces the browser to revalidate with the
+ * server (`If-None-Match` on the ETag) instead of silently serving a
+ * cached copy for the full max-age window (~5 min on raw.githubusercontent.com).
+ * Cheap when the registry hasn't changed (304, no body), and the
+ * latency only matters on cold loads anyway. The in-memory store on
+ * top is what makes repeat reads free — see `feedsStore`.
+ */
 export async function fetchFeeds(): Promise<Feed[]> {
-  const res = await fetch(FEEDS_REGISTRY_URL);
+  const res = await fetch(FEEDS_REGISTRY_URL, { cache: 'no-cache' });
   if (!res.ok) throw new Error(`Feed registry fetch failed (${res.status})`);
   const reg = (await res.json()) as FeedsRegistry;
   return reg.feeds;

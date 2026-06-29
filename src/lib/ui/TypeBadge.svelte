@@ -2,14 +2,13 @@
   TypeBadge — small badge representing a vehicle type
   (bus / tram / trolleybus / …). Shape matches RouteBadge so it
   reads as a peer to route badges in the same UI surface (rounded
-  square, similar padding + font). Color is feed-aware: the caller
-  passes the accent the feed actually paints routes of this type
-  with (typically `route.color` from a representative route) so the
-  filter chip and the RouteBadges below it match. Falls back to the
-  generic VEHICLE_TYPE_COLOR palette when the caller has nothing
-  more specific.
+  square, similar padding + font). Color defaults to the canonical
+  VEHICLE_TYPE_COLOR palette (intentionally distinct per mode for
+  filter-classifier legibility); callers may override via `color`
+  when a feed happens to paint a type consistently with the
+  canonical palette, but most consumers should pass nothing.
 
-  Used by the /favorites view as a multi-select mode filter. Active
+  Used by the /favorites view as a single-select mode filter. Active
   = solid filled (badge "on"), inactive = outlined (badge "off").
 -->
 <script lang="ts">

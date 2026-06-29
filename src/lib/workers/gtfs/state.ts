@@ -11,6 +11,10 @@ import type { Database } from '@sqlite.org/sqlite-wasm';
 
 class WorkerState {
   currentFeedId: string | null = null;
+  /** Hash (`feed.hash`) of the currently-bound feed. Used by `setFeed`
+   *  to detect when the same feed id has a newer published build and
+   *  re-bootstrap against the new OPFS file. */
+  currentFeedHash: string | null = null;
   /** IANA timezone for the current feed (e.g. 'Europe/Bucharest').
    *  Required for every minute-since-midnight conversion the queries do. */
   currentFeedTz: string | null = null;

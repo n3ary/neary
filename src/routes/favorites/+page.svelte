@@ -55,20 +55,15 @@
     );
   });
 
-  // Per-type accent painted by THIS feed's RouteBadges — pick the
-  // first route of each type and reuse its `route.color`. Used by
-  // the filter chips so a 'Trolleybus' chip shows the same blue the
-  // trolleybus badges below it show, instead of a separate per-mode
-  // palette that would never agree with the badges.
-  const typeAccent = $derived.by<Map<VehicleType, string>>(() => {
-    const map = new Map<VehicleType, string>();
-    if (!allRoutes) return map;
-    for (const r of allRoutes) {
-      const t = r.type ?? 'unknown';
-      if (!map.has(t)) map.set(t, r.color);
-    }
-    return map;
-  });
+  // Filter chips use the canonical VEHICLE_TYPE_COLOR palette (set
+  // inside TypeBadge). A previous version derived the chip color from
+  // the first route of each type, on the theory that the chip should
+  // match the RouteBadges below it. That breaks when a feed paints
+  // many routes across modes the same color — e.g. Tranzy's CTP feed
+  // uses #f3513c as the first color for trolleybus, tram, AND bus, so
+  // all three chips rendered as the same red-orange. The canonical
+  // palette is intentionally distinct per mode and is the right tool
+  // for a mode classifier.
 
   // Apply the type filter once, then split into the two cards. Within
   // each section, sort numeric-first then alpha.
@@ -175,7 +170,7 @@
               </Stack>
               <Stack direction="row" spacing={1} align="center" wrap>
                 {#each presentTypes as t (t)}
-                  <TypeBadge type={t} color={typeAccent.get(t)} active={typeFilter === t} onclick={() => toggleType(t)} />
+                  <TypeBadge type={t} active={typeFilter === t} onclick={() => toggleType(t)} />
                 {/each}
                 {#if typeFilter !== null}
                   <button
