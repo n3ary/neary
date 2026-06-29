@@ -294,13 +294,20 @@ export type Vehicle =
  * Pick a foreground color (black or white) that has enough contrast against a
  * given hex background. Uses sRGB relative luminance, not perceptual lightness;
  * good enough for transit route palettes which never sit near the boundary.
+ *
+ * Accepts both 3-char (`#abc`) and 6-char (`#aabbcc`) hex with or without the
+ * leading `#`. Some upstream feeds emit shorthand (e.g. cluj-napoca-gtfs-adapter
+ * writes `000` for pure black) and the previous strict length check made every
+ * such route render with black text on its black plate.
  */
 export function pickContrastingText(hex: string): '#000' | '#fff' {
-  const c = hex.replace('#', '');
+  let c = hex.replace('#', '');
+  if (c.length === 3) c = c[0] + c[0] + c[1] + c[1] + c[2] + c[2];
   if (c.length !== 6) return '#000';
   const r = parseInt(c.substring(0, 2), 16);
   const g = parseInt(c.substring(2, 4), 16);
   const b = parseInt(c.substring(4, 6), 16);
+  if (Number.isNaN(r) || Number.isNaN(g) || Number.isNaN(b)) return '#000';
   // Relative luminance approximation (faster than full sRGB linearization).
   const L = (0.299 * r + 0.587 * g + 0.114 * b) / 255;
   return L > 0.6 ? '#000' : '#fff';
