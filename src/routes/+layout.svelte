@@ -71,19 +71,27 @@
 
   // Auto-bind the GTFS worker to the user's selected feed. The repo is
   // lazily constructed; this effect only spawns the worker once a feed
-  // exists in both userPrefs AND the loaded registry, then re-runs only
-  // when the id changes. Progress + errors are surfaced through the global
-  // StatusBar so the user sees them regardless of which route they're on.
-  let lastBoundFeedId = $state<string | null>(null);
+  // exists in both userPrefs AND the loaded registry, then re-runs when
+  // EITHER the id changes (user switched feeds) or the registry refresh
+  // surfaces a new hash for the same feed (upstream zip changed, OPFS
+  // needs the newer .sqlite3). Progress + errors are surfaced through
+  // the global StatusBar so the user sees them regardless of route.
+  let lastBoundFeedKey = $state<string | null>(null);
   $effect(() => {
     void feedsStore.load();
   });
   $effect(() => {
     const id = userPrefs.feedId;
-    if (id == null || id === lastBoundFeedId) return;
+    if (id == null) return;
     const feed = feedsStore.byId(id);
     if (!feed) return; // registry not loaded yet; effect will re-fire when it is
-    lastBoundFeedId = id;
+    // Key by (id, hash) so a new hash on the same id triggers re-bind.
+    // The hash is the sha256 of the published sqlite_gz — when the daily
+    // pipeline publishes a fresher build, the hash changes, opfsFileFor()
+    // computes a new filename, bootstrap() downloads the new blob.
+    const key = `${id}@${feed.hash ?? ''}`;
+    if (key === lastBoundFeedKey) return;
+    lastBoundFeedKey = key;
     const repo = getGtfsRepo();
     statusBus.push({
       id: 'gtfs-bind',
@@ -113,7 +121,7 @@
           ttlMs: 0,
         });
         // Roll back the binding tracker so the user can retry by re-selecting.
-        lastBoundFeedId = null;
+        lastBoundFeedKey = null;
         feedsStore.boundFeedId = null;
       });
   });

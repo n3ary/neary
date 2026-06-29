@@ -47,13 +47,26 @@ import { getWeeklySchedule } from './gtfs/queries/weeklySchedule';
 
 const api: GtfsRepo = {
   async setFeed(feed: Feed): Promise<void> {
-    if (state.currentFeedId === feed.id && state.currentDb) return;
-    if (state.currentFeedId === feed.id && state.bootstrapping) {
+    // Already bound to this exact feed build — nothing to do. We key on
+    // (id, hash) rather than id alone so a fresher publish of the same
+    // feed (new hash → new OPFS file via opfsFileFor()) re-bootstraps
+    // instead of silently reusing the stale blob.
+    if (
+      state.currentFeedId === feed.id &&
+      state.currentFeedHash === feed.hash &&
+      state.currentDb
+    ) return;
+    if (
+      state.currentFeedId === feed.id &&
+      state.currentFeedHash === feed.hash &&
+      state.bootstrapping
+    ) {
       await state.bootstrapping;
       return;
     }
     closeCurrent();
     state.currentFeedId = feed.id;
+    state.currentFeedHash = feed.hash ?? null;
     state.currentFeedTz = feed.timezone || 'UTC';
     state.bootstrapping = bootstrap(feed);
     try {
@@ -63,6 +76,7 @@ const api: GtfsRepo = {
       // loudly. Reset the feed tracker so a later setFeed(sameFeed) can
       // retry.
       state.currentFeedId = null;
+      state.currentFeedHash = null;
       throw e;
     } finally {
       state.bootstrapping = null;
