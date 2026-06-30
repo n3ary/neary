@@ -27,21 +27,17 @@ import type { GtfsRepo } from '$lib/data/gtfs/types';
 import { bootstrap, closeCurrent } from './gtfs/bootstrap';
 import {
   ensureLiveTimer,
-  getReconciledSnapshot,
   subscribeReconciled,
   tickLive,
 } from './gtfs/livePipeline';
 import { subscribeStationBoards } from './gtfs/stationSubscribers';
 import { ensureDb, state } from './gtfs/state';
 
-import { getActiveTrips } from './gtfs/queries/activeTrips';
 import { getRouteDirectionEndpoints } from './gtfs/queries/routeEndpoints';
 import { getRouteMapView } from './gtfs/queries/routeMapView';
 import { getRouteSchedule } from './gtfs/queries/routeSchedule';
-import { getStopDistancesForTrips, getStopsAlongTrip } from './gtfs/queries/routeStops';
+import { getStopsAlongTrip } from './gtfs/queries/routeStops';
 import { getRouteById, getRoutes, getRoutesForStop } from './gtfs/queries/routes';
-import { getShapesForTrips } from './gtfs/queries/shapes';
-import { getStationArrivals } from './gtfs/queries/stationArrivals';
 import { getStationBoard, getStationBoardsNear } from './gtfs/queries/stationBoards';
 import { getDeparturesFromStop, getOriginRoutesAtStop, getStopsNear } from './gtfs/queries/stops';
 import { getWeeklySchedule } from './gtfs/queries/weeklySchedule';
@@ -90,10 +86,6 @@ const api: GtfsRepo = {
     void tickLive();
   },
 
-  async ready() {
-    await ensureDb();
-    return true;
-  },
 
   // ── Routes ──────────────────────────────────────────────────────────
   async getRoutes() {
@@ -124,15 +116,7 @@ const api: GtfsRepo = {
   },
 
   // ── Station boards ──────────────────────────────────────────────────
-  async getStationArrivals(stopId, nowMs, windowMinutes) {
-    return getStationArrivals(
-      await ensureDb(),
-      state.currentFeedTz ?? 'UTC',
-      stopId,
-      nowMs,
-      windowMinutes,
-    );
-  },
+
   async getStationBoard(stopId, nowMs, windowMinutes) {
     return getStationBoard(
       await ensureDb(),
@@ -169,9 +153,6 @@ const api: GtfsRepo = {
   async getStopsAlongTrip(tripId) {
     return getStopsAlongTrip(await ensureDb(), tripId);
   },
-  async getStopDistancesForTrips(tripIds) {
-    return getStopDistancesForTrips(await ensureDb(), tripIds);
-  },
   async getWeeklySchedule(routeId, directionId) {
     return getWeeklySchedule(await ensureDb(), routeId, directionId);
   },
@@ -190,29 +171,13 @@ const api: GtfsRepo = {
     );
   },
 
-  // ── Shapes (GPS-ETA path) ───────────────────────────────────────────
-  async getShapesForTrips(tripIds) {
-    return getShapesForTrips(await ensureDb(), tripIds);
-  },
 
-  // ── Live pipeline ───────────────────────────────────────────────────
-  async getActiveTrips(nowMs, lookbackMin, lookaheadMin) {
-    return getActiveTrips(
-      await ensureDb(),
-      state.currentFeedTz ?? 'UTC',
-      nowMs,
-      lookbackMin,
-      lookaheadMin,
-    );
-  },
+  // ── Live pipeline ──────────────────────────────────────────────────────────────
   async subscribeReconciled(cb) {
     return subscribeReconciled(cb);
   },
   async refreshLive() {
     await tickLive();
-  },
-  async getReconciledSnapshot() {
-    return getReconciledSnapshot();
   },
   async subscribeStationBoards(initialStopIds, cb) {
     return subscribeStationBoards(initialStopIds, cb);

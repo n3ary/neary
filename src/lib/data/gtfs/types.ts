@@ -66,9 +66,6 @@ export interface GtfsRepo {
    */
   setFeed(feed: Feed): Promise<void>;
 
-  /** True once the DB is open and queryable. Cheap; safe to await on every call. */
-  ready(): Promise<true>;
-
   /** All routes, sorted by short_name (numeric where possible). */
   getRoutes(): Promise<Route[]>;
 
@@ -90,23 +87,6 @@ export interface GtfsRepo {
     localMinutesSinceMidnight: number,
     windowMinutes: number,
   ): Promise<UpcomingDeparture[]>;
-
-  /**
-   * Domain-shaped arrivals at a stop, ready for bucketing + rendering.
-   * Schedule-only today: every entry is `kind: 'scheduled'` (the live
-   * pipeline upgrades some to `tracked` / `verified` downstream).
-   *
-   *   nowMs           Unix ms — the moment this query represents
-   *   windowMinutes   How many minutes into the future to include
-   *
-   * Past arrivals within the 5 min recency window are also returned so the
-   * `departed` bucket can render when the user opts in.
-   */
-  getStationArrivals(
-    stopId: number,
-    nowMs: number,
-    windowMinutes: number,
-  ): Promise<Vehicle[]>;
 
   /**
    * Stops near (lat, lon) with their arrivals fetched in one round-trip.
@@ -139,24 +119,6 @@ export interface GtfsRepo {
     windowMinutes: number,
   ): Promise<{ stop: StopWithDistance; vehicles: Vehicle[] } | null>;
 
-  /**
-   * Resolve trip_id → route shape polyline for many trips in one
-   * round-trip. Used by the GPS-derived ETA pipeline: the page
-   * collects the trip_ids of every reconciled vehicle currently on
-   * screen and asks for their shapes; the predictor then projects
-   * vehicle + stop onto the polyline to derive a GPS-based ETA.
-   *
-   * Returned record is keyed by tripId. Trips whose shape is missing
-   * from the feed are omitted from the result (caller falls back to
-   * scheduled ETA for those).
-   *
-   * Worker caches shapes by shape_id, so re-fetching the same shape
-   * across renders is O(1).
-   */
-  getShapesForTrips(
-    tripIds: string[],
-  ): Promise<Record<string, Array<{ lat: number; lon: number }>>>;
-
   /** Single route by id, or null when the id isn't in the feed. */
   getRouteById(routeId: string): Promise<Route | null>;
 
@@ -186,15 +148,6 @@ export interface GtfsRepo {
    * view to render the stop strip + estimated arrival per stop.
    */
   getStopsAlongTrip(tripId: string): Promise<ScheduleTripStop[]>;
-
-  /**
-   * Batch variant used by station boards: trip_id -> ordered cumulative
-   * stop distances (metres) from stop_times.shape_dist_traveled.
-   * Trips missing the column (or all-null rows) are omitted.
-   */
-  getStopDistancesForTrips(
-    tripIds: string[],
-  ): Promise<Record<string, number[]>>;
 
   /**
    * Departure times at the trip origin grouped by day-of-week
@@ -264,24 +217,6 @@ export interface GtfsRepo {
   ): Promise<RouteMapView | null>;
 
   /**
-   * Every trip currently active feed-wide: origin departure within
-   * `[nowMin - lookbackMin, nowMin + lookaheadMin]` AND not yet past
-   * terminus. One round-trip; no per-stop join. Drives the worker-side
-   * reconciliation pipeline that broadcasts a global Vehicle[] every
-   * live poll cycle.
-   *
-   * Returned Vehicles are all `kind: 'scheduled'`. Schedule fields are
-   * origin-relative: `scheduledDeparture = tripStartMin`,
-   * `scheduledArrival = tripEndMin`. No per-stop ETA. Consumers join
-   * by `tripId` and recompute ETA against their own stop context.
-   */
-  getActiveTrips(
-    nowMs: number,
-    lookbackMin: number,
-    lookaheadMin: number,
-  ): Promise<Vehicle[]>;
-
-  /**
    * Subscribe to the worker's reconciled-vehicles broadcast. The worker
    * polls GTFS-RT every `DEFAULT_CONFIG.livePollMs`, reconciles against
    * the active-trip set, and pushes a `ReconciledSnapshot` to every
@@ -298,9 +233,6 @@ export interface GtfsRepo {
   /** Force an immediate live poll + reconciliation cycle. Used by the
    *  manual refresh button in the header. */
   refreshLive(): Promise<void>;
-
-  /** Latest broadcast payload, or null before the first successful poll. */
-  getReconciledSnapshot(): Promise<ReconciledSnapshot | null>;
 
   /**
    * Subscribe a callback to receive per-stop assembled vehicle boards

@@ -24,7 +24,6 @@ import type { Vehicle } from '$lib/domain/types';
 
 class ReconciledVehiclesStore {
   vehicles = $state<Vehicle[]>([]);
-  feedTimestampMs = $state<number | null>(null);
   lastFetchMs = $state<number | null>(null);
   stats = $state<ReconcileStats | null>(null);
   error = $state<string | null>(null);
@@ -41,7 +40,6 @@ class ReconciledVehiclesStore {
       this.unsubFn = await repo.subscribeReconciled(
         Comlink.proxy((snap: ReconciledSnapshot) => {
           this.vehicles = snap.vehicles;
-          this.feedTimestampMs = snap.feedTimestampMs;
           this.lastFetchMs = snap.lastFetchMs;
           this.stats = snap.stats;
           this.error = snap.error;
