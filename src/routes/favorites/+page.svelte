@@ -105,6 +105,7 @@
   {@const isFav = favoritesStore.has(route.id)}
   {@const type = route.type ?? 'unknown'}
   {@const typeLabel = vehicleTypeLabel(type)}
+  {@const primaryLabel = route.longName ?? typeLabel}
   {@const hasSchedule = route.hasSchedule !== false}
   {@const scheduleHref = hasSchedule ? `/schedule/route/${route.id}_0` : null}
   <Stack direction="row" spacing={1} align="center" class="px-1 py-1 rounded-md hover:bg-[color:var(--color-border)]/30">
@@ -119,9 +120,12 @@
     {:else}
       <RouteBadge {route} size="medium" class="min-w-14" />
     {/if}
-    <Typography variant="body2" class="flex-1 truncate">
-      <span style={`color:${route.color}`} class="font-semibold">{typeLabel}</span>
-    </Typography>
+    <div class="flex-1 min-w-0">
+      <div class="text-sm font-medium truncate">{primaryLabel}</div>
+      {#if route.description}
+        <div class="text-xs truncate text-[color:var(--color-fg-muted)]">{route.description}</div>
+      {/if}
+    </div>
     {#if scheduleHref}
       <a
         href={scheduleHref}
