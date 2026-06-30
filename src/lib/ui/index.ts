@@ -49,4 +49,5 @@ export { default as StatusDot } from './StatusDot.svelte';
 export { default as AppLayout } from './AppLayout.svelte';
 
 export { cn } from './cn';
+export { networkIcon } from './networkIcon';
 

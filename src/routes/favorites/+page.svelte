@@ -8,10 +8,10 @@
   shows hearts on favorited badges as visual reinforcement.
 -->
 <script lang="ts">
-  import { Calendar, GraduationCap, Heart, MapPin, Moon, Music, Plane, Star, Zap } from 'lucide-svelte';
+  import { Calendar, Heart } from 'lucide-svelte';
   import {
     Card, CardContent, Chip, NoFeedState, RouteBadge, Spinner, Stack,
-    Typography, TypeBadge, iconButtonClass,
+    Typography, TypeBadge, iconButtonClass, networkIcon,
   } from '$lib/ui';
   import { getGtfsRepo } from '$lib/data/gtfs/repo';
   import type { Network, Route, VehicleType } from '$lib/domain/types';
@@ -100,18 +100,7 @@
     sortRoutes(filteredRoutes.filter((r) => !favoritesStore.has(r.id))),
   );
 
-  // Icon per network_id — falls back to a generic star for unknown ids.
-  const NETWORK_ICONS: Record<string, typeof Moon> = {
-    night: Moon,
-    school: GraduationCap,
-    metroline: MapPin,
-    festival: Music,
-    airport: Plane,
-    special: Zap,
-  };
-  function networkIcon(id: string): typeof Moon {
-    return NETWORK_ICONS[id] ?? Star;
-  }
+
 </script>
 
 <!-- One row-renderer shared by both cards so the layout stays identical

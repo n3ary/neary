@@ -27,10 +27,10 @@
 <script lang="ts">
   import { goto } from '$app/navigation';
   import { page } from '$app/state';
-  import { ArrowRightLeft, ChevronDown, GraduationCap, Map as MapIcon, MapPin, Moon, Music, Plane, Star, Zap } from 'lucide-svelte';
+  import { ArrowRightLeft, ChevronDown, Map as MapIcon } from 'lucide-svelte';
   import {
     BackButton, Card, CardContent, Chip, IconButton, NoFeedState, RouteBadge, Spinner,
-    Stack, ToggleGroup, TripStopList, Typography,
+    Stack, ToggleGroup, TripStopList, Typography, networkIcon,
   } from '$lib/ui';
   import { getGtfsRepo } from '$lib/data/gtfs/repo';
   import { useOtherDirectionExists } from '$lib/data/gtfs/otherDirectionExists.svelte';
@@ -75,6 +75,15 @@
 
   // ── Data state ──────────────────────────────────────────────────────
   let route = $state<Route | null>(null);
+  let networkMap = $state<Map<string, string>>(new Map());
+
+  $effect(() => {
+    const fid = feedsStore.boundFeedId;
+    if (!fid) return;
+    void getGtfsRepo().getNetworks().then((nets) => {
+      networkMap = new Map(nets.map((n) => [n.id, n.name]));
+    });
+  });
   // Departures for the day the user is currently viewing. Empty array
   // means "no data fetched yet" OR "no service today" — both render
   // the same empty-state row.
@@ -432,21 +441,6 @@
     () => direction,
   );
 
-  type IconComponent = typeof Moon;
-  const NETWORK_ICONS: Record<string, IconComponent> = {
-    night: Moon,
-    school: GraduationCap,
-    metroline: MapPin,
-    festival: Music,
-    airport: Plane,
-    special: Zap,
-  };
-  const NETWORK_LABELS: Record<string, string> = {
-    night: 'Night', school: 'School', metroline: 'Metroline',
-    festival: 'Festival', airport: 'Airport', special: 'Special',
-  };
-  function networkIcon(id: string): IconComponent { return NETWORK_ICONS[id] ?? Star; }
-  function networkLabel(id: string): string { return NETWORK_LABELS[id] ?? id; }
 </script>
 
 
@@ -553,7 +547,7 @@
                   {@const Icon = networkIcon(netId)}
                   <Chip size="small" variant="outlined">
                     {#snippet icon()}<Icon size={12} />{/snippet}
-                    {networkLabel(netId)}
+                    {networkMap.get(netId) ?? netId}
                   </Chip>
                 {/each}
               </Stack>

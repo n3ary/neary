@@ -35,11 +35,24 @@ export function getRouteMapView(
     route_color: string | null;
     route_text_color: string | null;
     route_type: number | null;
+    network_ids: string | null;
   };
+  const hasNetworks = selectAll<{ name: string }>(
+    db,
+    `SELECT name FROM sqlite_master WHERE type='table' AND name='route_networks';`,
+  ).length > 0;
   const routeRows = selectAll<RouteRow>(
     db,
-    `SELECT route_id, route_short_name, route_color, route_text_color, route_type
-     FROM routes WHERE route_id = ?;`,
+    hasNetworks
+      ? `SELECT r.route_id, r.route_short_name, r.route_color, r.route_text_color, r.route_type,
+                GROUP_CONCAT(rn.network_id, ',') AS network_ids
+         FROM routes r
+         LEFT JOIN route_networks rn ON rn.route_id = r.route_id
+         WHERE r.route_id = ?
+         GROUP BY r.route_id;`
+      : `SELECT route_id, route_short_name, route_color, route_text_color, route_type,
+                NULL AS network_ids
+         FROM routes WHERE route_id = ?;`,
     [routeId],
   );
   if (routeRows.length === 0) return null;
@@ -52,6 +65,7 @@ export function getRouteMapView(
     textColor: r.route_text_color ? `#${r.route_text_color}` : undefined,
     type: vehicleTypeFromGtfs(r.route_type),
     hasSchedule: withSchedule.has(String(r.route_id)),
+    networks: r.network_ids ? r.network_ids.split(',').filter(Boolean) : undefined,
   };
 
   // 1) Active trips on (route, direction). Origin departure within

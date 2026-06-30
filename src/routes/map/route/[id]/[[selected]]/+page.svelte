@@ -24,10 +24,10 @@
   import { onDestroy, onMount } from 'svelte';
   import { goto } from '$app/navigation';
   import { page } from '$app/state';
-  import { ArrowRightLeft, Bus, Calendar, GraduationCap, MapPin, Maximize2, Minus, Moon, Music, Plane, Plus, Star, Zap } from 'lucide-svelte';
+  import { ArrowRightLeft, Bus, Calendar, Maximize2, Minus, Plus } from 'lucide-svelte';
   import {
     BackButton, Card, CardContent, Chip, IconButton, NoFeedState, RouteBadge, Spinner,
-    Stack, Typography,
+    Stack, Typography, networkIcon,
   } from '$lib/ui';
   import { getGtfsRepo } from '$lib/data/gtfs/repo';
   import { useOtherDirectionExists } from '$lib/data/gtfs/otherDirectionExists.svelte';
@@ -91,6 +91,15 @@
   // ── Data ────────────────────────────────────────────────────────────
   let view = $state<RouteMapView | null>(null);
   let error = $state<string | null>(null);
+  let networkMap = $state<Map<string, string>>(new Map());
+
+  $effect(() => {
+    const fid = feedsStore.boundFeedId;
+    if (!fid) return;
+    void getGtfsRepo().getNetworks().then((nets) => {
+      networkMap = new Map(nets.map((n) => [n.id, n.name]));
+    });
+  });
 
   const tz = $derived(feedsStore.activeTimezone);
   const nowMin = $derived(minSinceMidnightInTz(nowTicker.ms, tz));
@@ -1011,21 +1020,6 @@
       .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
   }
 
-  type IconComponent = typeof Moon;
-  const NETWORK_ICONS: Record<string, IconComponent> = {
-    night: Moon,
-    school: GraduationCap,
-    metroline: MapPin,
-    festival: Music,
-    airport: Plane,
-    special: Zap,
-  };
-  const NETWORK_LABELS: Record<string, string> = {
-    night: 'Night', school: 'School', metroline: 'Metroline',
-    festival: 'Festival', airport: 'Airport', special: 'Special',
-  };
-  function networkIcon(id: string): IconComponent { return NETWORK_ICONS[id] ?? Star; }
-  function networkLabel(id: string): string { return NETWORK_LABELS[id] ?? id; }
 </script>
 
 <!-- Map control button factory + per-control icon snippets. Defined
@@ -1088,7 +1082,7 @@
                   {@const Icon = networkIcon(netId)}
                   <Chip size="small" variant="outlined">
                     {#snippet icon()}<Icon size={12} />{/snippet}
-                    {networkLabel(netId)}
+                    {networkMap.get(netId) ?? netId}
                   </Chip>
                 {/each}
               </Stack>
