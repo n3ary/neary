@@ -73,3 +73,12 @@ export function rotateHueOklch(hex: string, degrees: number): string {
   const h = Math.atan2(b, a) + (degrees * Math.PI) / 180;
   return rgbToHex(oklabToRgb([L, C * Math.cos(h), C * Math.sin(h)]));
 }
+
+/** Euclidean distance between two colors in OKLab space.
+ *  Accepts 6-char hex strings without a leading `#`.
+ *  0.15 = "clearly different colors" threshold. */
+export function oklabDistance(hexA: string, hexB: string): number {
+  const [La, aa, ba] = rgbToOklab(hexToRgb(hexA));
+  const [Lb, ab, bb] = rgbToOklab(hexToRgb(hexB));
+  return Math.sqrt((La - Lb) ** 2 + (aa - ab) ** 2 + (ba - bb) ** 2);
+}

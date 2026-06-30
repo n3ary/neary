@@ -11,7 +11,7 @@
   import { Calendar, Heart } from 'lucide-svelte';
   import {
     Card, CardContent, Chip, NoFeedState, RouteBadge, Spinner, Stack,
-    Typography, TypeBadge, iconButtonClass, networkColor, networkIcon, networkTextColor,
+    Typography, TypeBadge, iconButtonClass, networkIcon, networkTextColor,
   } from '$lib/ui';
   import { getGtfsRepo } from '$lib/data/gtfs/repo';
   import type { Network, Route, VehicleType } from '$lib/domain/types';
@@ -219,8 +219,8 @@
                       {@const active = networkFilter === net.id}
                       <Chip
                         size="small"
-                        hex={networkColor(net.id)}
-                        fg={networkTextColor(net.id)}
+                        hex={net.color}
+                        fg={networkTextColor(net.color)}
                         onclick={() => toggleNetwork(net.id)}
                         class={active ? '' : 'opacity-50'}
                       >

@@ -30,12 +30,12 @@
   import { ArrowRightLeft, ChevronDown, Map as MapIcon } from 'lucide-svelte';
   import {
     BackButton, Card, CardContent, Chip, IconButton, NoFeedState, RouteBadge, Spinner,
-    Stack, ToggleGroup, TripStopList, Typography, networkColor, networkIcon, networkTextColor,
+    Stack, ToggleGroup, TripStopList, Typography, networkIcon, networkTextColor,
   } from '$lib/ui';
   import { getGtfsRepo } from '$lib/data/gtfs/repo';
   import { useOtherDirectionExists } from '$lib/data/gtfs/otherDirectionExists.svelte';
   import { parseRouteIdWithDirection } from '$lib/data/gtfs/parseRouteIdWithDirection';
-  import type { Route } from '$lib/domain/types';
+  import type { Network, Route } from '$lib/domain/types';
   import {
     formatHHMM, formatRelativeMin, isNightRoute, vehicleTypeLabel,
   } from '$lib/domain/types';
@@ -75,13 +75,13 @@
 
   // ── Data state ──────────────────────────────────────────────────────
   let route = $state<Route | null>(null);
-  let networkMap = $state<Map<string, string>>(new Map());
+  let networkMap = $state<Map<string, Network>>(new Map());
 
   $effect(() => {
     const fid = feedsStore.boundFeedId;
     if (!fid) return;
     void getGtfsRepo().getNetworks().then((nets) => {
-      networkMap = new Map(nets.map((n) => [n.id, n.name]));
+      networkMap = new Map(nets.map((n) => [n.id, n]));
     });
   });
   // Departures for the day the user is currently viewing. Empty array
@@ -544,10 +544,11 @@
               <Stack direction="row" spacing={1} align="center" wrap>
                 <Typography variant="h5" class="truncate">{headerTitle}</Typography>
                 {#each (route.networks ?? []) as netId (netId)}
+                  {@const net = networkMap.get(netId)}
                   {@const Icon = networkIcon(netId)}
-                  <Chip size="small" hex={networkColor(netId)} fg={networkTextColor(netId)}>
+                  <Chip size="small" hex={net?.color} fg={net ? networkTextColor(net.color) : undefined}>
                     {#snippet icon()}<Icon size={12} />{/snippet}
-                    {networkMap.get(netId) ?? netId}
+                    {net?.name ?? netId}
                   </Chip>
                 {/each}
               </Stack>

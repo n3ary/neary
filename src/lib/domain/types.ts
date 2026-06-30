@@ -68,6 +68,9 @@ export interface Route {
 export interface Network {
   id: string;
   name: string;
+  /** Hex chip color (with leading `#`), derived from the modal route_color
+   *  of routes in this network, collision-resolved so every chip is distinct. */
+  color: string;
 }
 
 /** A station / stop as the UI sees it. */
