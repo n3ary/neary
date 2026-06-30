@@ -188,6 +188,14 @@
     if (!userPos || !feedsStore.feeds) return null;
     return findNearestFeed(userPos, feedsStore.feeds);
   });
+  // When the user's GPS position falls inside a published feed's bbox,
+  // we can suggest that feed with one tap instead of sending them to
+  // the Settings picker. Distance 0 from `findNearestFeed` means the
+  // candidate's bbox covers the user. null when no GPS or no covering
+  // feed exists.
+  const coveringFeed = $derived(
+    nearestFeed && nearestFeed.distanceKm === 0 ? nearestFeed.feed : null,
+  );
 
   function switchFeed(id: string) {
     userPrefs.feedId = id;
@@ -207,14 +215,29 @@
       <InfoCard variant="primary" title="Select your transit feed">
         {#snippet icon()}<Bus size={16} />{/snippet}
         {#snippet body()}
-          Neary needs a transit feed to load schedules and routes for your city.
-          Pick one in Settings to get started — the data downloads once and is cached
-          for offline use, no account needed.
+          {#if coveringFeed}
+            Looks like you're in <strong>{coveringFeed.name}</strong>'s service
+            area. Use it with one tap, or pick a different feed in Settings.
+            The data downloads once and is cached for offline use.
+          {:else}
+            Neary needs a transit feed to load schedules and routes for your city.
+            Pick one in Settings to get started — the data downloads once and is cached
+            for offline use, no account needed.
+          {/if}
         {/snippet}
         {#snippet actions()}
-          <Button variant="contained" size="small" onclick={() => goto('/settings')}>
-            Open Settings
-          </Button>
+          {#if coveringFeed}
+            <Button variant="contained" size="small" onclick={() => switchFeed(coveringFeed.id)}>
+              Use {coveringFeed.name}
+            </Button>
+            <Button variant="text" size="small" onclick={() => goto('/settings')}>
+              Open Settings
+            </Button>
+          {:else}
+            <Button variant="contained" size="small" onclick={() => goto('/settings')}>
+              Open Settings
+            </Button>
+          {/if}
         {/snippet}
       </InfoCard>
     {/if}
