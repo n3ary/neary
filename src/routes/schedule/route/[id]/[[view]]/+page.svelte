@@ -30,7 +30,7 @@
   import { ArrowRightLeft, ChevronDown, Map as MapIcon } from 'lucide-svelte';
   import {
     BackButton, Card, CardContent, Chip, IconButton, NoFeedState, RouteBadge, Spinner,
-    Stack, ToggleGroup, TripStopList, Typography, networkIcon,
+    Stack, ToggleGroup, TripStopList, Typography, networkColor, networkIcon, networkTextColor,
   } from '$lib/ui';
   import { getGtfsRepo } from '$lib/data/gtfs/repo';
   import { useOtherDirectionExists } from '$lib/data/gtfs/otherDirectionExists.svelte';
@@ -545,7 +545,7 @@
                 <Typography variant="h5" class="truncate">{headerTitle}</Typography>
                 {#each (route.networks ?? []) as netId (netId)}
                   {@const Icon = networkIcon(netId)}
-                  <Chip size="small" variant="outlined">
+                  <Chip size="small" hex={networkColor(netId)} fg={networkTextColor(netId)}>
                     {#snippet icon()}<Icon size={12} />{/snippet}
                     {networkMap.get(netId) ?? netId}
                   </Chip>

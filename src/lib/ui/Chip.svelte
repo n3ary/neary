@@ -2,6 +2,10 @@
   Chip — compact label/tag with optional leading icon. Supports `size` and a
   small set of semantic colors mapped to theme tokens, so chips inherit any
   skin change automatically.
+
+  For one-off data-driven colors (e.g. network chips), pass `hex` (a CSS
+  color string). When present it overrides `color`/`variant` with inline
+  styles; text color is auto-computed for contrast via `fg`.
 -->
 <script lang="ts">
   import type { Snippet } from 'svelte';
@@ -15,6 +19,11 @@
     size?: Size;
     variant?: Variant;
     color?: Color;
+    /** Raw CSS background color (e.g. `#5B2D8E`). When set, overrides
+     *  `color`/`variant` with inline styles. Pass `fg` for the foreground. */
+    hex?: string;
+    /** Foreground color paired with `hex`. Ignored when `hex` is absent. */
+    fg?: string;
     onclick?: (event: MouseEvent) => void;
     class?: string;
     /** Leading icon slot — receives a small icon component or <svg>. */
@@ -27,6 +36,8 @@
     size = 'medium',
     variant = 'filled',
     color = 'default',
+    hex,
+    fg,
     onclick,
     class: className,
     icon,
@@ -53,6 +64,8 @@
     warning: 'border border-[color:var(--color-warning)] text-[color:var(--color-warning)]',
     danger: 'border border-[color:var(--color-danger)] text-[color:var(--color-danger)]',
   };
+
+  const inlineStyle = $derived(hex ? `background:${hex};color:${fg ?? '#fff'};` : undefined);
 </script>
 
 <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
@@ -60,11 +73,12 @@
   role={onclick ? 'button' : undefined}
   tabindex={onclick ? 0 : undefined}
   {onclick}
+  style={inlineStyle}
   onkeydown={onclick ? (e) => { if (e.key === 'Enter' || e.key === ' ') onclick(e as unknown as MouseEvent); } : undefined}
   class={cn(
     'inline-flex items-center rounded-[var(--radius-chip)] font-medium select-none whitespace-nowrap',
     SIZE[size],
-    variant === 'filled' ? FILLED[color] : OUTLINED[color],
+    !hex && (variant === 'filled' ? FILLED[color] : OUTLINED[color]),
     onclick && 'cursor-pointer',
     className,
   )}
