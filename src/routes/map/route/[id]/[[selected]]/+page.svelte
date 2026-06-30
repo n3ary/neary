@@ -24,17 +24,18 @@
   import { onDestroy, onMount } from 'svelte';
   import { goto } from '$app/navigation';
   import { page } from '$app/state';
-  import { ArrowRightLeft, Bus, Calendar, Maximize2, Minus, Moon, Plus } from 'lucide-svelte';
+  import { ArrowRightLeft, Bus, Calendar, Maximize2, Minus, Plus } from 'lucide-svelte';
   import {
     BackButton, Card, CardContent, Chip, IconButton, NoFeedState, RouteBadge, Spinner,
-    Stack, Typography,
+    Stack, Typography, networkIcon, networkTextColor,
   } from '$lib/ui';
   import { getGtfsRepo } from '$lib/data/gtfs/repo';
   import { useOtherDirectionExists } from '$lib/data/gtfs/otherDirectionExists.svelte';
   import { parseRouteIdWithDirection } from '$lib/data/gtfs/parseRouteIdWithDirection';
+  import type { Network } from '$lib/domain/types';
   import type { RouteMapView } from '$lib/data/gtfs/types';
   import {
-    formatHHMM, formatRelativeMin, isNightRoute, pickContrastingText, vehicleTypeLabel,
+    formatHHMM, formatRelativeMin, pickContrastingText, vehicleTypeLabel,
     type Route,
     type Vehicle,
   } from '$lib/domain/types';
@@ -91,6 +92,15 @@
   // ── Data ────────────────────────────────────────────────────────────
   let view = $state<RouteMapView | null>(null);
   let error = $state<string | null>(null);
+  let networkMap = $state<Map<string, Network>>(new Map());
+
+  $effect(() => {
+    const fid = feedsStore.boundFeedId;
+    if (!fid) return;
+    void getGtfsRepo().getNetworks().then((nets) => {
+      networkMap = new Map(nets.map((n) => [n.id, n]));
+    });
+  });
 
   const tz = $derived(feedsStore.activeTimezone);
   const nowMin = $derived(minSinceMidnightInTz(nowTicker.ms, tz));
@@ -130,7 +140,6 @@
   });
 
   const route = $derived(view?.route ?? null);
-  const nightRoute = $derived(route ? isNightRoute(route) : false);
 
   // Routes per stop — fetched once when the view payload arrives so
   // the stop popup can show route badges without a per-click async call.
@@ -1011,6 +1020,7 @@
       .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
       .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
   }
+
 </script>
 
 <!-- Map control button factory + per-control icon snippets. Defined
@@ -1069,12 +1079,14 @@
             <Stack spacing={0.5} class="flex-1 min-w-0">
               <Stack direction="row" spacing={1} align="center" wrap>
                 <Typography variant="h5" class="truncate">{headerTitle}</Typography>
-                {#if nightRoute}
-                  <Chip size="small" variant="outlined">
-                    {#snippet icon()}<Moon size={12} />{/snippet}
-                    Night
+                {#each (route?.networks ?? []) as netId (netId)}
+                  {@const net = networkMap.get(netId)}
+                  {@const Icon = networkIcon(netId)}
+                  <Chip size="small" hex={net?.color} fg={net ? networkTextColor(net.color) : undefined}>
+                    {#snippet icon()}<Icon size={12} />{/snippet}
+                    {net?.name ?? netId}
                   </Chip>
-                {/if}
+                {/each}
               </Stack>
               {#if headerSubtitle}
                 <Typography variant="caption" class="text-[color:var(--color-fg-muted)] truncate">

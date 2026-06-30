@@ -18,6 +18,7 @@ type RouteRow = {
   route_color: string | null;
   route_text_color: string | null;
   route_type: number | null;
+  network_ids: string | null;
 };
 
 // `route_desc` was added to the SQLite schema (neary-gtfs `make-sqlite.js`)
@@ -31,6 +32,18 @@ function routeDescExpr(db: Database): string {
   return cols.some((c) => c.name === 'route_desc') ? 'route_desc' : 'NULL AS route_desc';
 }
 
+// `route_networks` was added together with `networks.txt` support.
+// Older cached blobs won't have the table — probe once and fall back
+// to NULL so callers get `route.networks === undefined` rather than an error.
+function routeNetworksJoinExpr(db: Database): { join: string; select: string } {
+  const tables = selectAll<{ name: string }>(db, `SELECT name FROM sqlite_master WHERE type='table' AND name='route_networks';`);
+  if (tables.length === 0) return { join: '', select: 'NULL AS network_ids' };
+  return {
+    join: 'LEFT JOIN route_networks rn ON rn.route_id = r.route_id',
+    select: "GROUP_CONCAT(rn.network_id, ',') AS network_ids",
+  };
+}
+
 function rowToRoute(r: RouteRow, withSchedule: Set<string>): Route {
   return {
     id: r.route_id,
@@ -41,18 +54,25 @@ function rowToRoute(r: RouteRow, withSchedule: Set<string>): Route {
     textColor: r.route_text_color ? `#${r.route_text_color}` : undefined,
     type: vehicleTypeFromGtfs(r.route_type),
     hasSchedule: withSchedule.has(r.route_id),
+    networks: r.network_ids
+      ? r.network_ids.split(',').filter(Boolean)
+      : undefined,
   };
 }
 
 export function getRoutes(db: Database): Route[] {
   const withSchedule = getRoutesWithSchedule(db);
   const desc = routeDescExpr(db);
+  const { join, select: netSelect } = routeNetworksJoinExpr(db);
   const rows = selectAll<RouteRow>(
     db,
-    `SELECT route_id, route_short_name, route_long_name, ${desc},
-            route_color, route_text_color, route_type
-     FROM routes
-     ORDER BY CAST(route_short_name AS INTEGER), route_short_name;`,
+    `SELECT r.route_id, r.route_short_name, r.route_long_name, ${desc === 'route_desc' ? 'r.route_desc' : 'NULL AS route_desc'},
+            r.route_color, r.route_text_color, r.route_type,
+            ${netSelect}
+     FROM routes r
+     ${join}
+     GROUP BY r.route_id
+     ORDER BY CAST(r.route_short_name AS INTEGER), r.route_short_name;`,
   );
   return rows.map((r) => rowToRoute(r, withSchedule));
 }
@@ -60,11 +80,16 @@ export function getRoutes(db: Database): Route[] {
 export function getRouteById(db: Database, routeId: string): Route | null {
   const withSchedule = getRoutesWithSchedule(db);
   const desc = routeDescExpr(db);
+  const { join, select: netSelect } = routeNetworksJoinExpr(db);
   const rows = selectAll<RouteRow>(
     db,
-    `SELECT route_id, route_short_name, route_long_name, ${desc},
-            route_color, route_text_color, route_type
-     FROM routes WHERE route_id = ?;`,
+    `SELECT r.route_id, r.route_short_name, r.route_long_name, ${desc === 'route_desc' ? 'r.route_desc' : 'NULL AS route_desc'},
+            r.route_color, r.route_text_color, r.route_type,
+            ${netSelect}
+     FROM routes r
+     ${join}
+     WHERE r.route_id = ?
+     GROUP BY r.route_id;`,
     [routeId],
   );
   return rows.length === 0 ? null : rowToRoute(rows[0], withSchedule);
@@ -77,14 +102,18 @@ export function getRoutesForStop(db: Database, stopId: number): Route[] {
   const withSchedule = getRoutesWithSchedule(db);
   const desc = routeDescExpr(db);
   const descCol = desc === 'route_desc' ? 'r.route_desc' : 'NULL AS route_desc';
+  const { join: netJoin, select: netSelect } = routeNetworksJoinExpr(db);
   const rows = selectAll<RouteRow>(
     db,
     `SELECT DISTINCT r.route_id, r.route_short_name, r.route_long_name, ${descCol},
-            r.route_color, r.route_text_color, r.route_type
+            r.route_color, r.route_text_color, r.route_type,
+            ${netSelect}
      FROM stop_times st
      JOIN trips t ON t.trip_id = st.trip_id
      JOIN routes r ON r.route_id = t.route_id
+     ${netJoin}
      WHERE st.stop_id = ?
+     GROUP BY r.route_id
      ORDER BY CAST(r.route_short_name AS INTEGER), r.route_short_name;`,
     [stopId],
   );

@@ -7,7 +7,7 @@
  */
 
 import type { Feed } from '$lib/data/feeds';
-import type { Route, Station, Vehicle } from '$lib/domain/types';
+import type { Network, Route, Station, Vehicle } from '$lib/domain/types';
 import type { ReconcileStats } from '$lib/domain/reconcile';
 
 export interface StopWithDistance extends Station {
@@ -68,6 +68,10 @@ export interface GtfsRepo {
 
   /** All routes, sorted by short_name (numeric where possible). */
   getRoutes(): Promise<Route[]>;
+
+  /** All networks present in the feed (`networks.txt`).
+   *  Empty array for feeds that pre-date networks.txt support. */
+  getNetworks(): Promise<Network[]>;
 
   /**
    * Stops within `radiusMeters` of (lat, lon). Bounding-box prefiltered in

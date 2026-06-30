@@ -27,15 +27,15 @@
 <script lang="ts">
   import { goto } from '$app/navigation';
   import { page } from '$app/state';
-  import { ArrowRightLeft, ChevronDown, Map as MapIcon, Moon } from 'lucide-svelte';
+  import { ArrowRightLeft, ChevronDown, Map as MapIcon } from 'lucide-svelte';
   import {
     BackButton, Card, CardContent, Chip, IconButton, NoFeedState, RouteBadge, Spinner,
-    Stack, ToggleGroup, TripStopList, Typography,
+    Stack, ToggleGroup, TripStopList, Typography, networkIcon, networkTextColor,
   } from '$lib/ui';
   import { getGtfsRepo } from '$lib/data/gtfs/repo';
   import { useOtherDirectionExists } from '$lib/data/gtfs/otherDirectionExists.svelte';
   import { parseRouteIdWithDirection } from '$lib/data/gtfs/parseRouteIdWithDirection';
-  import type { Route } from '$lib/domain/types';
+  import type { Network, Route } from '$lib/domain/types';
   import {
     formatHHMM, formatRelativeMin, isNightRoute, vehicleTypeLabel,
   } from '$lib/domain/types';
@@ -75,6 +75,15 @@
 
   // ── Data state ──────────────────────────────────────────────────────
   let route = $state<Route | null>(null);
+  let networkMap = $state<Map<string, Network>>(new Map());
+
+  $effect(() => {
+    const fid = feedsStore.boundFeedId;
+    if (!fid) return;
+    void getGtfsRepo().getNetworks().then((nets) => {
+      networkMap = new Map(nets.map((n) => [n.id, n]));
+    });
+  });
   // Departures for the day the user is currently viewing. Empty array
   // means "no data fetched yet" OR "no service today" — both render
   // the same empty-state row.
@@ -431,6 +440,7 @@
     () => routeId,
     () => direction,
   );
+
 </script>
 
 
@@ -533,12 +543,14 @@
             <Stack spacing={0.5} class="flex-1 min-w-0">
               <Stack direction="row" spacing={1} align="center" wrap>
                 <Typography variant="h5" class="truncate">{headerTitle}</Typography>
-                {#if nightRoute}
-                  <Chip size="small" variant="outlined">
-                    {#snippet icon()}<Moon size={12} />{/snippet}
-                    Night
+                {#each (route.networks ?? []) as netId (netId)}
+                  {@const net = networkMap.get(netId)}
+                  {@const Icon = networkIcon(netId)}
+                  <Chip size="small" hex={net?.color} fg={net ? networkTextColor(net.color) : undefined}>
+                    {#snippet icon()}<Icon size={12} />{/snippet}
+                    {net?.name ?? netId}
                   </Chip>
-                {/if}
+                {/each}
               </Stack>
               {#if headerSubtitle}
                 <Typography variant="caption" class="text-[color:var(--color-fg-muted)] truncate">

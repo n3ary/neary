@@ -58,6 +58,19 @@ export interface Route {
    *  render an empty board. UI gates schedule buttons on this flag
    *  to avoid dead links. */
   hasSchedule?: boolean;
+  /** Network IDs from GTFS `route_networks.txt` — e.g. `['night']`,
+   *  `['school']`, `['metroline', 'school']`. Undefined when the feed
+   *  pre-dates `networks.txt` support (older cached blobs). */
+  networks?: string[];
+}
+
+/** A network / service category from GTFS `networks.txt`. */
+export interface Network {
+  id: string;
+  name: string;
+  /** Hex chip color (with leading `#`), derived from the modal route_color
+   *  of routes in this network, collision-resolved so every chip is distinct. */
+  color: string;
 }
 
 /** A station / stop as the UI sees it. */
@@ -338,13 +351,12 @@ export function formatRelativeMin(deltaMin: number): string {
   return m === 0 ? `in ${h}h` : `in ${h}h ${m}m`;
 }
 
-/** Per-feed convention: night routes have a short-name ending in 'N'
- *  (Cluj). The schedule view widens the today-window to 24h for these
- *  so post-midnight trips are reachable; the header surfaces a "Night"
- *  chip. Centralised so other feeds that adopt the same convention get
- *  it for free, and so we can swap to a feed-config-driven rule later
- *  without combing through views. */
+/** True when the route belongs to the structured 'night' network from
+ *  `route_networks.txt`. Falls back to the legacy short-name heuristic
+ *  for feeds that pre-date networks.txt support so the schedule view
+ *  keeps the wider today-window and the Night chip without a re-download. */
 export function isNightRoute(route: Route): boolean {
+  if (route.networks !== undefined) return route.networks.includes('night');
   return /n$/i.test(route.shortName);
 }
 
