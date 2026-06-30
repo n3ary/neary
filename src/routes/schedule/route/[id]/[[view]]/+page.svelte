@@ -27,7 +27,7 @@
 <script lang="ts">
   import { goto } from '$app/navigation';
   import { page } from '$app/state';
-  import { ArrowRightLeft, ChevronDown, Map as MapIcon, Moon } from 'lucide-svelte';
+  import { ArrowRightLeft, ChevronDown, GraduationCap, Map as MapIcon, MapPin, Moon, Music, Plane, Star, Zap } from 'lucide-svelte';
   import {
     BackButton, Card, CardContent, Chip, IconButton, NoFeedState, RouteBadge, Spinner,
     Stack, ToggleGroup, TripStopList, Typography,
@@ -431,6 +431,22 @@
     () => routeId,
     () => direction,
   );
+
+  type IconComponent = typeof Moon;
+  const NETWORK_ICONS: Record<string, IconComponent> = {
+    night: Moon,
+    school: GraduationCap,
+    metroline: MapPin,
+    festival: Music,
+    airport: Plane,
+    special: Zap,
+  };
+  const NETWORK_LABELS: Record<string, string> = {
+    night: 'Night', school: 'School', metroline: 'Metroline',
+    festival: 'Festival', airport: 'Airport', special: 'Special',
+  };
+  function networkIcon(id: string): IconComponent { return NETWORK_ICONS[id] ?? Star; }
+  function networkLabel(id: string): string { return NETWORK_LABELS[id] ?? id; }
 </script>
 
 
@@ -533,12 +549,13 @@
             <Stack spacing={0.5} class="flex-1 min-w-0">
               <Stack direction="row" spacing={1} align="center" wrap>
                 <Typography variant="h5" class="truncate">{headerTitle}</Typography>
-                {#if nightRoute}
+                {#each (route.networks ?? []) as netId (netId)}
+                  {@const Icon = networkIcon(netId)}
                   <Chip size="small" variant="outlined">
-                    {#snippet icon()}<Moon size={12} />{/snippet}
-                    Night
+                    {#snippet icon()}<Icon size={12} />{/snippet}
+                    {networkLabel(netId)}
                   </Chip>
-                {/if}
+                {/each}
               </Stack>
               {#if headerSubtitle}
                 <Typography variant="caption" class="text-[color:var(--color-fg-muted)] truncate">

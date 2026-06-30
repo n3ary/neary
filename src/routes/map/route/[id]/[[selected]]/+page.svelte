@@ -24,7 +24,7 @@
   import { onDestroy, onMount } from 'svelte';
   import { goto } from '$app/navigation';
   import { page } from '$app/state';
-  import { ArrowRightLeft, Bus, Calendar, Maximize2, Minus, Moon, Plus } from 'lucide-svelte';
+  import { ArrowRightLeft, Bus, Calendar, GraduationCap, MapPin, Maximize2, Minus, Moon, Music, Plane, Plus, Star, Zap } from 'lucide-svelte';
   import {
     BackButton, Card, CardContent, Chip, IconButton, NoFeedState, RouteBadge, Spinner,
     Stack, Typography,
@@ -34,7 +34,7 @@
   import { parseRouteIdWithDirection } from '$lib/data/gtfs/parseRouteIdWithDirection';
   import type { RouteMapView } from '$lib/data/gtfs/types';
   import {
-    formatHHMM, formatRelativeMin, isNightRoute, pickContrastingText, vehicleTypeLabel,
+    formatHHMM, formatRelativeMin, pickContrastingText, vehicleTypeLabel,
     type Route,
     type Vehicle,
   } from '$lib/domain/types';
@@ -130,7 +130,6 @@
   });
 
   const route = $derived(view?.route ?? null);
-  const nightRoute = $derived(route ? isNightRoute(route) : false);
 
   // Routes per stop — fetched once when the view payload arrives so
   // the stop popup can show route badges without a per-click async call.
@@ -1011,6 +1010,22 @@
       .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
       .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
   }
+
+  type IconComponent = typeof Moon;
+  const NETWORK_ICONS: Record<string, IconComponent> = {
+    night: Moon,
+    school: GraduationCap,
+    metroline: MapPin,
+    festival: Music,
+    airport: Plane,
+    special: Zap,
+  };
+  const NETWORK_LABELS: Record<string, string> = {
+    night: 'Night', school: 'School', metroline: 'Metroline',
+    festival: 'Festival', airport: 'Airport', special: 'Special',
+  };
+  function networkIcon(id: string): IconComponent { return NETWORK_ICONS[id] ?? Star; }
+  function networkLabel(id: string): string { return NETWORK_LABELS[id] ?? id; }
 </script>
 
 <!-- Map control button factory + per-control icon snippets. Defined
@@ -1069,12 +1084,13 @@
             <Stack spacing={0.5} class="flex-1 min-w-0">
               <Stack direction="row" spacing={1} align="center" wrap>
                 <Typography variant="h5" class="truncate">{headerTitle}</Typography>
-                {#if nightRoute}
+                {#each (route?.networks ?? []) as netId (netId)}
+                  {@const Icon = networkIcon(netId)}
                   <Chip size="small" variant="outlined">
-                    {#snippet icon()}<Moon size={12} />{/snippet}
-                    Night
+                    {#snippet icon()}<Icon size={12} />{/snippet}
+                    {networkLabel(netId)}
                   </Chip>
-                {/if}
+                {/each}
               </Stack>
               {#if headerSubtitle}
                 <Typography variant="caption" class="text-[color:var(--color-fg-muted)] truncate">
