@@ -14,6 +14,7 @@
   } from '$lib/ui';
   import { getGtfsRepo } from '$lib/data/gtfs/repo';
   import type { StopWithDistance } from '$lib/data/gtfs/types';
+  import { syncTripShapeCache } from '$lib/data/gtfs/tripShapeCache';
   import { getUpcomingStops } from '$lib/data/gtfs/upcomingStops';
   import { assembleLiveBoard, routesFromVehicles } from '$lib/domain/stationBoard';
   import { DEFAULT_CONFIG } from '$lib/domain/config';
@@ -66,15 +67,17 @@
           board = result;
           error = null;
           routeFilter = null; // reset on every refresh
-          // Fetch shapes + origin-route membership in parallel.
-          const tripIds = tripIdsFromVehicles(result.vehicles);
-          const [fetchedShapes, fetchedStopDistances, originIds] = await Promise.all([
-            tripIds.length > 0 ? repo.getShapesForTrips(tripIds) : Promise.resolve({}),
-            tripIds.length > 0 ? repo.getStopDistancesForTrips(tripIds) : Promise.resolve({}),
+          // Shapes + stop_distances: diff fetch via shared helper
+          // so steady-state polls don't re-marshal the full payload
+          // across the worker IPC (~3 s/tick on Cluj before this,
+          // Chrome trace 2026-06-30). originRouteIds is independent.
+          const visibleTrips = tripIdsFromVehicles(result.vehicles);
+          const [next, originIds] = await Promise.all([
+            syncTripShapeCache(repo, visibleTrips, { shapes, stopDistances: stopDistancesByTrip }),
             repo.getOriginRoutesAtStop(sid),
           ]);
-          shapes = fetchedShapes;
-          stopDistancesByTrip = fetchedStopDistances;
+          shapes = next.shapes;
+          stopDistancesByTrip = next.stopDistances;
           originRouteIds = new Set(originIds);
         }
       } catch (e) {
@@ -85,35 +88,33 @@
 
   // Top up `shapes` with any live-observation trip_ids that aren't
   // already covered. Reconciler emits kind:'gps-only' orphans for live
-  // Fetch shapes for orphan kind:'gps-only' rows the worker emitted whose
-  // route appears on this station's board, so applyGpsEta can project
-  // them onto the right polyline.
+  // observations on (route, direction) pairs the schedule scanner
+  // returned; fetch shapes for those whose route appears on this
+  // station's board so applyGpsEta can project them onto the right
+  // polyline.
   $effect(() => {
     if (!board) return;
     const visibleRouteIds = new Set<string>();
     for (const v of board.vehicles) visibleRouteIds.add(v.route.id);
-    const missing = Array.from(
-      new Set(
-        reconciledVehiclesStore.vehicles
-          .filter((v) =>
-            v.kind === 'gps-only' &&
-            v.tripId != null &&
-            visibleRouteIds.has(v.route.id) &&
-            !(v.tripId in shapes),
-          )
-          .map((v) => v.tripId as string),
-      ),
-    );
-    if (missing.length === 0) return;
+    const orphanTripIds = new Set<string>();
+    for (const v of reconciledVehiclesStore.vehicles) {
+      if (v.kind !== 'gps-only') continue;
+      if (v.tripId == null) continue;
+      if (!visibleRouteIds.has(v.route.id)) continue;
+      if (v.tripId in shapes) continue;
+      orphanTripIds.add(v.tripId);
+    }
+    if (orphanTripIds.size === 0) return;
+    // Pass the union of (already-cached scheduled trips) + (new
+    // orphan trips) as "visible" so the helper's prune step leaves
+    // the scheduled cache intact while adding the orphans.
+    const visibleUnion: string[] = [...Object.keys(shapes), ...orphanTripIds];
     (async () => {
       try {
         const repo = getGtfsRepo();
-        const [extraShapes, extraStopDistances] = await Promise.all([
-          repo.getShapesForTrips(missing),
-          repo.getStopDistancesForTrips(missing),
-        ]);
-        shapes = { ...shapes, ...extraShapes };
-        stopDistancesByTrip = { ...stopDistancesByTrip, ...extraStopDistances };
+        const next = await syncTripShapeCache(repo, visibleUnion, { shapes, stopDistances: stopDistancesByTrip });
+        shapes = next.shapes;
+        stopDistancesByTrip = next.stopDistances;
       } catch {
         // Soft-fail: orphan ETAs fall back to the sibling shape via
         // assembleLiveBoard's shapesByRouteDir, or stay as "Live".
