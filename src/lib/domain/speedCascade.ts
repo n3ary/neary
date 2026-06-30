@@ -75,17 +75,17 @@ export interface FeedSpeedConfig {
   city_centre?: { lat: number; lon: number };
 }
 
-/** Cluj-tuned defaults — used when a feed has no `timing` block of its
- *  own. Mirrors `neary-gtfs/feeds/cluj-napoca/config.json`'s `build.timing`.
- *  Non-Cluj feeds get sensible-ish numbers until per-feed config flows
- *  through `feeds.json` (future option-A plumb-through). */
+/** Generic fallback used when a feed's blob has no `_neary_config` table
+ *  or no `timing` key. Values approximate a typical European urban bus
+ *  network — not tuned to any specific city. Feed-specific values always
+ *  win and are written by the neary-gtfs pipeline into `_neary_config`. */
 export const DEFAULT_FEED_SPEED_CONFIG: FeedSpeedConfig = {
-  kmh_peak: 14,
-  kmh_offpeak: 22,
-  kmh_night: 28,
-  kmh_min_city_centre: 15,
-  kmh_max_outskirts: 45,
-  centre_radius_km: 20,
+  kmh_peak: 15,
+  kmh_offpeak: 25,
+  kmh_night: 30,
+  kmh_min_city_centre: 12,
+  kmh_max_outskirts: 40,
+  centre_radius_km: 5,
 };
 
 export interface NearbyVehicle {

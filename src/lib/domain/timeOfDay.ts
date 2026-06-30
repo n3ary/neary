@@ -17,15 +17,17 @@ export interface TodProfile {
   night_window: { from: string; to: string };
 }
 
-/** Cluj-tuned default profile. Used when a feed has no `timing.peakWindows`
- *  / `timing.nightWindow` of its own. Mirrors
- *  `neary-gtfs/feeds/cluj-napoca/config.json` `build.timing`. */
+/** Generic fallback profile used when a feed's blob has no `_neary_config`
+ *  table or no `timing` key. Values are a rough approximation of a typical
+ *  European urban network — good enough to avoid catastrophic speed estimates
+ *  but not tuned to any specific city. Feed-specific values always win and
+ *  are written by the neary-gtfs pipeline into `_neary_config`. */
 export const DEFAULT_TOD_PROFILE: TodProfile = {
   peak_windows: [
-    { from: '07:00', to: '09:30' },
-    { from: '16:00', to: '19:00' },
+    { from: '07:30', to: '09:00' },
+    { from: '16:30', to: '18:30' },
   ],
-  night_window: { from: '22:30', to: '05:30' },
+  night_window: { from: '23:00', to: '05:00' },
 };
 
 /** Resolve which bucket `localMin` (0..1439, minutes since local

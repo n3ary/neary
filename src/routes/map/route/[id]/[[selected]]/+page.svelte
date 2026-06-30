@@ -46,9 +46,9 @@
   } from '$lib/domain/predictPosition';
   import { predictArrivalFromGps } from '$lib/domain/predictArrivalAlongShape';
   import { measurePolyline, projectOnPolyline } from '$lib/domain/shapeProjection';
-  import { DEFAULT_FEED_SPEED_CONFIG } from '$lib/domain/speedCascade';
-  import { clockToBucket, DEFAULT_TOD_PROFILE } from '$lib/domain/timeOfDay';
+  import { clockToBucket } from '$lib/domain/timeOfDay';
   import { feedsStore } from '$lib/stores/feedsStore.svelte';
+  import { feedConfigStore } from '$lib/stores/feedConfigStore.svelte';
   import { reconciledVehiclesStore } from '$lib/stores/reconciledVehiclesStore.svelte';
   import { locationStore } from '$lib/stores/locationStore.svelte';
   import { nowTicker } from '$lib/stores/nowTicker.svelte';
@@ -268,7 +268,7 @@
     })();
     const arrivingTodBucket = clockToBucket(
       minSinceMidnightInTz(nowMs, tz),
-      DEFAULT_TOD_PROFILE,
+      feedConfigStore.todProfile,
     );
     const measuredShape = curView.shape.length >= 2 ? measurePolyline(curView.shape) : null;
     const stopDistCache = new Map<string, number[]>();
@@ -323,14 +323,14 @@
         stopPos: fromTarget,
         nowMs,
         todBucket: arrivingTodBucket,
-        feedConfig: DEFAULT_FEED_SPEED_CONFIG,
+        feedConfig: feedConfigStore.speedConfig,
         vehicleDirectionId: opts.directionId === -1 ? undefined : opts.directionId,
         dwellStopDistAlongM: opts.dwellStopDistAlongM ?? undefined,
-        dwellSecondsPerStop: 20,
+        dwellSecondsPerStop: feedConfigStore.dwellSec,
         ctx: {
-          feedConfig: DEFAULT_FEED_SPEED_CONFIG,
+          feedConfig: feedConfigStore.speedConfig,
           timezone: tz,
-          todProfile: DEFAULT_TOD_PROFILE,
+          todProfile: feedConfigStore.todProfile,
         },
       });
       return arrival.minutes > 0 ? Math.round(arrival.minutes) : null;

@@ -230,6 +230,9 @@ export interface AssembleLiveVehiclesInputs {
   stopDistancesByTrip?: Record<string, number[]>;
   nowMs: number;
   timezone: string;
+  /** Seconds added per intermediate stop in the dwell walk. From the
+   *  feed's _neary_config timing.dwell_sec; defaults to 20. */
+  dwellSec?: number;
 }
 
 /** Merge + GPS-ETA — the heavy half of the live pipeline. Runs inside
@@ -253,6 +256,7 @@ export function assembleLiveVehicles(input: AssembleLiveVehiclesInputs): Vehicle
     nowMs: input.nowMs,
     timezone: input.timezone,
     stopDistancesByTrip: input.stopDistancesByTrip ?? {},
+    dwellSec: input.dwellSec,
   });
 }
 
@@ -479,6 +483,9 @@ export interface ApplyGpsEtaContext {
   /** Optional trip_id -> ordered stop distances. Enables per-segment
    *  dwell-aware walk in predictArrivalAlongShape. */
   stopDistancesByTrip?: Record<string, number[]>;
+  /** Seconds added per intermediate stop in the dwell walk. Feed-
+   *  specific value from _neary_config; defaults to 20. */
+  dwellSec?: number;
 }
 
 /** Replace the schedule-based ETA on rows with a live position
@@ -557,7 +564,7 @@ export function applyGpsEta(
       feedConfig,
       vehicleDirectionId: v.directionId,
       dwellStopDistAlongM: v.tripId ? stopDistancesByTrip[v.tripId] : undefined,
-      dwellSecondsPerStop: 20,
+      dwellSecondsPerStop: ctx.dwellSec ?? 20,
       ctx: { feedConfig, timezone: ctx.timezone, todProfile },
     });
     // Also overwrite `position` with the dead-reckoned coords so the

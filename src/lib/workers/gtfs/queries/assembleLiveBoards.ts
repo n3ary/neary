@@ -45,6 +45,7 @@ export function assembleLiveBoards(
   snapshot: ReconciledSnapshot | null,
   boards: readonly AssembleLiveBoardsInput[],
   nowMs: number,
+  dwellSec?: number,
 ): AssembleLiveBoardsResult[] {
   const reconciled = snapshot?.vehicles ?? [];
 
@@ -81,6 +82,7 @@ export function assembleLiveBoards(
       stopDistancesByTrip,
       nowMs,
       timezone,
+      dwellSec,
     }),
   }));
 }

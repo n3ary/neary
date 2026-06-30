@@ -105,7 +105,7 @@ async function pushOne(sub: StationSub, snap: ReconciledSnapshot | null): Promis
         vehicles: board.vehicles,
       });
     }
-    const assembled = assembleLiveBoards(db, tz, snap, scheduled, nowMs);
+    const assembled = assembleLiveBoards(db, tz, snap, scheduled, nowMs, state.currentDwellSec);
     void sub.cb(assembled);
   } catch (e) {
     console.warn('[gtfs.worker] station push failed', e);

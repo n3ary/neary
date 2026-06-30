@@ -8,6 +8,7 @@
 
 import type { Feed } from '$lib/data/feeds';
 import type { Network, Route, Station, Vehicle } from '$lib/domain/types';
+import type { NearyFeedConfig } from '$lib/workers/gtfs/queries/feedConfig';
 import type { ReconcileStats } from '$lib/domain/reconcile';
 
 export interface StopWithDistance extends Station {
@@ -72,6 +73,10 @@ export interface GtfsRepo {
   /** All networks present in the feed (`networks.txt`).
    *  Empty array for feeds that pre-date networks.txt support. */
   getNetworks(): Promise<Network[]>;
+
+  /** Per-feed config written by the neary-gtfs pipeline into `_neary_config`.
+   *  Returns an empty object for blobs that pre-date this table. */
+  getFeedConfig(): Promise<NearyFeedConfig>;
 
   /**
    * Stops within `radiusMeters` of (lat, lon). Bounding-box prefiltered in

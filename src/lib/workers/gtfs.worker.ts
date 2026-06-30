@@ -39,6 +39,7 @@ import { getRouteSchedule } from './gtfs/queries/routeSchedule';
 import { getStopsAlongTrip } from './gtfs/queries/routeStops';
 import { getRouteById, getRoutes, getRoutesForStop } from './gtfs/queries/routes';
 import { getNetworks } from './gtfs/queries/networks';
+import { getFeedConfig } from './gtfs/queries/feedConfig';
 import { getStationBoard, getStationBoardsNear } from './gtfs/queries/stationBoards';
 import { getDeparturesFromStop, getOriginRoutesAtStop, getStopsNear } from './gtfs/queries/stops';
 import { getWeeklySchedule } from './gtfs/queries/weeklySchedule';
@@ -79,6 +80,9 @@ const api: GtfsRepo = {
     } finally {
       state.bootstrapping = null;
     }
+    // Cache feed-level dwell_sec so assembleLiveBoards doesn't have to
+    // re-query _neary_config on every tick.
+    state.currentDwellSec = getFeedConfig(state.currentDb).timing?.dwell_sec ?? 20;
     // DB is open — start the live pipeline. One immediate poll + a
     // 15 s interval. Subscribers (if any are registered from a prior
     // feed) start receiving the new feed's vehicles on the very next
@@ -94,6 +98,9 @@ const api: GtfsRepo = {
   },
   async getNetworks() {
     return getNetworks(await ensureDb());
+  },
+  async getFeedConfig() {
+    return getFeedConfig(await ensureDb());
   },
   async getRouteById(routeId) {
     return getRouteById(await ensureDb(), routeId);

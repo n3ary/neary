@@ -19,6 +19,9 @@ class WorkerState {
    *  Required for every minute-since-midnight conversion the queries do. */
   currentFeedTz: string | null = null;
   currentDb: Database | null = null;
+  /** Dwell seconds per stop from the feed's _neary_config timing block.
+   *  Used by assembleLiveBoards to thread feed-specific dwell into ETA. */
+  currentDwellSec: number = 20;
   /** Promise of the in-flight bootstrap when setFeed is mid-fetch.
    *  Used by ensureDb so the very first call can await the bind. */
   bootstrapping: Promise<Database> | null = null;

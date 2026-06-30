@@ -42,8 +42,8 @@ describe('predictArrivalAlongShape', () => {
   it('falls through to time-of-day when the bus is stopped (speed <= 5 km/h)', () => {
     const out = predictArrivalAlongShape(inputs({ vehicleSpeedMs: 1 })); // 3.6 km/h
     expect(out.source).toBe('tod');
-    // 3 km at offpeak (22 km/h) → ~8.18 min
-    expect(out.minutes).toBeCloseTo(180 / 22, 1);
+    // 3 km at the offpeak default → minutes = 180 / kmh_offpeak
+    expect(out.minutes).toBeCloseTo(180 / DEFAULT_FEED_SPEED_CONFIG.kmh_offpeak, 1);
     expect(out.confidence).toBe('medium');
   });
 
@@ -58,8 +58,8 @@ describe('predictArrivalAlongShape', () => {
       todBucket: 'peak',
     }));
     expect(out.source).toBe('tod');
-    // 3 km / 14 km/h × 60 ≈ 12.86 min
-    expect(out.minutes).toBeCloseTo(180 / 14, 1);
+    // 3 km at the peak default → minutes = 180 / kmh_peak
+    expect(out.minutes).toBeCloseTo(180 / DEFAULT_FEED_SPEED_CONFIG.kmh_peak, 1);
   });
 
   it('returns a negative minute count when the vehicle is past the stop', () => {
