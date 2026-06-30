@@ -24,7 +24,7 @@
   import { onDestroy, onMount } from 'svelte';
   import { goto } from '$app/navigation';
   import { page } from '$app/state';
-  import { ArrowRightLeft, Bus, Maximize2, Minus, Moon, Plus } from 'lucide-svelte';
+  import { ArrowRightLeft, Bus, Calendar, Maximize2, Minus, Moon, Plus } from 'lucide-svelte';
   import {
     BackButton, Card, CardContent, Chip, IconButton, NoFeedState, RouteBadge, Spinner,
     Stack, Typography,
@@ -1029,6 +1029,7 @@
 {#snippet minusIcon()}<Minus size={16} />{/snippet}
 {#snippet fitIcon()}<Maximize2 size={16} />{/snippet}
 {#snippet busIcon()}<Bus size={16} />{/snippet}
+{#snippet calendarIcon()}<Calendar size={16} />{/snippet}
 
 <div class="mx-auto max-w-5xl px-4 py-3">
   {#if userPrefs.feedId == null}
@@ -1114,6 +1115,19 @@
           {@render mapControl('Fit route to view', fitIcon, fitToRoute)}
           {@render mapControl('Focus on tracked vehicle', busIcon, focusOnVehicle, !focusOnVehicleEnabled)}
         </div>
+        <!-- Schedule shortcut in the bottom-right corner. Mirrors the
+             top-right zoom/fit cluster's styling so it reads as the
+             same control family, but lives in the opposite corner to
+             avoid clobbering the cluster while keeping a single
+             thumb-reachable destination. Same (route, direction) the
+             page already binds against — no parameter recomputation. -->
+        <div class="neary-map-controls-bottom">
+          {@render mapControl(
+            'Open schedule for this route',
+            calendarIcon,
+            () => goto(`/schedule/route/${routeId}_${direction}`),
+          )}
+        </div>
       </Card>
     </Stack>
   {/if}
@@ -1143,6 +1157,17 @@
   .neary-map-controls {
     position: absolute;
     top: 0.5rem;
+    right: 0.5rem;
+    z-index: 1000;
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+  }
+  /* Bottom-right cluster — same chrome as the top-right cluster,
+     opposite corner so the two don't crowd each other. */
+  .neary-map-controls-bottom {
+    position: absolute;
+    bottom: 0.5rem;
     right: 0.5rem;
     z-index: 1000;
     display: flex;
