@@ -13,7 +13,7 @@
   union; this component reads it.
 -->
 <script lang="ts">
-  import { ArrowRight, Calendar, ChevronDown, Map as MapIcon } from 'lucide-svelte';
+  import { ArrowRight, Calendar, Map as MapIcon } from 'lucide-svelte';
   import type { Vehicle } from '$lib/domain/types';
   import { formatHHMM, formatRelativeMin } from '$lib/domain/types';
   import type { Urgency } from '$lib/domain/buckets';
@@ -63,18 +63,10 @@
     scheduled:   { label: 'Scheduled', dotBg: 'bg-[color:var(--color-fg-muted)]' },
   }[vehicle.kind]);
 
-  // Suppress the kind dot for `scheduled` rows whose `tripPhase` is
-  // `later` — at the origin stop those are the future-but-not-next
-  // rows where the grey dot adds no information (the rider already
-  // knows the row is on the schedule). The `next` / `last` /
-  // `on-route` origin rows keep the dot because the data-source
-  // distinction (parked-but-on-schedule vs running-without-GPS) is
-  // useful there. tripPhase is only set on `isFirstStop` rows, so
-  // this rule is implicitly origin-only — intermediate-stop
-  // scheduled rows keep their dot.
-  const showKindDot = $derived(
-    !(vehicle.kind === 'scheduled' && vehicle.schedule?.tripPhase === 'later'),
-  );
+  // Only render the dot for GPS-backed rows (green). `scheduled`
+  // rows would draw a grey dot, but absence of green already conveys
+  // 'no realtime' — the extra grey mark just adds visual noise.
+  const showKindDot = $derived(vehicle.kind !== 'scheduled');
 
   // ETA / scheduled-time secondary line.
   //
@@ -155,15 +147,16 @@
 >
   <!-- Fixed-width badge so a row of vehicles in different routes
        (3-char '32B', 1-char '9', 4-char '102L') reads as a single
-       column. When the row has a `mapHref` (actionable trip), the
-       badge becomes an extra tap target for the map — same destination
-       as the dedicated map icon to the right, just a larger easier-to-
-       hit surface for the most common action. NB: deliberately no
-       `e.stopPropagation` on the anchor — SvelteKit's client router
-       intercepts link clicks during bubble at the document level, so
-       stopping propagation forces a full page reload. The card's
-       `handleCardClick` already bails for clicks coming from any
-       inner anchor, so the row's onclick won't fire either. -->
+       column. When the row has a `scheduleHref` (actionable trip),
+       the badge becomes an extra tap target into the route's
+       schedule view — larger thumb surface for the most common
+       drill-down, complementing the small schedule icon to the
+       right. NB: deliberately no `e.stopPropagation` on the anchor
+       — SvelteKit's client router intercepts link clicks during
+       bubble at the document level, so stopping propagation forces
+       a full page reload. The card's `handleCardClick` already
+       bails for clicks coming from any inner anchor, so the row's
+       onclick won't fire either. -->
   {#snippet routeBadge()}
     <RouteBadge
       route={vehicle.route}
@@ -171,10 +164,10 @@
       class="min-w-14"
     />
   {/snippet}
-  {#if mapHref}
+  {#if scheduleHref}
     <a
-      href={mapHref}
-      aria-label={`Open ${vehicle.route.shortName} on the map`}
+      href={scheduleHref}
+      aria-label={`Open ${vehicle.route.shortName} schedule`}
       class="shrink-0 rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--color-primary)]"
     >
       {@render routeBadge()}
@@ -281,11 +274,13 @@
       affordance later (debug toggles, anomaly indicators, …) just
       plugs another fixed slot in. Order left → right:
 
-         schedule (24px) · map (24px) · expand-stops (24px)
+         schedule (24px) · map (24px)
 
       Drop-off-only is signalled by the section header ("Drop off only")
       so a per-row icon was duplicate. State dot moved inline beside
-      the headsign above so we only carry the 3 action buttons here.
+      the headsign above. Expand/collapse for the upcoming-stops list
+      is driven by tapping the card text — the explicit chevron was
+      removed because the text-block hit target already covers it.
     -->
     <div class="flex items-center gap-1 shrink-0">
 
@@ -314,26 +309,6 @@
       >
         <MapIcon size={16} strokeWidth={2.25} />
       </a>
-    {/if}
-  </span>
-
-  <!-- Expand-stops slot. Chevron rotates 180° when expanded. -->
-  <span class="shrink-0 w-6 flex items-center justify-center">
-    {#if onStopsExpand}
-      <button
-        type="button"
-        title={stopsExpanded ? 'Hide upcoming stops' : 'Show upcoming stops'}
-        aria-label={stopsExpanded ? 'Hide upcoming stops' : 'Show upcoming stops'}
-        aria-expanded={stopsExpanded}
-        onclick={(e) => { e.stopPropagation(); onStopsExpand!(); }}
-        class={cn(
-          iconButtonClass,
-          'transition-transform',
-          stopsExpanded && 'rotate-180',
-        )}
-      >
-        <ChevronDown size={16} strokeWidth={2.25} />
-      </button>
     {/if}
   </span>
     </div>
