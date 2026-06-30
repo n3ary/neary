@@ -88,6 +88,16 @@ export function scanSchedule(inputs: ScheduleScannerInputs): Vehicle[] {
     const departureMin = timeToMinutes(r.departure_time);
     const tripEndMin = timeToMinutes(r.trip_end_time);
 
+    // Skip rows whose timing data isn't parseable. This happens for
+    // upstream trips that exist in trips.txt but ship without per-
+    // stop arrival/departure times — Cluj's Tranzy-fallback trips
+    // (trip_id `..._NT001`, `..._NT002`, ...) are the canonical
+    // example. Without a real time we can't compute an ETA, and the
+    // downstream pipeline would emit `NaN min` into the UI. Drop
+    // them here — by definition there's no scheduled departure to
+    // surface on a station board.
+    if (!Number.isFinite(arrivalMin)) continue;
+
     // Inclusion rule:
     //   * future arrivals up to `windowMinutes` ahead, OR
     //   * past arrivals whose trip hasn't yet reached its terminus (so the

@@ -327,3 +327,32 @@ export function formatRelativeMin(deltaMin: number): string {
 export function isNightRoute(route: Route): boolean {
   return /n$/i.test(route.shortName);
 }
+
+/** Natural-sort comparator for route short-names. Splits each name into
+ *  alternating digit and non-digit runs and compares run-by-run:
+ *  numeric runs compare as numbers, non-numeric runs compare lexically.
+ *  Gives intuitive ordering for transit short-names that mix digits and
+ *  suffixes — `1, 7, 14, 24B, 25, 25N, 29, 29S, 42, 52, 52B, 52L, TE1, TE7`.
+ *
+ *  Previously this was a two-branch comparator (numeric when both
+ *  names parsed as numbers, lexical otherwise) which produced a
+ *  non-transitive ordering when one name was purely numeric and
+ *  another wasn't (e.g. compare(14, 24B), compare(24B, 7), and
+ *  compare(14, 7) disagreed), so JS sort returned arbitrary output. */
+export function compareRouteShortName(a: string, b: string): number {
+  const re = /(\d+|\D+)/g;
+  const ap = a.match(re) ?? [a];
+  const bp = b.match(re) ?? [b];
+  const n = Math.min(ap.length, bp.length);
+  for (let i = 0; i < n; i++) {
+    const an = Number(ap[i]);
+    const bn = Number(bp[i]);
+    if (Number.isFinite(an) && Number.isFinite(bn)) {
+      if (an !== bn) return an - bn;
+    } else {
+      const c = ap[i].localeCompare(bp[i]);
+      if (c !== 0) return c;
+    }
+  }
+  return ap.length - bp.length;
+}

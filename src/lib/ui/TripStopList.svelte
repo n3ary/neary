@@ -29,27 +29,34 @@
 
 <Stack spacing={0.5} class={className}>
   {#each stops as s, i (s.stopId)}
-    <Stack
-      direction="row"
-      spacing={1}
-      align="center"
-      class="px-2 py-1 rounded-md hover:bg-[color:var(--color-border)]/30"
+    <!-- Whole row navigates to the station view. The trailing
+         ExternalLink icon is kept (inside the anchor) so the
+         tap-to-open affordance is visually obvious. -->
+    <a
+      href={`/station/${s.stopId}`}
+      aria-label={`Open station ${s.stopName}`}
+      class="block no-underline text-current focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--color-primary)] rounded-md"
     >
-      <Chip size="small" class="font-mono shrink-0">{i + 1}</Chip>
-      <span class="flex-1 min-w-0 text-xs truncate">{s.stopName}</span>
-      <span class="flex items-center gap-0.5 text-[color:var(--color-fg-muted)] font-mono text-xs shrink-0">
-        {#if showDepartureMarker && i === 0}
-          <ArrowUpRight size={12} class="text-[color:var(--color-danger)]" aria-label="Departure" />
-        {/if}
-        {formatHHMM(s.arrivalMin)}
-      </span>
-      <a
-        href={`/station/${s.stopId}`}
-        aria-label={`Open station ${s.stopName}`}
-        class="shrink-0 text-[color:var(--color-fg-muted)] hover:text-[color:var(--color-fg)]"
+      <Stack
+        direction="row"
+        spacing={1}
+        align="center"
+        class="px-2 py-1 rounded-md hover:bg-[color:var(--color-border)]/30"
       >
-        <ExternalLink size={16} />
-      </a>
-    </Stack>
+        <Chip size="small" class="font-mono shrink-0">{i + 1}</Chip>
+        <span class="flex-1 min-w-0 text-xs truncate">{s.stopName}</span>
+        <span class="flex items-center gap-0.5 text-[color:var(--color-fg-muted)] font-mono text-xs shrink-0">
+          {#if showDepartureMarker && i === 0}
+            <ArrowUpRight size={12} class="text-[color:var(--color-danger)]" aria-label="Departure" />
+          {/if}
+          {formatHHMM(s.arrivalMin)}
+        </span>
+        <ExternalLink
+          size={16}
+          class="shrink-0 text-[color:var(--color-fg-muted)]"
+          aria-hidden="true"
+        />
+      </Stack>
+    </a>
   {/each}
 </Stack>

@@ -17,6 +17,7 @@
     MapPin, type Icon as LucideIcon,
   } from 'lucide-svelte';
   import type { Route, Station, Vehicle } from '$lib/domain/types';
+  import { compareRouteShortName } from '$lib/domain/types';
   import {
     BUCKET_ORDER, bucketLabel, etaUrgency, type ArrivalBucket,
   } from '$lib/domain/buckets';
@@ -132,17 +133,11 @@
       for (const r of rows) map.set(r.vehicle.route.id, r.vehicle.route);
     }
     const favs = favoriteRouteIds;
-    const byShortName = (a: Route, b: Route): number => {
-      const an = Number(a.shortName);
-      const bn = Number(b.shortName);
-      if (Number.isFinite(an) && Number.isFinite(bn) && an !== bn) return an - bn;
-      return a.shortName.localeCompare(b.shortName);
-    };
     return Array.from(map.values()).sort((a, b) => {
       const aFav = favs?.has(a.id) ?? false;
       const bFav = favs?.has(b.id) ?? false;
       if (aFav !== bFav) return aFav ? -1 : 1;
-      return byShortName(a, b);
+      return compareRouteShortName(a.shortName, b.shortName);
     });
   });
 

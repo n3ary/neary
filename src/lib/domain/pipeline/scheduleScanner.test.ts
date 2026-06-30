@@ -166,6 +166,24 @@ describe('scanSchedule', () => {
     expect(out[0].schedule?.isFirstStop).toBe(false);
   });
 
+  it('drops rows whose arrival_time is empty / unparseable (Tranzy-fallback _NT trips)', () => {
+    // The Cluj adapter emits Tranzy-fallback trips with ids ending in
+    // `_NT<idx>` when CSV is missing — these arrive in trips.txt but
+    // without per-stop arrival/departure times, which would otherwise
+    // produce "NaN min" ETAs in the station view. Drop them at the
+    // scanner so they never reach the UI.
+    const out = scanSchedule({
+      rows: [
+        row({ trip_id: '38_0_LV_NT001', arrival_time: '', departure_time: '' }),
+        row({ trip_id: '38_0_LV_NT002', arrival_time: 'invalid', departure_time: 'invalid' }),
+      ],
+      nowMinSinceMidnight: now,
+      nowMs,
+      windowMinutes: 60,
+    });
+    expect(out).toHaveLength(0);
+  });
+
 });
 
 describe('scanSchedule tripPhase', () => {
