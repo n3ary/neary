@@ -51,3 +51,19 @@ export function distanceToFeedBboxKm(
   const lon = Math.min(Math.max(position.lon, feed.bbox.minLon), feed.bbox.maxLon);
   return approxKm(position, { lat, lon });
 }
+
+/** Find the feed whose bbox is closest to `position`. Distance is 0
+ *  when the position is inside the bbox. Returns null when no feeds
+ *  are available. Stable for ties (returns the first match in input
+ *  order). */
+export function findNearestFeed<F extends Pick<Feed, 'bbox' | 'center'>>(
+  position: { lat: number; lon: number },
+  feeds: readonly F[],
+): { feed: F; distanceKm: number } | null {
+  let best: { feed: F; distanceKm: number } | null = null;
+  for (const f of feeds) {
+    const km = distanceToFeedBboxKm(position, f);
+    if (best == null || km < best.distanceKm) best = { feed: f, distanceKm: km };
+  }
+  return best;
+}

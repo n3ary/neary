@@ -37,6 +37,7 @@ export { default as TripStopList } from './TripStopList.svelte';
 export { default as VehicleCard } from './VehicleCard.svelte';
 export { default as StationCard } from './StationCard.svelte';
 export { default as NoFeedState } from './NoFeedState.svelte';
+export { default as InfoCard } from './InfoCard.svelte';
 export { default as TypeBadge } from './TypeBadge.svelte';
 
 // Pure helpers (no DOM, no stores).
