@@ -29,6 +29,15 @@ export interface Route {
    *  'B12'. This is what users actually read; never use it as an
    *  identifier. */
   shortName: string;
+  /** Full route name (GTFS route_long_name): "Cluj Napoca — Floresti".
+   *  Optional because the GTFS spec allows it to be empty when
+   *  route_short_name is set. */
+  longName?: string;
+  /** Optional route description (GTFS route_desc): a one-liner about
+   *  what the route does ("express to airport", "weekend service").
+   *  Undefined when the feed doesn't ship it or the column isn't
+   *  present in the SQLite blob (older feeds). */
+  description?: string;
   /** Hex color, including the leading "#". The text color is computed. */
   color: string;
   /** Optional explicit foreground; if omitted we compute a contrast color. */
