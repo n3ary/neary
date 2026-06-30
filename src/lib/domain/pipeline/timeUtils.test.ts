@@ -46,6 +46,18 @@ describe('minSinceMidnightInTz', () => {
     // Bucharest is +3 from UTC in summer 2026.
     expect(buch - utc).toBe(3 * 60);
   });
+
+  it('treats two timestamps in the same second as the same key (sub-second nowMs differences hit the cache)', () => {
+    // Callers that compute Date.now() independently in the same
+    // batch shouldn't bust the cache. The result resolution is
+    // per-minute, so rounding nowMs to the second never changes
+    // the output but multiplies cache hit rate.
+    const a = minSinceMidnightInTz(utcMs, 'UTC');
+    const b = minSinceMidnightInTz(utcMs + 500, 'UTC');
+    const c = minSinceMidnightInTz(utcMs + 999, 'UTC');
+    expect(a).toBe(b);
+    expect(b).toBe(c);
+  });
 });
 
 describe('dateKeyInTz', () => {

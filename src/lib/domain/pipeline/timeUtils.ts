@@ -34,42 +34,45 @@ export function localMinSinceMidnight(d: Date): number {
  * clock is. Built on Intl.DateTimeFormat so it works in workers.
  */
 export function dateKeyInTz(nowMs: number, timeZone: string): string {
-  if (dateKeyCache && dateKeyCache.ms === nowMs && dateKeyCache.tz === timeZone) {
+  const sec = Math.floor(nowMs / 1000);
+  if (dateKeyCache && dateKeyCache.sec === sec && dateKeyCache.tz === timeZone) {
     return dateKeyCache.value;
   }
-  const parts = dateKeyFormatter(timeZone).formatToParts(nowMs);
+  const parts = dateKeyFormatter(timeZone).formatToParts(sec * 1000);
   const y = parts.find((p) => p.type === 'year')?.value ?? '';
   const m = parts.find((p) => p.type === 'month')?.value ?? '';
   const d = parts.find((p) => p.type === 'day')?.value ?? '';
   const value = `${y}${m}${d}`;
-  dateKeyCache = { ms: nowMs, tz: timeZone, value };
+  dateKeyCache = { sec, tz: timeZone, value };
   return value;
 }
 
 /** Minutes since midnight in the given IANA timezone for a Unix ms timestamp. */
 export function minSinceMidnightInTz(nowMs: number, timeZone: string): number {
-  if (minSinceMidnightCache && minSinceMidnightCache.ms === nowMs && minSinceMidnightCache.tz === timeZone) {
+  const sec = Math.floor(nowMs / 1000);
+  if (minSinceMidnightCache && minSinceMidnightCache.sec === sec && minSinceMidnightCache.tz === timeZone) {
     return minSinceMidnightCache.value;
   }
-  const parts = minSinceMidnightFormatter(timeZone).formatToParts(nowMs);
+  const parts = minSinceMidnightFormatter(timeZone).formatToParts(sec * 1000);
   const h = Number(parts.find((p) => p.type === 'hour')?.value ?? 0);
   const m = Number(parts.find((p) => p.type === 'minute')?.value ?? 0);
   const value = h * 60 + m;
-  minSinceMidnightCache = { ms: nowMs, tz: timeZone, value };
+  minSinceMidnightCache = { sec, tz: timeZone, value };
   return value;
 }
 
 /** Day-of-week in the given IANA timezone for a Unix ms timestamp.
  *  Returns 0..6 with 0 = Sunday — same convention as `Date.getDay()`. */
 export function dayOfWeekInTz(nowMs: number, timeZone: string): number {
-  if (dayOfWeekCache && dayOfWeekCache.ms === nowMs && dayOfWeekCache.tz === timeZone) {
+  const sec = Math.floor(nowMs / 1000);
+  if (dayOfWeekCache && dayOfWeekCache.sec === sec && dayOfWeekCache.tz === timeZone) {
     return dayOfWeekCache.value;
   }
-  const wd = dayOfWeekFormatter(timeZone).format(nowMs);
+  const wd = dayOfWeekFormatter(timeZone).format(sec * 1000);
   // Intl returns 'Sun' | 'Mon' | … in the en-US locale.
   const idx = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].indexOf(wd);
   const value = idx >= 0 ? idx : 0;
-  dayOfWeekCache = { ms: nowMs, tz: timeZone, value };
+  dayOfWeekCache = { sec, tz: timeZone, value };
   return value;
 }
 
@@ -83,9 +86,11 @@ export function dayOfWeekInTz(nowMs: number, timeZone: string): number {
 //
 // Two layers:
 //   1. Formatter cache keyed by timeZone — one Intl instance per (function, tz).
-//   2. Single-entry result cache keyed by (nowMs, timeZone) — the hot caller
-//      passes the same nowMs for every iteration in a batch, so the very
-//      next call after a hit returns instantly without touching Intl.
+//   2. Single-entry result cache keyed by (Math.floor(nowMs/1000), timeZone).
+//      All three outputs (date key, minute-since-midnight, day-of-week) are
+//      coarser than 1 s, so rounding nowMs to the second never changes the
+//      result but lets unrelated callers that computed `Date.now()` a few
+//      milliseconds apart still hit the cache.
 
 const dateKeyFormatters = new Map<string, Intl.DateTimeFormat>();
 function dateKeyFormatter(tz: string): Intl.DateTimeFormat {
@@ -127,9 +132,9 @@ function dayOfWeekFormatter(tz: string): Intl.DateTimeFormat {
   return f;
 }
 
-let dateKeyCache: { ms: number; tz: string; value: string } | null = null;
-let minSinceMidnightCache: { ms: number; tz: string; value: number } | null = null;
-let dayOfWeekCache: { ms: number; tz: string; value: number } | null = null;
+let dateKeyCache: { sec: number; tz: string; value: string } | null = null;
+let minSinceMidnightCache: { sec: number; tz: string; value: number } | null = null;
+let dayOfWeekCache: { sec: number; tz: string; value: number } | null = null;
 
 /** A day-window query against the GTFS schedule: which calendar day,
  *  what cutoff (minutes since local midnight), how far ahead to look. */
