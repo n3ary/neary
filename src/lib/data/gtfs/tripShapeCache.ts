@@ -60,6 +60,20 @@ export async function syncTripShapeCache(
   for (const id of visible) {
     if (!(id in prev.shapes)) missing.push(id);
   }
+  // Steady-state fast path: nothing missing AND nothing to prune.
+  // Return `prev` unchanged so the caller's `state = next.shapes`
+  // assignment is a no-op for Svelte 5 reactivity (same reference),
+  // which breaks the feedback loop where every call would re-fire
+  // any $effect that reads the shapes map. Chrome trace 2026-06-30
+  // saw 184 IPC round-trips in 5.8 s and a visible per-second
+  // bucket flicker before this guard was added.
+  if (missing.length === 0) {
+    let needsPrune = false;
+    for (const id in prev.shapes) {
+      if (!visible.has(id)) { needsPrune = true; break; }
+    }
+    if (!needsPrune) return prev;
+  }
   let mergedShapes = prev.shapes;
   let mergedDist = prev.stopDistances;
   if (missing.length > 0) {

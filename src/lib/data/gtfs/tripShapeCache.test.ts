@@ -51,6 +51,19 @@ describe('syncTripShapeCache', () => {
     expect(next.stopDistances).toEqual(prev.stopDistances);
   });
 
+  it('returns the SAME reference when nothing changed (no fetch + no prune)', async () => {
+    // Critical for downstream reactivity: a fresh object reference on
+    // every call would re-fire any $effect that reads the result,
+    // creating a feedback loop with the orphan-top-up effect. The
+    // helper must return prev verbatim on a true steady-state hit.
+    const { repo } = fakeRepo();
+    const prev = { shapes: { A: P(1), B: P(2) }, stopDistances: { A: [1], B: [2] } };
+    const next = await syncTripShapeCache(repo, ['A', 'B'], prev);
+    expect(next).toBe(prev);
+    expect(next.shapes).toBe(prev.shapes);
+    expect(next.stopDistances).toBe(prev.stopDistances);
+  });
+
   it('prunes trips that are no longer visible (bounded cache growth)', async () => {
     const { repo } = fakeRepo();
     const prev = {
