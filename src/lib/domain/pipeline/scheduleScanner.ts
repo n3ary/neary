@@ -104,7 +104,7 @@ export function scanSchedule(inputs: ScheduleScannerInputs): Vehicle[] {
       // (e.g. '102L') to NaN.
       id: String(r.route_id),
       shortName: r.route_short_name,
-      color: r.route_color ? `#${r.route_color}` : '#666666',
+      color: r.route_color ? `#${r.route_color}` : '#F3513C',
       textColor: r.route_text_color ? `#${r.route_text_color}` : undefined,
     };
     const type: VehicleType = vehicleTypeFromGtfs(r.route_type);

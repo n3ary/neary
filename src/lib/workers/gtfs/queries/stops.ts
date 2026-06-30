@@ -113,7 +113,7 @@ export function getDeparturesFromStop(
       tripId: r.trip_id,
       routeId: r.route_id,
       routeShortName: r.route_short_name,
-      routeColor: r.route_color ? `#${r.route_color}` : '#666666',
+      routeColor: r.route_color ? `#${r.route_color}` : '#F3513C',
       headsign: r.trip_headsign,
       departureTime: r.departure_time,
     }));

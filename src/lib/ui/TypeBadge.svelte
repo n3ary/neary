@@ -2,26 +2,30 @@
   TypeBadge — small badge representing a vehicle type
   (bus / tram / trolleybus / …). Shape matches RouteBadge so it
   reads as a peer to route badges in the same UI surface (rounded
-  square, similar padding + font). Color defaults to the canonical
-  VEHICLE_TYPE_COLOR palette (intentionally distinct per mode for
-  filter-classifier legibility); callers may override via `color`
-  when a feed happens to paint a type consistently with the
-  canonical palette, but most consumers should pass nothing.
+  square, similar padding + font).
+
+  Color is data-driven: callers pass a `color` (typically taken from
+  a route of that type in the loaded catalog). No palette and no
+  color logic in this component — whatever the feed shipped is what
+  the chip shows. When the catalog hasn't loaded yet and no color is
+  available, the chip renders against a theme-neutral surface.
 
   Used by the /favorites view as a single-select mode filter. Active
   = solid filled (badge "on"), inactive = outlined (badge "off").
 -->
 <script lang="ts">
   import type { VehicleType } from '$lib/domain/types';
-  import { VEHICLE_TYPE_COLOR, pickContrastingText, vehicleTypeLabel } from '$lib/domain/types';
+  import { pickContrastingText, vehicleTypeLabel } from '$lib/domain/types';
   import { cn } from './cn';
 
   type Size = 'small' | 'medium' | 'large';
 
   type Props = {
     type: VehicleType;
-    /** Override the accent. Pass `route.color` from a sample route
-     *  of this type so the chip matches what RouteBadge paints. */
+    /** Per-type accent color, taken from a route of this type in the
+     *  loaded catalog. When undefined (catalog not loaded yet, or no
+     *  route of this type), the chip renders against the theme's
+     *  elevated surface. */
     color?: string;
     active?: boolean;
     onclick?: () => void;
@@ -39,8 +43,8 @@
     large: 'h-8 px-2.5 text-base',
   };
 
-  const accent = $derived(color ?? VEHICLE_TYPE_COLOR[type]);
-  const fg = $derived(pickContrastingText(accent));
+  const bg = $derived(color ?? 'var(--color-surface-elevated)');
+  const fg = $derived(color ? pickContrastingText(color) : 'var(--color-fg)');
   const label = $derived(vehicleTypeLabel(type));
 </script>
 
@@ -53,7 +57,7 @@
   aria-pressed={active}
   title={label}
   onclick={onclick}
-  style={`background:${accent};color:${fg};${!active ? 'opacity:0.6;' : ''}`}
+  style={`background:${bg};color:${fg};${!active ? 'opacity:0.6;' : ''}`}
   class={cn(
     'inline-flex items-center justify-center font-semibold rounded-md select-none whitespace-nowrap cursor-pointer',
     'transition-all',

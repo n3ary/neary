@@ -208,23 +208,6 @@ export function vehicleTypeLabel(t: VehicleType): string {
   }
 }
 
-/** Stable per-type accent color used by filter bubbles + any future
- *  per-type chart / map glyph. Picked to read against the app's
- *  surface in both themes without needing per-theme overrides. */
-export const VEHICLE_TYPE_COLOR: Record<VehicleType, string> = {
-  tram: '#e07b00',        // orange
-  metro: '#1565c0',       // blue
-  rail: '#c62828',        // deep red
-  bus: '#2e7d32',         // green
-  ferry: '#00838f',       // teal
-  cablecar: '#6a1b9a',    // purple
-  gondola: '#6a1b9a',     // purple (shared family with cablecar)
-  funicular: '#6a1b9a',   // purple (shared family)
-  trolleybus: '#8e24aa',  // magenta
-  monorail: '#3949ab',    // indigo
-  unknown: '#666666',     // neutral
-};
-
 interface VehicleBase {
   id: string;
   route: Route;

@@ -13,7 +13,6 @@
     Switch, Tabs, TextField, ToggleGroup, Tooltip, Typography, TypeBadge, VehicleCard,
   } from '$lib/ui';
   import type { Route, Station, Vehicle, VehicleType } from '$lib/domain/types';
-  import { VEHICLE_TYPE_COLOR } from '$lib/domain/types';
   import type { BoardRow } from '$lib/domain/stationBoard';
   import { statusBus } from '$lib/stores/statusBus.svelte';
   import { userPrefs, type Theme } from '$lib/stores/userPrefs.svelte';
@@ -34,6 +33,23 @@
   const route35: Route = { id: '35',  shortName: '35', color: '#43a047' };
   const route9: Route  = { id: '9',   shortName: '9',  color: '#fdd835' };
   const routeM: Route  = { id: '100', shortName: 'M5', color: '#e53935' };
+
+  // Sample catalog used by the TypeBadge demo below. Mirrors the
+  // real /favorites page: each chip's color is taken straight from a
+  // route of that type in the catalog. The data layer is responsible
+  // for whatever color it ships (including its own neutral fallback);
+  // this page does no color logic.
+  const showcaseModeRoutes: Route[] = [
+    { id: 's-bus-1',    shortName: '24', color: '#1e88e5', type: 'bus' },
+    { id: 's-tram-1',   shortName: '101', color: '#43a047', type: 'tram' },
+    { id: 's-trolly-1', shortName: '8',  color: '#fdd835', type: 'trolleybus' },
+    { id: 's-metro-1',  shortName: 'M5', color: '#e53935', type: 'metro' },
+  ];
+  const showcaseModeColors = new Map<VehicleType, string>();
+  for (const r of showcaseModeRoutes) {
+    const t = r.type ?? 'unknown';
+    if (!showcaseModeColors.has(t)) showcaseModeColors.set(t, r.color);
+  }
 
   const demoStation: Station = {
     id: 4012, name: 'Piața Mihai Viteazul',
@@ -384,7 +400,7 @@
         {#each (['bus', 'tram', 'trolleybus', 'metro'] as VehicleType[]) as t (t)}
           <TypeBadge
             type={t}
-            color={VEHICLE_TYPE_COLOR[t]}
+            color={showcaseModeColors.get(t)}
             active={activeTypeFilter === t}
             onclick={() => { activeTypeFilter = activeTypeFilter === t ? null : t; }}
           />

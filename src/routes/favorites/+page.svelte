@@ -55,15 +55,21 @@
     );
   });
 
-  // Filter chips use the canonical VEHICLE_TYPE_COLOR palette (set
-  // inside TypeBadge). A previous version derived the chip color from
-  // the first route of each type, on the theory that the chip should
-  // match the RouteBadges below it. That breaks when a feed paints
-  // many routes across modes the same color — e.g. Tranzy's CTP feed
-  // uses #f3513c as the first color for trolleybus, tram, AND bus, so
-  // all three chips rendered as the same red-orange. The canonical
-  // palette is intentionally distinct per mode and is the right tool
-  // for a mode classifier.
+  // Per-type accent for the mode filter chips: just the color of the
+  // first route of that type, straight from GTFS. No selection logic,
+  // no fallback overrides — whatever the feed shipped is what the
+  // chip shows. The data layer substitutes a single neutral fallback
+  // (#F3513C, the anchor neary-gtfs uses for feeds with no usable
+  // colors) when route_color is missing; that flows through here.
+  const colorByType = $derived.by<Map<VehicleType, string>>(() => {
+    const m = new Map<VehicleType, string>();
+    if (!allRoutes) return m;
+    for (const r of allRoutes) {
+      const t = r.type ?? 'unknown';
+      if (!m.has(t)) m.set(t, r.color);
+    }
+    return m;
+  });
 
   // Apply the type filter once, then split into the two cards. Within
   // each section, sort numeric-first then alpha.
@@ -170,7 +176,7 @@
               </Stack>
               <Stack direction="row" spacing={1} align="center" wrap>
                 {#each presentTypes as t (t)}
-                  <TypeBadge type={t} active={typeFilter === t} onclick={() => toggleType(t)} />
+                  <TypeBadge type={t} color={colorByType.get(t)} active={typeFilter === t} onclick={() => toggleType(t)} />
                 {/each}
                 {#if typeFilter !== null}
                   <button
