@@ -74,8 +74,13 @@ export function createStationBoardsController(opts: {
   // the initial async registration coalesce into a single subscription,
   // and we always apply the latest stop-set after registration completes.
   let subscription: StationBoardsSubscription | null = null;
-  let subscribing: Promise<StationBoardsSubscription> | null = null;
+  let subscribing: Promise<StationBoardsSubscription | null> | null = null;
   let pendingIds: number[] = [];
+  // Set in the teardown $effect so a subscribe that resolves AFTER the
+  // controller is gone doesn't install a worker listener that pushes
+  // into stale $state (which surfaces as Comlink "Unserializable return
+  // value" unhandled rejections on the next worker push).
+  let disposed = false;
 
   const onPush = (payload: StationBoardPush) => {
     const next: Record<number, Vehicle[]> = {};
@@ -91,14 +96,24 @@ export function createStationBoardsController(opts: {
     }
     if (subscribing) return; // in-flight; will pick up pendingIds when it resolves
     subscribing = (async () => {
-      const repo = getGtfsRepo();
-      const sub = await repo.subscribeStationBoards(pendingIds, Comlink.proxy(onPush));
-      subscription = sub;
-      subscribing = null;
-      // pendingIds may have changed during the await — push the latest
-      // set if it diverged from what we registered with.
-      if (pendingIds !== ids) sub.setStopIds(pendingIds);
-      return sub;
+      try {
+        const repo = getGtfsRepo();
+        const sub = await repo.subscribeStationBoards(pendingIds, Comlink.proxy(onPush));
+        if (disposed) {
+          sub.unsubscribe();
+          return null;
+        }
+        subscription = sub;
+        // pendingIds may have changed during the await — push the latest
+        // set if it diverged from what we registered with.
+        if (pendingIds !== ids) sub.setStopIds(pendingIds);
+        return sub;
+      } catch (err) {
+        console.warn('[stationBoardsController] subscribe failed', err);
+        return null;
+      } finally {
+        subscribing = null;
+      }
     })();
   }
 
@@ -120,9 +135,9 @@ export function createStationBoardsController(opts: {
 
   // Tear down the subscription when the consuming component unmounts.
   $effect(() => () => {
+    disposed = true;
     subscription?.unsubscribe();
     subscription = null;
-    subscribing = null;
   });
 
   // ---- Derived render state ---------------------------------------------
