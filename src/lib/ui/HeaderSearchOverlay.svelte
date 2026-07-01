@@ -242,11 +242,11 @@
 <Bits.Root bind:open={() => open, (v) => { if (!v) onclose(); }}>
   <Bits.Portal>
     <Bits.Overlay
-      class="fixed inset-0 z-50 bg-black/50 data-[state=open]:animate-in data-[state=open]:fade-in"
+      class="fixed inset-0 z-[1100] bg-black/75 data-[state=open]:animate-in data-[state=open]:fade-in"
     />
     <Bits.Content
       class={cn(
-        'fixed z-50 outline-none',
+        'fixed z-[1100] outline-none',
         'left-1/2 -translate-x-1/2 top-[10svh] w-[min(calc(100vw-2rem),36rem)]',
         'flex flex-col gap-2',
         'data-[state=open]:animate-in data-[state=open]:fade-in data-[state=open]:zoom-in-95',
