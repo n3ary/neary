@@ -266,7 +266,7 @@
             inputmode="search"
             placeholder="Search stations or routes…"
             aria-label="Search stations and routes"
-            class="flex-1 min-w-0 bg-transparent text-sm outline-none placeholder:text-[color:var(--color-fg-muted)]"
+            class="flex-1 min-w-0 bg-transparent text-base sm:text-sm outline-none placeholder:text-[color:var(--color-fg-muted)]"
           />
           <button
             type="button"
