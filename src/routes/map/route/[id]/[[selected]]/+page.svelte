@@ -779,24 +779,25 @@
               // Play triangle scaled a bit larger than a normal stop
               // circle so it reads as an intentional call-out.
               // Rotated to the polyline's initial bearing so the tip
-              // points the way trips start moving. White stroke +
-              // drop-shadow keeps the glyph legible on both light and
-              // dark tiles.
+              // points the way trips start moving. White fill +
+              // route-colour outline matches the start-vehicle arrow
+              // so both direction cues share one visual language.
               icon: Lref.divIcon({
                 className: 'neary-stop-play',
                 html: `<div style="
                     transform: rotate(${originBearing.toFixed(1)}deg);
                     transform-origin: 50% 50%;
-                    width: 24px; height: 24px;
+                    width: 28px; height: 28px;
                     display: flex; align-items: center; justify-content: center;
-                  "><svg width="24" height="24" viewBox="0 0 20 20" aria-hidden="true">
+                  "><svg width="28" height="28" viewBox="0 0 20 20" aria-hidden="true">
                     <path d="M10 2 L17 17 L3 17 Z"
-                      fill="${currentView.route.color}"
-                      stroke="#fff" stroke-width="1.75" stroke-linejoin="round"
+                      fill="#ffffff"
+                      stroke="${currentView.route.color}"
+                      stroke-width="2" stroke-linejoin="round"
                       style="filter: drop-shadow(0 1px 2px rgba(0,0,0,0.4));" />
                   </svg></div>`,
-                iconSize: [24, 24],
-                iconAnchor: [12, 12],
+                iconSize: [28, 28],
+                iconAnchor: [14, 14],
               }),
             })
           : Lref.circleMarker([s.lat, s.lon], {
@@ -917,7 +918,7 @@
         if (best && bestDistM < START_VEHICLE_RADIUS_M) {
           const measured = view.shape.length >= 2 ? measurePolyline(view.shape) : null;
           const brg = measured ? bearingAtDistance(measured, 0) : 0;
-          const SIZE = 20;
+          const SIZE = 32;
           const html = `<div style="
               transform: rotate(${brg.toFixed(1)}deg);
               transform-origin: 50% 50%;
@@ -926,18 +927,19 @@
               pointer-events: none;
             "><svg width="${SIZE}" height="${SIZE}" viewBox="0 0 20 20" aria-hidden="true">
               <path d="M10 2 L16 14 L10 11 L4 14 Z"
-                fill="${routeColor}"
-                stroke="#fff" stroke-width="1.5" stroke-linejoin="round"
+                fill="#ffffff"
+                stroke="${routeColor}"
+                stroke-width="2" stroke-linejoin="round"
                 style="filter: drop-shadow(0 1px 2px rgba(0,0,0,0.4));" />
             </svg></div>`;
           const icon = Lref.divIcon({
             className: 'neary-start-vehicle-arrow',
             html,
             iconSize: [SIZE, SIZE],
-            // Anchor 30 px BELOW the SVG's centre so the arrow appears
-            // ~16 px above the vehicle badge's top edge (badge is
-            // 28 px tall, centred on the latlng).
-            iconAnchor: [SIZE / 2, SIZE / 2 + 30],
+            // Anchor placed BELOW the icon so the glyph sits just
+            // above the 28 px-tall vehicle badge: icon bottom edge
+            // lands ~2 px above the badge top.
+            iconAnchor: [SIZE / 2, SIZE + 16],
           });
           Lref.marker([best.lat, best.lon], {
             icon,
