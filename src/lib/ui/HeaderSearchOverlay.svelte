@@ -139,12 +139,12 @@
       try {
         const repo = getGtfsRepo();
         if (needle) {
-          // Typed mode. Match route short_name OR long_name.
+          // Typed mode. Match route short_name only -- long_name is
+          // usually the origin/terminus pair ('Cluj-Napoca Gara -
+          // Piata Mihai Viteazul') and matches too broadly, drowning
+          // the exact-number match a rider actually wanted.
           const matchingRoutes = scheduledRoutes
-            .filter((r) =>
-              normalizeForSearch(r.shortName).includes(needle) ||
-              (r.longName != null && normalizeForSearch(r.longName).includes(needle))
-            )
+            .filter((r) => normalizeForSearch(r.shortName).includes(needle))
             .sort((x, y) => compareRouteShortName(x.shortName, y.shortName))
             .slice(0, 12);
           const stops = a
