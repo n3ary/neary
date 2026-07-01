@@ -6,13 +6,15 @@
 <script lang="ts">
   import { onMount } from 'svelte';
   import {
-    Avatar, Box, Button, Card, CardContent, Chip,
+    Avatar, BackButton, Box, Button, Card, CardContent, Chip,
     Collapsible, Dialog, DialogContent, DialogTitle,
-    IconButton, List, ListItem, ListItemText,
-    ProgressBar, RouteBadge, Spinner, Stack, StationCard,
-    Switch, Tabs, TextField, ToggleGroup, Tooltip, Typography, TypeBadge, VehicleCard,
+    IconButton, InfoCard, List, ListItem, ListItemText, NoFeedState,
+    ProgressBar, RouteBadge, Spinner, Stack, StationCard, StatusDot,
+    StopSearchCard, Switch, Tabs, TextField, ToggleGroup, Tooltip, TripStopList,
+    Typography, TypeBadge, VehicleCard,
   } from '$lib/ui';
   import type { Route, Station, Vehicle, VehicleType } from '$lib/domain/types';
+  import type { ScheduleTripStop, StopWithDistance } from '$lib/data/gtfs/types';
   import type { BoardRow } from '$lib/domain/stationBoard';
   import { statusBus } from '$lib/stores/statusBus.svelte';
   import { userPrefs, type Theme } from '$lib/stores/userPrefs.svelte';
@@ -93,6 +95,40 @@
   const demoAllRoutes = Array.from(
     new Map(demoVehicles.map((v) => [v.route.id, v.route])).values(),
   );
+
+  // TripStopList demo — a short arm of a fabricated route with times
+  // roughly 2 min apart. Matches the shape returned by the worker's
+  // getStopsAlongTrip.
+  const demoTripStops: ScheduleTripStop[] = [
+    { stopId: '4012', stopName: 'Piața Mihai Viteazul', lat: 46.7712, lon: 23.6236,
+      arrivalTime: '08:15:00', arrivalMin: 8 * 60 + 15, stopSequence: 1 },
+    { stopId: '4020', stopName: 'Regina Maria', lat: 46.7695, lon: 23.6212,
+      arrivalTime: '08:17:00', arrivalMin: 8 * 60 + 17, stopSequence: 2 },
+    { stopId: '4034', stopName: 'Cipariu', lat: 46.7681, lon: 23.6188,
+      arrivalTime: '08:19:00', arrivalMin: 8 * 60 + 19, stopSequence: 3 },
+    { stopId: '4041', stopName: 'Sigma Center', lat: 46.7670, lon: 23.6154,
+      arrivalTime: '08:22:00', arrivalMin: 8 * 60 + 22, stopSequence: 4 },
+    { stopId: '4055', stopName: 'Gara CFR', lat: 46.7654, lon: 23.6117,
+      arrivalTime: '08:26:00', arrivalMin: 8 * 60 + 26, stopSequence: 5 },
+  ];
+
+  // StopSearchCard demo — a plausible station with several routes so
+  // the fit calculator has something to overflow into a +N chip on
+  // narrow viewports.
+  const demoSearchStop: StopWithDistance = {
+    id: '4012', name: 'Piața Mihai Viteazul',
+    distance: 180, lat: 46.7712, lon: 23.6236,
+  };
+  const demoSearchRoutes: Route[] = [
+    { id: '9',    shortName: '9',    color: '#fdd835', hasSchedule: true },
+    { id: '24',   shortName: '24',   color: '#1e88e5', hasSchedule: true },
+    { id: '35',   shortName: '35',   color: '#43a047', hasSchedule: true },
+    { id: '43B',  shortName: '43B',  color: '#8e24aa', hasSchedule: true },
+    { id: '102L', shortName: '102L', color: '#00838f', hasSchedule: true },
+    { id: 'M26',  shortName: 'M26',  color: '#e53935', hasSchedule: true },
+    { id: '25N',  shortName: '25N',  color: '#3949ab', hasSchedule: true },
+    { id: '5N',   shortName: '5N',   color: '#5e35b1', hasSchedule: true },
+  ];
 
   onMount(() => {
     statusBus.push({
@@ -178,6 +214,7 @@
       <Button startIcon={refreshIcon}>Refresh</Button>
       <IconButton aria-label="Search"><Search size={20} /></IconButton>
       <IconButton color="primary" aria-label="Locate"><Locate size={20} /></IconButton>
+      <BackButton fallback="/" />
     </Stack>
   </section>
 
@@ -215,6 +252,37 @@
       <Avatar variant="square" class="w-10 h-10 sm:w-12 sm:h-12"><Bus size={20} /></Avatar>
       <Spinner size={20} />
       <Spinner size={28} />
+    </Stack>
+  </section>
+
+  <section class="space-y-3">
+    <Typography variant="h4">StatusDot — health indicator</Typography>
+    <Typography variant="caption" class="text-[color:var(--color-fg-muted)]">
+      Used by the global Header to surface GPS / Connection / Schedule / Live health.
+      'off' state is muted with a faint ring — used for GPS when the user hasn't opted in.
+    </Typography>
+    <Stack direction="row" spacing={2} align="center">
+      <Stack spacing={0.5} align="center">
+        <StatusDot state="ok" label="Live" tooltip="Fresh data" pulse />
+        <Typography variant="caption">ok</Typography>
+      </Stack>
+      <Stack spacing={0.5} align="center">
+        <StatusDot state="stale" label="Live" tooltip="Slow updates" />
+        <Typography variant="caption">stale</Typography>
+      </Stack>
+      <Stack spacing={0.5} align="center">
+        <StatusDot state="error" label="Live" tooltip="No data" />
+        <Typography variant="caption">error</Typography>
+      </Stack>
+      <Stack spacing={0.5} align="center">
+        <StatusDot state="idle" label="GPS" tooltip="Waiting for fix" />
+        <Typography variant="caption">idle</Typography>
+      </Stack>
+      <Stack spacing={0.5} align="center">
+        <StatusDot state="off" label="GPS" tooltip="GPS off — tap to enable"
+          onclick={() => demo('info')} />
+        <Typography variant="caption">off (tappable)</Typography>
+      </Stack>
     </Stack>
   </section>
 
@@ -444,6 +512,78 @@
         favoriteRouteIds={favorites}
         originRouteIds={new Set(['24'])}
       />
+    </Stack>
+
+    <Stack spacing={1}>
+      <Typography variant="body2">TripStopList — ordered stops of a single trip</Typography>
+      <Typography variant="caption" class="text-[color:var(--color-fg-muted)]">
+        Same component the station card renders under an expanded vehicle and the schedule
+        view renders under an expanded trip. Each row links to /station/[id].
+      </Typography>
+      <TripStopList stops={demoTripStops} showDepartureMarker />
+    </Stack>
+
+    <Stack spacing={1}>
+      <Typography variant="body2">StopSearchCard — measured-fit route chips</Typography>
+      <Typography variant="caption" class="text-[color:var(--color-fg-muted)]">
+        Chip row uses bind:clientWidth to fit as many badges as the card width allows,
+        then collapses the rest into a +N chip. Resize the browser to see the count change.
+      </Typography>
+      <StopSearchCard
+        stop={demoSearchStop}
+        routes={demoSearchRoutes}
+        hasGps
+        onselect={(id: string) => statusBus.push({ id: 'sc-click', kind: 'info', message: `Would open /station/${id}` })}
+      />
+    </Stack>
+
+    <Stack spacing={1}>
+      <Typography variant="body2">InfoCard — reusable empty / info-state banner</Typography>
+      <Typography variant="caption" class="text-[color:var(--color-fg-muted)]">
+        Used across the Stations view for feed / location / wrong-feed prompts. Icon variant
+        tints only the icon so the card stays neutral.
+      </Typography>
+      <Stack spacing={1}>
+        <InfoCard variant="primary" title="Location needed">
+          {#snippet icon()}<MapPin size={16} />{/snippet}
+          {#snippet body()}
+            Enable location and we'll surface stops near you automatically.
+          {/snippet}
+          {#snippet actions()}
+            <Button variant="contained" size="small" onclick={() => demo('info')}>
+              Enable location
+            </Button>
+            <Button variant="text" size="small" onclick={() => demo('info')}>
+              Search a station
+            </Button>
+          {/snippet}
+        </InfoCard>
+        <InfoCard variant="warning" title="Wrong feed for your location">
+          {#snippet icon()}<MapPin size={16} />{/snippet}
+          {#snippet body()}
+            Your selected feed <strong>Cluj-Napoca</strong> is about 320 km away, so nearby
+            stops won't be available. <strong>Bucuresti-Ilfov</strong> covers your current
+            location — switch with one tap.
+          {/snippet}
+          {#snippet actions()}
+            <Button variant="contained" size="small" onclick={() => demo('info')}>
+              Switch to Bucuresti-Ilfov
+            </Button>
+          {/snippet}
+        </InfoCard>
+        <InfoCard variant="danger" title="Failed to load nearby stations">
+          {#snippet body()}Worker connection lost.{/snippet}
+        </InfoCard>
+      </Stack>
+    </Stack>
+
+    <Stack spacing={1}>
+      <Typography variant="body2">NoFeedState — takeover for feed-less routes</Typography>
+      <Typography variant="caption" class="text-[color:var(--color-fg-muted)]">
+        Rendered by /favorites, /station/[id], /schedule when userPrefs.feedId is null.
+        The Stations view uses an InfoCard instead so it can stack with other banners.
+      </Typography>
+      <NoFeedState message="Neary needs a transit feed to show favorites. Pick one in Settings to get started." />
     </Stack>
   </section>
 </main>
