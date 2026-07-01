@@ -585,7 +585,7 @@
   // touched from effects that already track mapInstance + view.
   let mapInstance = $state<import('leaflet').Map | null>(null);
   let shapeLayer: import('leaflet').Polyline | null = null;
-  let arrowLayer: import('leaflet').Marker | null = null;
+  let directionLayer: import('leaflet').LayerGroup | null = null;
   let stopsLayer: import('leaflet').LayerGroup | null = null;
   let vehiclesLayer: import('leaflet').LayerGroup | null = null;
   let userMarker: import('leaflet').Marker | null = null;
@@ -698,9 +698,9 @@
       shapeLayer.remove();
       shapeLayer = null;
     }
-    if (arrowLayer) {
-      arrowLayer.remove();
-      arrowLayer = null;
+    if (directionLayer) {
+      directionLayer.remove();
+      directionLayer = null;
     }
     if (currentView.shape.length >= 2) {
       const latlngs = currentView.shape.map((p) => [p.lat, p.lon] as [number, number]);
@@ -720,48 +720,155 @@
         });
         hasFitOnce = true;
       }
-      // Direction-of-travel cue: one arrow near the polyline's
-      // cumulative midpoint, rotated to the segment bearing at that
-      // point (bearingAtDistance uses "0 = North, 90 = East"). Works
-      // uniformly for linear and circular routes — even a loop has a
-      // direction of travel, and picking a mid-cumulative-distance
-      // point keeps the glyph away from origin/terminus clutter.
+      // Direction-of-travel cue: a "shadow" copy of the middle
+      // section of the polyline, offset perpendicular to the route so
+      // it sits OUTSIDE the shape, capped with a chevron pointing the
+      // way trips run. Following the actual polyline (not a straight
+      // segment) makes the parallel line read as "same route, same
+      // bends" for L-shaped and curved routes, and forms an obvious
+      // concentric arc for circular ones.
+      //
+      // Which side is "outside" is chosen once from the polyline
+      // centroid: for a loop the centroid is inside, so the outward
+      // vector points away from it; for an L-shape the centroid sits
+      // in the concave region, so outward points to the convex flank;
+      // for a straight route both sides are equivalent (side falls
+      // back to the right of travel).
+      //
       // Non-interactive so it never intercepts stop / vehicle taps.
-      // Placed in markerPane (z=600), which sits above the polyline
-      // in overlayPane (z=400) but below nearyVehicles (z=620), so
-      // the arrow reads over the line without covering vehicles.
+      // The polyline lives in overlayPane (z=400) alongside the main
+      // route line; the chevron marker lives in markerPane (z=600),
+      // above stops (also markerPane, drawn later so above) but below
+      // vehicles in nearyVehicles (z=620).
       const measured = measurePolyline(currentView.shape);
-      if (measured.totalDistM > 0) {
-        const midDist = measured.totalDistM / 2;
+      if (measured.totalDistM > 0 && measured.points.length >= 2) {
+        const { points, cumDistM, totalDistM } = measured;
+        // Middle 30% of the polyline. Enough to trace a couple of
+        // bends on a normal-length urban route; enough to form a
+        // recognisable arc on a circular route.
+        const CHUNK_START = 0.35;
+        const CHUNK_END = 0.65;
+        const startDist = totalDistM * CHUNK_START;
+        const endDist = totalDistM * CHUNK_END;
+        const midDist = (startDist + endDist) / 2;
         const mid = pointAtDistance(measured, midDist);
-        const bearingDeg = bearingAtDistance(measured, midDist);
-        // Rotate SVG so the glyph's default "up" (north) aligns with
-        // the bearing. Route colour on a semi-opaque white halo keeps
-        // the arrow legible on both light and dark map tiles without
-        // dominating the line.
+        // Local equirectangular scale factors — good to a few metres
+        // at the sub-kilometre offsets we use here.
+        const M_PER_DEG_LAT = 111320;
+        const cosMidLat = Math.cos((mid.lat * Math.PI) / 180) || 1;
+        // Polyline centroid (arithmetic mean of vertices). Fine for
+        // "which side is outside" — we only need the sign of the dot
+        // product with the local perpendicular, not a geometric
+        // centre of mass.
+        let cLat = 0;
+        let cLon = 0;
+        for (const p of points) {
+          cLat += p.lat;
+          cLon += p.lon;
+        }
+        cLat /= points.length;
+        cLon /= points.length;
+        // Right-of-travel perpendicular at midpoint, in metres (east,
+        // north). Bearing θ from North (CW): right = θ + 90°
+        // → (east, north) = (cos θ, -sin θ).
+        const midBearingRad =
+          (bearingAtDistance(measured, midDist) * Math.PI) / 180;
+        const rightEast = Math.cos(midBearingRad);
+        const rightNorth = -Math.sin(midBearingRad);
+        // Outward vector from centroid to midpoint, in metres.
+        const outEast = (mid.lon - cLon) * M_PER_DEG_LAT * cosMidLat;
+        const outNorth = (mid.lat - cLat) * M_PER_DEG_LAT;
+        // side = +1 → right of travel; -1 → left. Fallback to right
+        // when centroid ≈ midpoint (straight route, both flanks
+        // equivalent).
+        const side =
+          rightEast * outEast + rightNorth * outNorth >= 0 ? 1 : -1;
+        const OFFSET_M = 70;
+        // Build the middle-chunk vertex list: interpolated point at
+        // startDist, all real shape vertices strictly inside the
+        // range, interpolated point at endDist.
+        type LL = { lat: number; lon: number };
+        const chunk: LL[] = [];
+        chunk.push(pointAtDistance(measured, startDist));
+        for (let i = 0; i < points.length; i++) {
+          const d = cumDistM[i];
+          if (d > startDist && d < endDist) chunk.push(points[i]);
+        }
+        chunk.push(pointAtDistance(measured, endDist));
+        // Bearing from a to b, degrees CW from North. Small-angle
+        // spherical formula — matches bearingAtDistance's convention.
+        const bearingBetween = (a: LL, b: LL): number => {
+          const toRad = Math.PI / 180;
+          const f1 = a.lat * toRad;
+          const f2 = b.lat * toRad;
+          const dl = (b.lon - a.lon) * toRad;
+          const y = Math.sin(dl) * Math.cos(f2);
+          const x =
+            Math.cos(f1) * Math.sin(f2) -
+            Math.sin(f1) * Math.cos(f2) * Math.cos(dl);
+          return ((Math.atan2(y, x) * 180) / Math.PI + 360) % 360;
+        };
+        // Offset each vertex along the perpendicular of its local
+        // tangent. For interior vertices the tangent comes from
+        // prev→next (miter-style averaging so gentle bends stay
+        // smooth); endpoints use bearingAtDistance at the chunk
+        // boundary so they line up cleanly with the underlying
+        // polyline direction there.
+        const offsetChunk: LL[] = chunk.map((p, i) => {
+          let brg: number;
+          if (i === 0) brg = bearingAtDistance(measured, startDist);
+          else if (i === chunk.length - 1) brg = bearingAtDistance(measured, endDist);
+          else brg = bearingBetween(chunk[i - 1], chunk[i + 1]);
+          const brgRad = (brg * Math.PI) / 180;
+          const eastM = side * OFFSET_M * Math.cos(brgRad);
+          const northM = side * -OFFSET_M * Math.sin(brgRad);
+          const cosLatI = Math.cos((p.lat * Math.PI) / 180) || 1;
+          return {
+            lat: p.lat + northM / M_PER_DEG_LAT,
+            lon: p.lon + eastM / (M_PER_DEG_LAT * cosLatI),
+          };
+        });
+        directionLayer = Lref.layerGroup().addTo(mapInstance);
+        // Slightly thinner than the main polyline so the two read as
+        // main line + companion, not two overlapping routes. Same
+        // colour so the connection is obvious.
+        Lref.polyline(
+          offsetChunk.map((p) => [p.lat, p.lon] as [number, number]),
+          {
+            color: currentView.route.color,
+            weight: 3.5,
+            opacity: 0.85,
+            interactive: false,
+          },
+        ).addTo(directionLayer);
+        // Chevron at the offset chunk's tail, rotated to the tangent
+        // at endDist so it points the way the vehicle is travelling.
+        const arrowPos = offsetChunk[offsetChunk.length - 1];
+        const arrowBearing = bearingAtDistance(measured, endDist);
+        const SIZE = 28;
         const html = `<div style="
-          transform: rotate(${bearingDeg.toFixed(1)}deg);
+          transform: rotate(${arrowBearing.toFixed(1)}deg);
           transform-origin: 50% 50%;
-          width: 20px; height: 20px;
+          width: ${SIZE}px; height: ${SIZE}px;
           display: flex; align-items: center; justify-content: center;
           pointer-events: none;
-        "><svg width="20" height="20" viewBox="0 0 20 20" aria-hidden="true">
-          <path d="M10 3 L15 13 L10 11 L5 13 Z"
+        "><svg width="${SIZE}" height="${SIZE}" viewBox="0 0 20 20" aria-hidden="true">
+          <path d="M10 2 L16 14 L10 11 L4 14 Z"
             fill="${currentView.route.color}"
             stroke="#fff" stroke-width="1.5" stroke-linejoin="round"
-            style="filter: drop-shadow(0 0 1px rgba(0,0,0,0.35));" />
+            style="filter: drop-shadow(0 1px 2px rgba(0,0,0,0.4));" />
         </svg></div>`;
         const icon = Lref.divIcon({
           className: 'neary-direction-arrow',
           html,
-          iconSize: [20, 20],
-          iconAnchor: [10, 10],
+          iconSize: [SIZE, SIZE],
+          iconAnchor: [SIZE / 2, SIZE / 2],
         });
-        arrowLayer = Lref.marker([mid.lat, mid.lon], {
+        Lref.marker([arrowPos.lat, arrowPos.lon], {
           icon,
           interactive: false,
           keyboard: false,
-        }).addTo(mapInstance);
+        }).addTo(directionLayer);
       }
     }
     stopsLayer?.clearLayers();
