@@ -24,7 +24,7 @@
   import { onDestroy, onMount } from 'svelte';
   import { goto } from '$app/navigation';
   import { page } from '$app/state';
-  import { ArrowRightLeft, Bus, Calendar, Maximize2, Minus, Plus } from 'lucide-svelte';
+  import { ArrowRightLeft, Bus, Calendar, Heart, Maximize2, Minus, Plus } from 'lucide-svelte';
   import {
     BackButton, Card, CardContent, Chip, IconButton, RouteBadge, SelectFeedCard, Spinner,
     Stack, Typography, networkIcon, networkTextColor,
@@ -45,8 +45,9 @@
     type TripShapePlan,
   } from '$lib/domain/predictPosition';
   import { predictArrivalFromGps } from '$lib/domain/predictArrivalAlongShape';
-  import { measurePolyline, projectOnPolyline } from '$lib/domain/shapeProjection';
+  import { bearingAtDistance, measurePolyline, pointAtDistance, projectOnPolyline } from '$lib/domain/shapeProjection';
   import { clockToBucket } from '$lib/domain/timeOfDay';
+  import { favoritesStore } from '$lib/stores/favoritesStore.svelte';
   import { feedsStore } from '$lib/stores/feedsStore.svelte';
   import { feedConfigStore } from '$lib/stores/feedConfigStore.svelte';
   import { reconciledVehiclesStore } from '$lib/stores/reconciledVehiclesStore.svelte';
@@ -584,6 +585,7 @@
   // touched from effects that already track mapInstance + view.
   let mapInstance = $state<import('leaflet').Map | null>(null);
   let shapeLayer: import('leaflet').Polyline | null = null;
+  let arrowLayer: import('leaflet').Marker | null = null;
   let stopsLayer: import('leaflet').LayerGroup | null = null;
   let vehiclesLayer: import('leaflet').LayerGroup | null = null;
   let userMarker: import('leaflet').Marker | null = null;
@@ -696,6 +698,10 @@
       shapeLayer.remove();
       shapeLayer = null;
     }
+    if (arrowLayer) {
+      arrowLayer.remove();
+      arrowLayer = null;
+    }
     if (currentView.shape.length >= 2) {
       const latlngs = currentView.shape.map((p) => [p.lat, p.lon] as [number, number]);
       shapeLayer = Lref.polyline(latlngs, {
@@ -713,6 +719,49 @@
           maxZoom: 15,
         });
         hasFitOnce = true;
+      }
+      // Direction-of-travel cue: one arrow near the polyline's
+      // cumulative midpoint, rotated to the segment bearing at that
+      // point (bearingAtDistance uses "0 = North, 90 = East"). Works
+      // uniformly for linear and circular routes — even a loop has a
+      // direction of travel, and picking a mid-cumulative-distance
+      // point keeps the glyph away from origin/terminus clutter.
+      // Non-interactive so it never intercepts stop / vehicle taps.
+      // Placed in markerPane (z=600), which sits above the polyline
+      // in overlayPane (z=400) but below nearyVehicles (z=620), so
+      // the arrow reads over the line without covering vehicles.
+      const measured = measurePolyline(currentView.shape);
+      if (measured.totalDistM > 0) {
+        const midDist = measured.totalDistM / 2;
+        const mid = pointAtDistance(measured, midDist);
+        const bearingDeg = bearingAtDistance(measured, midDist);
+        // Rotate SVG so the glyph's default "up" (north) aligns with
+        // the bearing. Route colour on a semi-opaque white halo keeps
+        // the arrow legible on both light and dark map tiles without
+        // dominating the line.
+        const html = `<div style="
+          transform: rotate(${bearingDeg.toFixed(1)}deg);
+          transform-origin: 50% 50%;
+          width: 20px; height: 20px;
+          display: flex; align-items: center; justify-content: center;
+          pointer-events: none;
+        "><svg width="20" height="20" viewBox="0 0 20 20" aria-hidden="true">
+          <path d="M10 3 L15 13 L10 11 L5 13 Z"
+            fill="${currentView.route.color}"
+            stroke="#fff" stroke-width="1.5" stroke-linejoin="round"
+            style="filter: drop-shadow(0 0 1px rgba(0,0,0,0.35));" />
+        </svg></div>`;
+        const icon = Lref.divIcon({
+          className: 'neary-direction-arrow',
+          html,
+          iconSize: [20, 20],
+          iconAnchor: [10, 10],
+        });
+        arrowLayer = Lref.marker([mid.lat, mid.lon], {
+          icon,
+          interactive: false,
+          keyboard: false,
+        }).addTo(mapInstance);
       }
     }
     stopsLayer?.clearLayers();
@@ -1035,6 +1084,13 @@
 {#snippet fitIcon()}<Maximize2 size={16} />{/snippet}
 {#snippet busIcon()}<Bus size={16} />{/snippet}
 {#snippet calendarIcon()}<Calendar size={16} />{/snippet}
+{#snippet heartIcon(filled: boolean)}
+  <Heart
+    size={16}
+    fill={filled ? 'currentColor' : 'none'}
+    class={filled ? 'text-[color:var(--color-danger)]' : ''}
+  />
+{/snippet}
 
 <div class="mx-auto max-w-5xl px-4 py-3">
   {#if userPrefs.feedId == null}
@@ -1122,22 +1178,32 @@
           {@render mapControl('Fit route to view', fitIcon, fitToRoute)}
           {@render mapControl('Focus on tracked vehicle', busIcon, focusOnVehicle, !focusOnVehicleEnabled)}
         </div>
-        <!-- Schedule shortcut in the bottom-right corner. Mirrors the
-             top-right zoom/fit cluster's styling so it reads as the
-             same control family, but lives in the opposite corner to
-             avoid clobbering the cluster while keeping a single
-             thumb-reachable destination. Same (route, direction) the
-             page already binds against — no parameter recomputation.
-             Hidden for routes with no usable schedule (the feed's
-             trips ship empty arrival_times) — /schedule/route would
-             have nothing to show. -->
-        {#if view?.route.hasSchedule !== false}
+        <!-- Bottom-right control cluster. Same chrome as the top-right
+             cluster, opposite corner so the two don't crowd each
+             other. Favorite lives ABOVE the schedule shortcut in the
+             flex-column so both stay thumb-reachable. Favorites work
+             even for routes without a usable schedule, so this cluster
+             renders whenever the view is loaded. -->
+        {#if view}
+          {@const isFavorite = favoritesStore.routeIds.has(routeId)}
           <div class="neary-map-controls-bottom">
-            {@render mapControl(
-              'Open schedule for this route',
-              calendarIcon,
-              () => goto(`/schedule/route/${routeId}_${direction}`),
-            )}
+            <IconButton
+              size="small"
+              aria-label={isFavorite ? 'Remove from favorites' : 'Add to favorites'}
+              title={isFavorite ? 'Remove from favorites' : 'Add to favorites'}
+              aria-pressed={isFavorite}
+              class="bg-[color:var(--color-surface)] text-[color:var(--color-fg)] border border-[color:var(--color-border)] shadow-lg hover:bg-[color:var(--color-border)]/60"
+              onclick={() => favoritesStore.toggle(routeId)}
+            >
+              {@render heartIcon(isFavorite)}
+            </IconButton>
+            {#if view.route.hasSchedule !== false}
+              {@render mapControl(
+                'Open schedule for this route',
+                calendarIcon,
+                () => goto(`/schedule/route/${routeId}_${direction}`),
+              )}
+            {/if}
           </div>
         {/if}
       </Card>
