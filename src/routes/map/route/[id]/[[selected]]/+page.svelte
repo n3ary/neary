@@ -720,13 +720,13 @@
         });
         hasFitOnce = true;
       }
-      // Direction-of-travel cue: a "shadow" copy of the middle
-      // section of the polyline, offset perpendicular to the route so
-      // it sits OUTSIDE the shape, capped with a chevron pointing the
-      // way trips run. Following the actual polyline (not a straight
-      // segment) makes the parallel line read as "same route, same
-      // bends" for L-shaped and curved routes, and forms an obvious
-      // concentric arc for circular ones.
+      // Direction-of-travel cue: a short "shadow" copy of the
+      // polyline centred on the middle stop of the route, offset
+      // perpendicular to the shape so it sits well OUTSIDE the line,
+      // capped with a chevron pointing the way trips run. Following
+      // the actual polyline (not a straight segment) makes the
+      // shadow read as "same route, same bends" for curved / L /
+      // circular routes.
       //
       // Which side is "outside" is chosen once from the polyline
       // centroid: for a loop the centroid is inside, so the outward
@@ -736,20 +736,44 @@
       // back to the right of travel).
       //
       // Non-interactive so it never intercepts stop / vehicle taps.
-      // The polyline lives in overlayPane (z=400) alongside the main
-      // route line; the chevron marker lives in markerPane (z=600),
-      // above stops (also markerPane, drawn later so above) but below
-      // vehicles in nearyVehicles (z=620).
+      // The shadow polyline lives in overlayPane (z=400) alongside
+      // the main route line; the chevron marker lives in markerPane
+      // (z=600), above stops but below vehicles in nearyVehicles
+      // (z=620).
       const measured = measurePolyline(currentView.shape);
-      if (measured.totalDistM > 0 && measured.points.length >= 2) {
+      if (
+        measured.totalDistM > 0 &&
+        measured.points.length >= 2 &&
+        currentView.stops.length >= 3
+      ) {
         const { points, cumDistM, totalDistM } = measured;
-        // Middle 30% of the polyline. Enough to trace a couple of
-        // bends on a normal-length urban route; enough to form a
-        // recognisable arc on a circular route.
-        const CHUNK_START = 0.35;
-        const CHUNK_END = 0.65;
-        const startDist = totalDistM * CHUNK_START;
-        const endDist = totalDistM * CHUNK_END;
+        // Resolve a stop's cumulative distance along the shape.
+        // Prefer the build-time `shape_dist_traveled` value when the
+        // feed carries it; fall back to a live projection otherwise.
+        const stopDistAlong = (s: { lat: number; lon: number; distAlongM?: number }): number => {
+          if (typeof s.distAlongM === 'number' && Number.isFinite(s.distAlongM)) {
+            return Math.max(0, Math.min(totalDistM, s.distAlongM));
+          }
+          return projectOnPolyline({ lat: s.lat, lon: s.lon }, points).distAlongM;
+        };
+        // Shadow spans from the stop before the middle stop to the
+        // stop after it — 2 inter-stop segments, centred on the
+        // route's central station.
+        const midStopIdx = Math.floor(currentView.stops.length / 2);
+        const startStop = currentView.stops[midStopIdx - 1];
+        const endStop = currentView.stops[midStopIdx + 1];
+        let startDist = stopDistAlong(startStop);
+        let endDist = stopDistAlong(endStop);
+        if (endDist < startDist) [startDist, endDist] = [endDist, startDist];
+        // Guard against feeds where the projected stops collapse to
+        // the same point on shape (near-duplicate stops on a loop's
+        // shared segment): fall back to a small window around the
+        // midpoint so we still render a visible cue.
+        if (endDist - startDist < 40) {
+          const midD = (startDist + endDist) / 2;
+          startDist = Math.max(0, midD - 60);
+          endDist = Math.min(totalDistM, midD + 60);
+        }
         const midDist = (startDist + endDist) / 2;
         const mid = pointAtDistance(measured, midDist);
         // Local equirectangular scale factors — good to a few metres
@@ -783,7 +807,10 @@
         // equivalent).
         const side =
           rightEast * outEast + rightNorth * outNorth >= 0 ? 1 : -1;
-        const OFFSET_M = 70;
+        // Bigger offset than the earlier iteration — the shadow must
+        // sit clearly off the route so it reads as an indicator, not
+        // a second route line hugging the first.
+        const OFFSET_M = 130;
         // Build the middle-chunk vertex list: interpolated point at
         // startDist, all real shape vertices strictly inside the
         // range, interpolated point at endDist.
