@@ -45,7 +45,7 @@
     type TripShapePlan,
   } from '$lib/domain/predictPosition';
   import { predictArrivalFromGps } from '$lib/domain/predictArrivalAlongShape';
-  import { bearingAtDistance, measurePolyline, projectOnPolyline } from '$lib/domain/shapeProjection';
+  import { measurePolyline, projectOnPolyline } from '$lib/domain/shapeProjection';
   import { haversineMeters } from '$lib/domain/distance';
   import { clockToBucket } from '$lib/domain/timeOfDay';
   import { favoritesStore } from '$lib/stores/favoritesStore.svelte';
@@ -512,6 +512,29 @@
     return haversineMeters(first.lat, first.lon, last.lat, last.lon) < CIRCULAR_MAX_M;
   });
 
+  // Overall direction of travel: initial bearing on the great-circle
+  // from the route's origin stop to its terminus stop. Prefer this
+  // over `bearingAtDistance(measured, 0)` (initial segment) because
+  // the shape often wiggles for the first few metres out of the
+  // terminal — a segment-0 arrow can point 45° off from the way the
+  // route actually heads, which confuses more than it clarifies.
+  // Meaningful only when the route is not circular (endpoints
+  // collapse); the callers gate on `!isCircular` before rendering.
+  const overallBearing = $derived.by(() => {
+    if (!view || view.stops.length < 2) return 0;
+    const a = view.stops[0];
+    const b = view.stops[view.stops.length - 1];
+    const toRad = Math.PI / 180;
+    const f1 = a.lat * toRad;
+    const f2 = b.lat * toRad;
+    const dl = (b.lon - a.lon) * toRad;
+    const y = Math.sin(dl) * Math.cos(f2);
+    const x =
+      Math.cos(f1) * Math.sin(f2) -
+      Math.sin(f1) * Math.cos(f2) * Math.cos(dl);
+    return ((Math.atan2(y, x) * 180) / Math.PI + 360) % 360;
+  });
+
   // ── Title / subtitle ───────────────────────────────────────────────
   // Mirrors the schedule view: title is the origin station name
   // (i.e. 'departures from here'), subtitle is the headsign —
@@ -777,20 +800,14 @@
       // regular circle so the two cues don't stack.
       const fromStop = fromStopId;
       const routeOriginId = currentView.stops[0]?.stopId ?? null;
-      const measuredForBearing = currentView.shape.length >= 2
-        ? measurePolyline(currentView.shape)
-        : null;
-      const originBearing = measuredForBearing
-        ? bearingAtDistance(measuredForBearing, 0)
-        : 0;
-      const originPlayFg = pickContrastingText(currentView.route.color);
+      const hasShape = currentView.shape.length >= 2;
       currentView.stops.forEach((s) => {
         // Both sides are strings (GTFS stop_id is a free-form text id
         // per spec, kept as string end-to-end). Direct === compare.
         const isFromStop = fromStop != null && s.stopId === fromStop;
         const isRouteOrigin = routeOriginId != null && s.stopId === routeOriginId;
         const showPlayIcon =
-          isRouteOrigin && !hasStartVehicle && !isFromStop && !isCircular && measuredForBearing != null;
+          isRouteOrigin && !hasStartVehicle && !isFromStop && !isCircular && hasShape;
         const m: import('leaflet').Marker | import('leaflet').CircleMarker = showPlayIcon
           ? Lref.marker([s.lat, s.lon], {
               // Play-triangle pill matching the vehicle badge: route
@@ -803,10 +820,10 @@
                 html: `<div style="
                     display:inline-flex;align-items:center;justify-content:center;
                     width:24px;height:24px;border-radius:6px;
-                    background:${currentView.route.color};color:${originPlayFg};
+                    background:${currentView.route.color};color:${pickContrastingText(currentView.route.color)};
                     box-shadow:0 0 0 2px #fff, 0 1px 2px rgba(0,0,0,0.35);
                   "><svg width="14" height="14" viewBox="0 0 20 20"
-                          style="transform:rotate(${originBearing.toFixed(1)}deg);" aria-hidden="true">
+                          style="transform:rotate(${overallBearing.toFixed(1)}deg);" aria-hidden="true">
                     <path d="M10 2 L17 17 L3 17 Z" fill="currentColor" />
                   </svg></div>`,
                 iconSize: [24, 24],
@@ -931,8 +948,7 @@
           }
         }
         if (best && bestDistM < START_VEHICLE_RADIUS_M) {
-          const measured = view.shape.length >= 2 ? measurePolyline(view.shape) : null;
-          const brg = measured ? bearingAtDistance(measured, 0) : 0;
+          const brg = overallBearing;
           // Rounded pill matching the vehicle badge: route colour
           // fill, contrasting glyph inside, white ring, same corner
           // radius. Only the SVG glyph rotates — the pill stays
