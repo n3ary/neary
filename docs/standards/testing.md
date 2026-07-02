@@ -3,7 +3,6 @@
 ## Scope
 
 - Root validation runs tests in `src/` only.
-- Legacy app tests under `legacy/` are excluded from root CI.
 - Configured via [vitest.config.ts](../../vitest.config.ts).
 
 ## Location

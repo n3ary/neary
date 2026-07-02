@@ -192,9 +192,8 @@ These are the cases where a simple "match by trip_id then by timing"
 breaks down and the bug is easy to re-introduce.
 
 > [!IMPORTANT]
-> Only §5.5 (Cluj direction-id workaround) is wired up; §5.1–5.4 are
-> aspirational design tracked in [../plan/prediction-v2.md](../plan/prediction-v2.md)
-> and [../plan/tranzy-integration.md](../plan/tranzy-integration.md).
+> Only §5.4 (Cluj direction-id workaround) is wired up; §5.1–5.3 are
+> aspirational design tracked in [../plan/prediction-v2.md](../plan/prediction-v2.md).
 > The rules below are the **contract** the reconciler must satisfy when
 > live reconciliation lands — if a future PR ships live matching without
 > these, you get the bugs listed.
@@ -229,28 +228,14 @@ binding from `(trip_T, departed)` to `(trip_T_next, at-station)`. This
 lives in the reconciler's terminus-grace logic and only fires at start /
 end stops, not arbitrary along-route stops.
 
-### 5.3 Tentative multi-candidate matches (Tranzy-only path)
-
-When the live source doesn't carry a canonical `trip_id` (Tranzy doesn't),
-two scheduled trips may both fall inside the timing tolerance — typically
-the on-time and a late one. Picking only the smaller delta hides the other
-from the user.
-
-**Rule.** Emit the picked candidate as `tracked` with a `tentative`
-flag, and keep the rejected candidate as a `scheduled` row. The next poll
-either confirms the pick (drop the flag) or flips the binding.
-
-This only applies to the Tranzy path. The GTFS-RT path has trip_id and
-never goes tentative.
-
-### 5.4 High-frequency routes — require persistence
+### 5.3 High-frequency routes — require persistence
 
 For routes with median headway ≤ 10 min, a single timing-based observation
 isn't enough signal to promote `gps-only` → `tracked`. Require two
 consecutive consistent polls. Implementation: small per-vehicle
 observation history in the reconciler.
 
-### 5.5 Direction-id workaround (Cluj feed)
+### 5.4 Direction-id workaround (Cluj feed)
 
 The Cluj GTFS-RT feed lies about `direction_id` — always 0 regardless of
 the actual run. The real direction is encoded in the `trip_id` second

@@ -55,13 +55,6 @@ export interface Feed {
     trip_updates?: string;
     service_alerts?: string;
   } | null;
-  /**
-   * Optional — present only for feeds covered by Tranzy.ai. Mapping to
-   * Tranzy's internal X-Agency-Id (NOT the same as GTFS agency_id; see
-   * neary-gtfs verification). When userPrefs.apiKey is set and this is
-   * present, the worker will poll Tranzy as a second signal.
-   */
-  tranzy?: { agency_id: string };
   license: {
     spdx_identifier?: string | null;
     attribution_text: string;

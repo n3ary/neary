@@ -4,8 +4,8 @@
  * GTFS-RT is a protobuf format ([spec](https://gtfs.org/realtime/reference/)).
  * Upstream endpoints don't return CORS headers, so the client hits a
  * same-origin proxy at `/api/rt/<feedId>/<endpoint>` — wired up in
- *   - vite.config.ts     (dev, via Vite proxy)
- *   - static/_redirects  (prod, via Cloudflare Pages rewrites)
+ *   - vite.config.ts                         (dev, via Vite proxy)
+ *   - functions/api/rt/[feed]/[[endpoint]].js (prod, Cloudflare Pages Function)
  *
  * This module is "the I/O layer for live data". It returns a thin
  * shape (`LiveVehicleObservation`) that the reconciler can consume.
@@ -66,6 +66,16 @@ export interface VehiclePositionsSnapshot {
   vehicles: LiveVehicleObservation[];
 }
 
+/** Thrown when the RT endpoint isn't available for this feed (404, or
+ *  the response body isn't protobuf). Distinct so the poll loop can
+ *  treat it as "silently skip" instead of surfacing a scary error. */
+export class RtUnavailableError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'RtUnavailableError';
+  }
+}
+
 /** Fetch + parse the latest VehiclePositions for a feed. The parser
  *  is intentionally I/O only — direction + start_time enrichment
  *  (per-feed quirks, SQL fallback) lives in
@@ -74,8 +84,30 @@ export interface VehiclePositionsSnapshot {
 export async function fetchVehiclePositions(feedId: string): Promise<VehiclePositionsSnapshot> {
   const url = `/api/rt/${encodeURIComponent(feedId)}/vehiclePositions`;
   const res = await fetch(url, { cache: 'no-store' });
+  // 404 from the Pages Function means the proxy explicitly doesn't
+  // route this feed (e.g. Switzerland's upstream needs auth we can't
+  // forward). Treat as "no RT" — the caller stops polling for the
+  // session rather than showing a persistent error.
+  if (res.status === 404) {
+    throw new RtUnavailableError(`No live-data proxy configured for feed "${feedId}"`);
+  }
   if (!res.ok) {
     throw new Error(`GTFS-RT fetch failed for ${feedId}: HTTP ${res.status}`);
+  }
+  // Defense-in-depth: a misrouted request could land on the SPA
+  // fallback and return HTML. Protobuf-decoding HTML yields cryptic
+  // "invalid wire type" errors — check content-type first.
+  const ct = (res.headers.get('content-type') ?? '').toLowerCase();
+  const looksProto =
+    ct.startsWith('application/octet-stream') ||
+    ct.startsWith('application/x-protobuf') ||
+    ct.startsWith('application/protobuf') ||
+    // Some servers omit the type entirely for .pb bodies
+    ct === '';
+  if (!looksProto) {
+    throw new RtUnavailableError(
+      `Live-data response for feed "${feedId}" was not protobuf (got "${ct}")`,
+    );
   }
   const buf = new Uint8Array(await res.arrayBuffer());
   return parseVehiclePositions(buf);

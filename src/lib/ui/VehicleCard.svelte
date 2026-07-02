@@ -55,7 +55,7 @@
   // (`gps-only` / `tracked` / `verified`), grey = schedule-derived
   // (`scheduled`). Tooltip carries the specific kind. A darker-green
   // variant for `verified` (multi-source agreement) is planned but
-  // not yet differentiated — gated on the Tranzy integration.
+  // not yet differentiated — gated on multi-source live data landing.
   const KIND = $derived({
     verified:    { label: 'Verified',  dotBg: 'bg-[color:var(--color-success)]' },
     tracked:     { label: 'Tracked',   dotBg: 'bg-[color:var(--color-success)]' },

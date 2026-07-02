@@ -1040,9 +1040,10 @@
     const headsignText = m.headsign
       ? `<span style="font-weight:600;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escapeHtml(m.headsign)}</span>`
       : `<span style="flex:1;"></span>`;
-    // Routes with no usable schedule (Cluj's Tranzy-fallback `_NT*`
-    // trips: empty arrival_time on every stop_time row) skip the
-    // schedule shortcut — /schedule/route would have nothing to show.
+    // Routes with no usable schedule (adapter-emitted live-only
+    // `_NT*` fallback trips: empty arrival_time on every stop_time
+    // row) skip the schedule shortcut — /schedule/route would have
+    // nothing to show.
     const schedLink = view?.route.hasSchedule !== false
       ? `<a href="/schedule/route/${escapeHtml(rId)}_${dir}" title="View schedule" style="display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;border-radius:4px;background:rgba(0,0,0,0.07);color:#555;text-decoration:none;flex-shrink:0;">${schedSvg}</a>`
       : '';

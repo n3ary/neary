@@ -1,13 +1,10 @@
 # Investigation
 
-Historical analyses and frozen archives. Read-only. Conclusions that
-still matter were promoted into [../concepts/](../concepts/) or
-[../specs/](../specs/); this directory is the audit trail.
+Historical analyses. Read-only. Conclusions that still matter were
+promoted into [../concepts/](../concepts/) or [../specs/](../specs/);
+this directory is the audit trail.
 
-| Document | Purpose |
-|---|---|
-| [tranzy-vs-gtfsrt.md](tranzy-vs-gtfsrt.md) | Empirical comparison that informed the decision to default to GTFS-RT and demote Tranzy to optional |
-| [v1-legacy/](v1-legacy/) | Frozen v1 (React) docs, kept because the v1 app is still deployed |
+(No active investigations at the moment.)
 
 ## Policy
 

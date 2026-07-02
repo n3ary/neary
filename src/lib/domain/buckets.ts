@@ -1,8 +1,6 @@
 /*
  * Station-view arrival buckets — pure functions, no DOM, no stores.
- * Spec: docs/specs/vehicles-and-views.md. Thresholds were preserved
- * preserved from the v1 legacy implementation
- * (apps/legacy/src/utils/arrival/statusUtils.ts + arrivalUtils.ts).
+ * Spec: docs/specs/vehicles-and-views.md.
  *
  * Seven buckets in display order:
  *

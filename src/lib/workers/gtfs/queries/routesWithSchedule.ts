@@ -2,12 +2,13 @@
  * routesWithSchedule — the set of route_ids that have at least one
  * trip whose stop_times rows include a usable arrival_time.
  *
- * Why: the Cluj adapter ships "Tranzy fallback" trips with ids ending
- * in `_NT*` when the CSV timetable is missing for a (route, direction).
- * These rows exist in trips.txt + stop_times.txt but every stop_time
- * carries an empty arrival_time, so a /schedule/route view for such a
- * route would render an empty board. The UI gates schedule buttons on
- * the route's `hasSchedule` flag (populated from this set) so users
+ * Why: some adapter pipelines emit "live-only fallback" trips (ids
+ * typically ending in `_NT*`) when the static timetable is missing
+ * for a (route, direction). These rows exist in trips.txt + stop_times
+ * but every stop_time carries an empty arrival_time, so a /schedule/
+ * route view for such a route would render an empty board. The UI
+ * gates schedule buttons on the route's `hasSchedule` flag (populated
+ * from this set) so users
  * don't tap into a dead surface.
  *
  * Caching: the per-route schedule availability doesn't change while a

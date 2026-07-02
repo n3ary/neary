@@ -90,12 +90,13 @@ export function scanSchedule(inputs: ScheduleScannerInputs): Vehicle[] {
 
     // Skip rows whose timing data isn't parseable. This happens for
     // upstream trips that exist in trips.txt but ship without per-
-    // stop arrival/departure times — Cluj's Tranzy-fallback trips
-    // (trip_id `..._NT001`, `..._NT002`, ...) are the canonical
-    // example. Without a real time we can't compute an ETA, and the
-    // downstream pipeline would emit `NaN min` into the UI. Drop
-    // them here — by definition there's no scheduled departure to
-    // surface on a station board.
+    // stop arrival/departure times — e.g. adapter-emitted live-only
+    // fallback trips (trip_id `..._NT001`, `..._NT002`, ...) that
+    // exist to carry a live vehicle without a corresponding
+    // schedule row. Without a real time we can't compute an ETA,
+    // and the downstream pipeline would emit `NaN min` into the UI.
+    // Drop them here — by definition there's no scheduled
+    // departure to surface on a station board.
     if (!Number.isFinite(arrivalMin)) continue;
 
     // Inclusion rule:

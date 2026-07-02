@@ -12,7 +12,7 @@ Source: [src/lib/domain/types.ts](../../src/lib/domain/types.ts) is authoritativ
 | `scheduled` | In the schedule. May carry an interpolated position (`source: 'predicted-from-schedule'`) when the trip is currently running per `schedule.tripPhase` (`last` / `on-route`) but no live source has matched it. |
 | `gps-only` | Live GPS, no schedule match (rare — typical when the live feed's `trip_id` doesn't resolve in the static schedule). |
 | `tracked` | Schedule + 1 live source matched. |
-| `verified` | Schedule + 2+ live sources agree (only when Tranzy key is set). |
+| `verified` | Schedule + 2+ live sources agree. Currently unreachable in production because only one live source (GTFS-RT) is wired; kept in the type so multi-source (see [../specs/multi-source-live-data.md](../specs/multi-source-live-data.md)) can promote to it. |
 
 Reads as a ladder of certainty: `scheduled < gps-only < tracked < verified`.
 

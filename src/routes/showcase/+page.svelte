@@ -76,7 +76,7 @@
       schedule: { tripId: 't-24-201', scheduledDeparture: 14 * 60 + 30, headsign: 'Gara' },
       eta: { distanceMeters: 120, minutes: 1, confidence: 'high' },
       confidence: 'high',
-      liveSources: ['gtfs-rt', 'tranzy'] },
+      liveSources: ['gtfs-rt'] },
     { kind: 'scheduled', id: 'v-interpolated-1', route: route9, type: 'trolleybus',
       schedule: { tripId: 't-9-44', scheduledDeparture: 14 * 60 + 32, headsign: 'Gara Cluj' },
       position: { lat: 46.7710, lon: 23.6225, source: 'predicted-from-schedule', asOf: Date.now() },

@@ -52,11 +52,12 @@ export interface Route {
    *  view has something to show. Undefined when the projection layer
    *  didn't populate it; UI consumers should treat undefined as
    *  true (schedule available) for backwards compatibility. The
-   *  canonical "no schedule" case is Cluj's Tranzy-fallback `_NT*`
-   *  trips: the rows exist in trips.txt but every stop_time row
-   *  ships with empty arrival_time, so a /schedule/route view would
-   *  render an empty board. UI gates schedule buttons on this flag
-   *  to avoid dead links. */
+   *  canonical "no schedule" case is adapter-emitted live-only
+   *  fallback trips (typically trip_ids like `..._NT001`): the rows
+   *  exist in trips.txt but every stop_time row ships with empty
+   *  arrival_time, so a /schedule/route view would render an empty
+   *  board. UI gates schedule buttons on this flag to avoid dead
+   *  links. */
   hasSchedule?: boolean;
   /** Network IDs from GTFS `route_networks.txt` — e.g. `['night']`,
    *  `['school']`, `['metroline', 'school']`. Undefined when the feed
@@ -96,8 +97,12 @@ export interface GpsFix {
   observedAt: number;
 }
 
-/** Which live feed produced an observation. */
-export type LiveSource = 'gtfs-rt' | 'tranzy';
+/** Which live feed produced an observation. Currently only GTFS-RT;
+ *  additional sources land as more GTFS-RT URLs in
+ *  `feeds.json.realtime.vehicle_positions[]` (see multi-source spec).
+ *  The union is kept as a type alias so a future second-source
+ *  identifier can be added without churning every call site. */
+export type LiveSource = 'gtfs-rt';
 
 /** Confidence in the vehicle's stated position / match. Derived strictly
  *  from kind + liveSources by the reconciler. */

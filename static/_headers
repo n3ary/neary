@@ -2,7 +2,7 @@
 # Pages reads this file at the root of the deploy directory.
 # Docs: https://developers.cloudflare.com/pages/configuration/headers/
 
-# API proxy responses (GTFS-RT + Tranzy) — never cache. Live data.
+# API proxy responses (GTFS-RT) — never cache. Live data.
 /api/*
   Cache-Control: no-store, no-cache, must-revalidate, proxy-revalidate
   Pragma: no-cache

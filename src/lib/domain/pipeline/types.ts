@@ -12,11 +12,11 @@
  *   ----------------- | ------------------------------------------------------
  *   schedule only     | scheduleScanner
  *   + gtfs-rt         | scheduleScanner, rtIngester, scheduleReconciler
- *   + tranzy          | scheduleScanner, rtIngester, tranzyIngester,
- *                     |   scheduleReconciler, multiSourceCorroborator
+ *   + multi-RT        | scheduleScanner, rtIngester, scheduleReconciler,
+ *                     |   multiSourceCorroborator
  *
  * Today only `scheduleScanner` is wired. The live stages (rtIngester,
- * tranzyIngester, scheduleReconciler, multiSourceCorroborator) will layer
+ * scheduleReconciler, multiSourceCorroborator) will layer
  * on top without touching scheduleScanner or anything downstream of the
  * pipeline (UI, buckets, sort).
  *

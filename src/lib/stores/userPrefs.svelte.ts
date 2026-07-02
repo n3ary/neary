@@ -44,8 +44,6 @@ class UserPrefs {
    *  (`departing` / `at-station` / `arriving`) and `off-route`
    *  diagnostic are always uncapped. See `capStationBoard`. */
   stationBoardMaxRows = $state(3);
-  /** User's optional Tranzy API key — when set, live data layer activates. */
-  apiKey = $state<string | null>(null);
   /** Whether the user has explicitly opted in to location access. Drives the
    *  Stations-view "location needed" card + the header GPS dot's `off` state.
    *  The +layout effect auto-starts the GPS watch on mount when this is true,
@@ -64,7 +62,6 @@ class UserPrefs {
         showDepartedVehicles: boolean;
         showOffRouteVehicles: boolean;
         showDebugIds: boolean;
-        apiKey: string | null;
         stationBoardMaxRows: number;
         gpsOptedIn: boolean;
       }>;
@@ -74,7 +71,6 @@ class UserPrefs {
       if (typeof o.showDepartedVehicles === 'boolean') this.showDepartedVehicles = o.showDepartedVehicles;
       if (typeof o.showOffRouteVehicles === 'boolean' && o.showOffRouteVehicles) this.showDebugIds = true;
       if (typeof o.showDebugIds === 'boolean') this.showDebugIds = o.showDebugIds;
-      if (typeof o.apiKey === 'string' || o.apiKey === null) this.apiKey = o.apiKey;
       if (typeof o.stationBoardMaxRows === 'number' && o.stationBoardMaxRows > 0) this.stationBoardMaxRows = o.stationBoardMaxRows;
       if (typeof o.gpsOptedIn === 'boolean') this.gpsOptedIn = o.gpsOptedIn;
     } catch {
@@ -91,7 +87,6 @@ class UserPrefs {
       showDepartedVehicles: this.showDepartedVehicles,
       showOffRouteVehicles: this.showDebugIds,
       showDebugIds: this.showDebugIds,
-      apiKey: this.apiKey,
       stationBoardMaxRows: this.stationBoardMaxRows,
       gpsOptedIn: this.gpsOptedIn,
     };

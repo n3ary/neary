@@ -25,9 +25,9 @@ protobuf**, merges the observations, and feeds the merged set to
 parse as `FeedMessage`.
 
 For agencies that don't publish GTFS-RT natively (e.g. operators
-exposing a custom JSON API like Tranzy), a separate adapter service
-converts that API to GTFS-RT and exposes a URL. That adapter is **out
-of scope for this repo** — it can live anywhere (a Worker / Lambda /
+exposing a custom JSON API), a separate adapter service converts
+that API to GTFS-RT and exposes a URL. That adapter is **out of
+scope for this repo** — it can live anywhere (a Worker / Lambda /
 Cloud Function on any host). From neary's POV it's just another
 GTFS-RT URL in `realtime.vehicle_positions[]`.
 
@@ -35,10 +35,8 @@ GTFS-RT URL in `realtime.vehicle_positions[]`.
 
 - **No API keys in the client.** If a source needs a key, the adapter
   service holds it; neary fetches a plain unauthenticated URL.
-  ([feeds-json](feeds-json.md) `tranzy.agency_id` and `userPrefs.apiKey`
-  go away once Tranzy is migrated to an adapter; see "Migration".)
-- **No provider-specific clients in neary.** No Tranzy client, no
-  per-operator JSON shape, no per-operator auth. The worker only
+- **No provider-specific clients in neary.** No per-operator SDKs,
+  no per-operator JSON shape, no per-operator auth. The worker only
   speaks GTFS-RT protobuf.
 - **No client-side per-source reconciliation.** Merging across sources
   for the same physical vehicle is the reconciler's job (already in
@@ -56,7 +54,7 @@ declare multiple sources.
   "realtime": {
     "vehicle_positions": [
       "https://cluj-rt-feed.gtfs.ro/vehiclePositions",
-      "https://tranzy-gtfsrt-bridge.example/cluj/vehicle_positions"
+      "https://second-source-adapter.example/cluj/vehicle_positions"
     ],
     "trip_updates": "…",      // stays single (no use case yet)
     "service_alerts": "…"
@@ -94,22 +92,8 @@ Source identity is not currently surfaced to the UI. The
 [debug overlay](../../src/lib/ui/VehicleCard.svelte) renders
 `tripId · kind · dir` regardless of which source produced the
 observation. If a need surfaces to label rows by source ("this row
-came from the Tranzy bridge"), add a `sources: string[]` field on
+came from the second adapter"), add a `sources: string[]` field on
 `Vehicle.liveSources` (already a field, currently set to `['gtfs-rt']`).
-
-## Migration from today's Tranzy code path
-
-Today the worker has Tranzy-specific code:
-- `userPrefs.apiKey` (the user's Tranzy key).
-- `feeds.json` per-feed `tranzy.agency_id`.
-- An onboarding flow that asks for a key.
-
-After this spec:
-- Tranzy support comes from someone publishing a GTFS-RT-shaped URL
-  that wraps Tranzy. That URL goes into `realtime.vehicle_positions[]`.
-- The three items above can be removed in the same change set, OR kept
-  as a deprecated fallback for one release. Recommend removing in one
-  shot — the client surface shrinks and the spec gets cleaner.
 
 ## Failure modes
 
@@ -126,8 +110,8 @@ neary's POV every source is a URL that either returns bytes or doesn't.
 
 ## Out of scope
 
-- The adapter implementation itself (Tranzy → GTFS-RT bridge). Lives
-  in its own repo / deployment.
+- The adapter implementations themselves (any provider → GTFS-RT
+  bridge). Live in their own repos / deployments.
 - Per-source health UI / "source X is down" indicators.
 - Source attribution badges in the UI.
 - Trip updates / service alerts multi-source. Single-URL stays for
@@ -138,6 +122,3 @@ neary's POV every source is a URL that either returns bytes or doesn't.
 - [Live data pipeline](live-data-pipeline.md) — single-source worker
   flow today.
 - [feeds.json](feeds-json.md) — config shape that grows here.
-- Closed issue #19 (server-side Tranzy fetch) — this spec replaces it.
-  Original framing assumed neary owns the fetch + cache + key rotation.
-  We don't: the adapter does, and neary just consumes GTFS-RT.

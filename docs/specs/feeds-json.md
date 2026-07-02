@@ -43,7 +43,6 @@ This doc captures the contract from the app's perspective.
     "trip_updates":      "https://cluj-rt-feed.gtfs.ro/tripUpdates",
     "service_alerts":    "https://cluj-rt-feed.gtfs.ro/serviceAlerts"
   },
-  "tranzy": { "agency_id": "2" },               // optional — only for feeds Tranzy covers
   "license": { /* SPDX + attribution */ }
 }
 ```
@@ -61,7 +60,6 @@ This doc captures the contract from the app's perspective.
 | `hash` | Freshness check — mismatch ⇒ mark stale |
 | `realtime.vehicle_positions` | Worker GTFS-RT poll target |
 | `realtime.trip_updates`, `service_alerts` | Reserved (not consumed yet) |
-| `tranzy.agency_id` | Worker enables Tranzy poll iff user has API key |
 | `license` | Settings "About" attribution panel |
 
 ## Cache headers

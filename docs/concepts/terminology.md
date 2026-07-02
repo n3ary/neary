@@ -25,7 +25,7 @@ Canonical names. Use these in code and docs.
 | reconciler | matcher, joiner |
 | confidence | trust, accuracy |
 | GPS staleness | location age |
-| live source | provider, feed (when talking about RT vs Tranzy) |
+| live source | provider, feed (when talking about live-data URLs) |
 | `isFirstStop` / `isLastStop` | `isAtTripStart` / `isAtTripEnd` (the row's POV, not the vehicle's) |
 | `tripPhase` (`next` / `last` / `on-route` / `later`) | ad-hoc "which trip is upcoming" predicates — see [vehicle.md](vehicle.md#trip-phase) |
 
@@ -33,4 +33,3 @@ Canonical names. Use these in code and docs.
 
 - "ghost" — replaced by `kind: "scheduled"` (with `schedule.tripPhase` for the running-but-no-live case), see [vehicle.md](vehicle.md).
 - "agency picker" — say "feed picker".
-- "API key required" — Tranzy is optional, never required.

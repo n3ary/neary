@@ -280,9 +280,9 @@
                        this — same predicate, one name.
                        The schedule link additionally requires the
                        route to have a usable schedule (false for
-                       Cluj's Tranzy-fallback `_NT*` trips, where
-                       arrival_time is empty — see route-colors.js
-                       in neary-gtfs + routesWithSchedule.ts). -->
+                       adapter-emitted live-only `_NT*` fallback trips
+                       where arrival_time is empty — see
+                       routesWithSchedule.ts). -->
                   {@const actionable = hasTripId && phase !== 'later'}
                   {@const hasSchedule = vehicle.route.hasSchedule !== false}
                   {@const stopsEligible = getUpcomingStops != null

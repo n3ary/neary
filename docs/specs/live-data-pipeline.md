@@ -34,20 +34,21 @@ matched rows to `kind: 'tracked'` and appending route-relevant
 | Source | Default | Why |
 |---|---|---|
 | GTFS-RT (vehicle_positions) | Always on for feeds that have `realtime.vehicle_positions` in [feeds.json](feeds-json.md) | Public, free, no key, full operational fields |
-| Tranzy | Opt-in (user provides API key) | Faster freshness (~60 s ahead of RT median) + corroboration; key-gated |
 
-Empirical comparison: [../investigation/tranzy-vs-gtfsrt.md](../investigation/tranzy-vs-gtfsrt.md).
+Additional live sources are added as more GTFS-RT URLs in the same
+field (see [multi-source-live-data.md](multi-source-live-data.md)).
+Any non-GTFS-RT provider is out of scope for neary itself and lives
+in an adapter service that emits GTFS-RT.
 
-## Why GTFS-RT is the default
+## Why GTFS-RT (and only GTFS-RT)
 
-Pre-v2, the app used Tranzy as primary. Three reasons that flipped:
-
-1. **No key required** — first-launch UX has zero friction.
-2. **Bigger field surface** — `current_status`, `bearing`,
-   `current_stop_sequence`, `next_stop_id` aren't in Tranzy.
-3. **Direct trip-level metadata** — RT carries `trip_id`,
-   `route_id`, `direction_id`. Tranzy doesn't carry `trip_id` at
-   all on vehicle positions.
+1. **Bigger field surface** — `current_status`, `bearing`,
+   `current_stop_sequence`, `next_stop_id` are all standardized.
+2. **Direct trip-level metadata** — `trip_id`, `route_id`,
+   `direction_id` come out of the box.
+3. **No API keys in the client.** If a source needs auth, the
+   adapter service holds the key; neary only speaks the open,
+   unauthenticated protocol.
 
 > [!CAUTION]
 > Earlier versions of this doc claimed RT's `trip_id` matches our
@@ -155,12 +156,14 @@ in system-local tz and compared to feed-local scheduled times. In Cluj
 
 ## CORS
 
-Tranzy sends `Access-Control-Allow-Origin: *`, so the worker can fetch directly.
-
-GTFS-RT feeds do NOT, so a Cloudflare Pages rewrite at `/api/rt/<feed>/<endpoint>`
-forwards to the upstream. Vite dev server mirrors the same proxy paths
-in [vite.config.ts](../../vite.config.ts) so the same client code works in
-both environments.
+GTFS-RT feeds don't set CORS headers on their responses, so the
+worker can't fetch them directly. A Cloudflare Pages Function at
+`/api/rt/<feed>/<endpoint>` (see
+[functions/api/rt/[feed]/[[endpoint]].js](../../functions/api/rt/[feed]/[[endpoint]].js))
+resolves the upstream URL from [feeds.json](feeds-json.md) and
+proxies the response on the app's own origin. Vite dev server
+mirrors the same proxy paths in [vite.config.ts](../../vite.config.ts)
+so the same client code works in both environments.
 
 ## Freshness rules
 

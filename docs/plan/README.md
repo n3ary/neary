@@ -20,16 +20,14 @@ fixes two real pain points in the current app:
 | Document | Scope |
 |---|---|
 | [prediction-v2.md](prediction-v2.md) | Prediction overhaul — active priority |
-| [tranzy-integration.md](tranzy-integration.md) | Opt-in second live source for higher-confidence reconciliation |
 
 ## Where the app is
 
 The SvelteKit rebuild has reached feature parity with v1 on the core surfaces:
 station board, schedule, map, favorites, settings, multi-feed switching, and
 GTFS-RT reconciliation are all in production. The remaining substantive work
-is prediction (see [prediction-v2.md](prediction-v2.md)), with Tranzy as an
-optional accuracy booster ([tranzy-integration.md](tranzy-integration.md)).
-Everything else is iterative polish driven by usage — no dedicated plan doc.
+is prediction (see [prediction-v2.md](prediction-v2.md)). Everything else is
+iterative polish driven by usage — no dedicated plan doc.
 
 ## Cross-repo work
 
