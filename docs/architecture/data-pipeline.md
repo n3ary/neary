@@ -12,17 +12,19 @@ a daily GitHub Action (00:30 UTC) that:
    top of a Transitous seed.
 3. For other feeds: mirrors Transitous's resolved zip directly.
 4. Auto-discovers GTFS-RT URLs via MobilityData's catalog.
-5. Converts each feed's `.gtfs.zip` to `.sqlite3.gz`.
+5. Converts each feed's `.gtfs.zip` to `<id>-<hash12>.sqlite3.gz`.
 6. Writes [feeds.json](../specs/feeds-json.md) (Ajv-validated against
    `schemas/feeds.schema.json`).
-7. Force-pushes `outputs/` to the `binaries` branch.
+7. Uploads `outputs/` to the `neary-gtfs` Cloudflare R2 bucket via S3 API.
 
-All published artifacts are served raw from the `binaries` branch on GitHub:
-`https://raw.githubusercontent.com/ciotlosm/neary-gtfs/binaries/feeds.json`
+All published artifacts are served from Cloudflare R2 via the custom
+domain: `https://gtfs.n3ary.com/feeds.json`
 
-A former plan to front them via jsDelivr was dropped because
-`cdn.jsdelivr.net` intermittently 502s on this branch's binary files
-even when the JSON is cached fine.
+Sqlite filenames embed the first 12 hex chars of the gzipped-blob
+sha256 (`<id>-<hash12>.sqlite3.gz`) so URLs are content-addressed — a
+content change produces a new URL, and any cached copy at an old URL
+is by construction still correct for that URL. Uploads set
+`Cache-Control: public, max-age=31536000, immutable`.
 
 ## App side: cold start
 
@@ -37,7 +39,7 @@ PWA boot
    │  GTFS worker: setFeed(id)
    │      │
    │      ├─ already in OPFS + hash matches? open it (warm, <100ms)
-   │      └─ else: stream sqlite_gz from `raw.githubusercontent.com/<repo>/binaries/...`, write OPFS, open it
+   │      └─ else: stream sqlite_gz from `gtfs.n3ary.com/<id>-<hash12>.sqlite3.gz`, write OPFS, open it
    │
    ├─ getStationBoardsNear(lat, lon, radius)
    │      │ joins stops + stop_times + trips + active services

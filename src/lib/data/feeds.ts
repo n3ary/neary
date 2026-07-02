@@ -12,7 +12,7 @@
  */
 
 export const FEEDS_REGISTRY_URL =
-  'https://raw.githubusercontent.com/ciotlosm/neary-gtfs/binaries/feeds.json';
+  'https://gtfs.n3ary.com/feeds.json';
 
 export interface Feed {
   /** Stable slug — what the app picks and persists in userPrefs.feedId. */

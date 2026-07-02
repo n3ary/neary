@@ -10,9 +10,9 @@ never picks an agency — they pick a feed.
 ## Where feeds come from
 
 The [neary-gtfs](https://github.com/ciotlosm/neary-gtfs) repo publishes
-[feeds.json](../specs/feeds-json.md) to the `binaries` branch on GitHub,
-read by the app via `raw.githubusercontent.com`. The schema and per-feed
-fields are documented there.
+[feeds.json](../specs/feeds-json.md) to Cloudflare R2, read by the app
+via `gtfs.n3ary.com`. The schema and per-feed fields are documented
+there.
 
 ## Identity
 

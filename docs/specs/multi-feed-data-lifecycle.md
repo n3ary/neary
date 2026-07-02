@@ -36,8 +36,8 @@ When `userPrefs.feedId` changes:
 3. If `/<newId>.sqlite3` is already in OPFS *and* its `hash` matches
    `feeds.json[newId].hash` → open it. Warm switch < 100 ms.
 4. Else (cold or stale): worker streams `feed.files.sqlite_gz` from
-   the `binaries` branch via `raw.githubusercontent.com`, decompresses,
-   writes OPFS, updates `feeds-meta.json`, opens it. 4–20 MB → 1–5 s on a phone.
+   `gtfs.n3ary.com` (Cloudflare R2), decompresses, writes OPFS,
+   updates `feeds-meta.json`, opens it. 4–20 MB → 1–5 s on a phone.
 5. Old feed's OPFS file is **not deleted**. Eviction handled below.
 
 ## Freshness check
@@ -120,7 +120,7 @@ interface GtfsRepo {
 ## Implementation status
 
 Shipped:
-- `setFeed` (cold switch from `binaries` branch).
+- `setFeed` (cold switch from R2).
 - Per-feed OPFS storage.
 
 Pending app-side:

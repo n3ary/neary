@@ -26,15 +26,16 @@ import { state } from './state';
 // ---------------------------------------------------------------------------
 // Source URL resolution per feed.
 //
-// neary-gtfs publishes to the `binaries` branch. We fetch raw via
-// raw.githubusercontent.com — CORS-open, stable, and after first fetch
-// the file lives in OPFS so we never re-download. jsDelivr's CF edge
-// (cdn.jsdelivr.net) intermittently 502s on this branch's binary files
-// even when feeds.json is cached fine. Each feeds.json entry has
-// `files.sqlite_gz` as a path relative to the branch root.
+// neary-gtfs publishes to Cloudflare R2 served via the custom domain
+// gtfs.n3ary.com. Each feeds.json entry has `files.sqlite_gz` as a
+// filename that embeds the first 12 hex chars of the gzipped-blob
+// sha256, so the URL is content-addressed: a content change produces
+// a new filename, and any cached copy at an old URL is by construction
+// still correct for that URL. After first fetch the file lives in OPFS
+// so we never re-download unless the hash changes.
 // ---------------------------------------------------------------------------
 
-const BINARIES_BASE = 'https://raw.githubusercontent.com/ciotlosm/neary-gtfs/binaries';
+const BINARIES_BASE = 'https://gtfs.n3ary.com';
 const OPFS_POOL_NAME = 'neary-gtfs';
 
 function seedUrlFor(feed: Feed): string {
