@@ -16,7 +16,8 @@ dist-ssr
 .svelte-kit
 build
 
-# Legacy monorepo build artifacts (apps/web moved to root; apps/ is now all gitignored)
+# Stale monorepo layout — apps/web was moved to root when the v1 app
+# was retired. Anything left under apps/ is a local scratch artifact.
 apps/
 
 # Generated SQLite blobs (regenerated locally via scripts/build-sqlite)

@@ -8,10 +8,6 @@
  * that bends — the bus drives along the polyline, not through
  * buildings.
  *
- * Ported and trimmed from apps/legacy/src/utils/arrival/distanceUtils.ts.
- * The legacy version carried a richer ProjectionResult; here we
- * surface only what the predictor and the off-route detector need.
- *
  * Pure. No DOM, no stores, no I/O.
  */
 

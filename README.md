@@ -7,8 +7,9 @@ separate [neary-gtfs](https://github.com/ciotlosm/neary-gtfs) data pipeline.
 
 | Path | What |
 |---|---|
-| [src/](src/) | v2 app — Svelte 5 + SvelteKit + Tailwind v4 + SQLite-WASM. Production target. |
-| [legacy/](legacy/) | v1 app — React 19 + MUI. Frozen, currently still deployed to production until v2 cutover. |
+| [src/](src/) | App source — Svelte 5 + SvelteKit + Tailwind v4 + SQLite-WASM |
+| [functions/](functions/) | Cloudflare Pages Functions (‘/api/rt/*’ GTFS-RT proxy) |
+| [static/](static/) | Static assets + Pages routing files (`_headers`, `_redirects`) |
 | [docs/](docs/) | Architecture, concepts, standards, specs, plan, investigation |
 | [scripts/](scripts/) | Local maintenance scripts |
 | [.github/](.github/) | CI workflows — see [docs/specs/ci-and-versioning.md](docs/specs/ci-and-versioning.md) |
@@ -17,8 +18,8 @@ separate [neary-gtfs](https://github.com/ciotlosm/neary-gtfs) data pipeline.
 
 ```bash
 npm install
-npm run dev          # v2 app on http://localhost:5173
-npm test             # unit tests (legacy excluded)
+npm run dev          # dev server on http://localhost:5173
+npm test             # unit tests
 npm run check        # svelte-kit sync + svelte-check
 npm run build        # production build to ./build
 ```
