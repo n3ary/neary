@@ -155,8 +155,13 @@
             ttlMs: 0,
           });
         });
-        // Roll back the binding tracker so the user can retry by re-selecting.
-        lastBoundFeedKey = null;
+        // Keep lastBoundFeedKey set to the failed key so the effect
+        // doesn't re-fire in an infinite loop. `lastBoundFeedKey` is
+        // read by this same effect at the top; nulling it here would
+        // re-trigger the effect, which would call setFeed again, fail
+        // again, null again — a self-driving retry storm. To retry the
+        // same feed the user reloads the page; to try another they
+        // pick it from Settings (different key → effect fires normally).
         feedsStore.boundFeedId = null;
       });
   });

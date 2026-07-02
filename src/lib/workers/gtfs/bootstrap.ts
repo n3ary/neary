@@ -38,6 +38,11 @@ import { state } from './state';
 const BINARIES_BASE = 'https://gtfs.n3ary.com';
 const OPFS_POOL_NAME = 'neary-gtfs';
 
+// AbortController reasons used across the bootstrap → closeCurrent path.
+// String reasons (not DOMExceptions) so error messages stay readable.
+const ABORT_REASON_TIMEOUT = 'seed-download-timeout';
+const ABORT_REASON_FEED_SWITCH = 'feed-switch-cancelled';
+
 function seedUrlFor(feed: Feed): string {
   if (!feed.files.sqlite_gz) {
     throw new Error(`Feed "${feed.id}" has no sqlite_gz in feeds.json`);
@@ -110,6 +115,71 @@ export async function getPool() {
   return poolPromise;
 }
 
+// ---------------------------------------------------------------------------
+// Streaming seed pipeline. Peeks the first chunk so we can decide whether
+// to run the body through DecompressionStream (some dev servers like Vite's
+// sirv auto-decompress `.gz` responses; R2 does not), reports progress over
+// the raw compressed bytes, and yields decompressed chunks one at a time so
+// the whole 700-MB-plus uncompressed blob is never held in the JS heap.
+// ---------------------------------------------------------------------------
+async function buildImportStream(
+  body: ReadableStream<Uint8Array>,
+  reportBytes: (compressedBytesRead: number) => void,
+): Promise<ReadableStream<Uint8Array>> {
+  const src = body.getReader();
+  const first = await src.read();
+  if (first.done || !first.value) {
+    src.releaseLock();
+    throw new Error('Empty response body');
+  }
+  const firstChunk = first.value;
+  const isGzip =
+    firstChunk.byteLength >= 2 && firstChunk[0] === 0x1f && firstChunk[1] === 0x8b;
+
+  let compressedTally = firstChunk.byteLength;
+  let lastReportMs = 0;
+  const REPORT_INTERVAL_MS = 250;
+  const maybeReport = (force = false) => {
+    const now = performance.now();
+    if (force || now - lastReportMs >= REPORT_INTERVAL_MS) {
+      reportBytes(compressedTally);
+      lastReportMs = now;
+    }
+  };
+  maybeReport(true);
+
+  const rebuilt = new ReadableStream<Uint8Array>({
+    start(controller) {
+      controller.enqueue(firstChunk);
+    },
+    async pull(controller) {
+      const { done, value } = await src.read();
+      if (done) {
+        maybeReport(true);
+        controller.close();
+        return;
+      }
+      compressedTally += value.byteLength;
+      maybeReport();
+      controller.enqueue(value);
+    },
+    async cancel(reason) {
+      try { await src.cancel(reason); } catch {}
+    },
+  });
+
+  if (!isGzip) return rebuilt;
+  // The DOM lib types DecompressionStream's writable as
+  // WritableStream<BufferSource>, which TS refuses to unify with our
+  // ReadableStream<Uint8Array<ArrayBuffer>>. The runtime does accept
+  // Uint8Array — the cast is safe.
+  const decompressor = new DecompressionStream('gzip') as unknown as {
+    readable: ReadableStream<Uint8Array>;
+    writable: WritableStream<Uint8Array>;
+  };
+  return rebuilt.pipeThrough(decompressor);
+}
+
 export async function bootstrap(
   feed: Feed,
   onProgress?: (bytesReceived: number, totalBytes: number | null) => void,
@@ -124,83 +194,101 @@ export async function bootstrap(
     // connection with headroom. Without this, a stalled fetch would
     // hang forever with no user-visible signal — precisely the class
     // of failure that made large feeds appear "silently empty".
+    //
+    // The controller is also stored on `state.currentDownloadAbort`
+    // so `closeCurrent()` can cancel an in-flight download when the
+    // user switches feeds mid-stream (issue #148). Different abort
+    // reasons let the catch block produce accurate error prefixes.
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 10 * 60_000);
+    state.currentDownloadAbort = controller;
+    const timeoutId = setTimeout(() => controller.abort(ABORT_REASON_TIMEOUT), 10 * 60_000);
+    const clearDownloadState = () => {
+      clearTimeout(timeoutId);
+      if (state.currentDownloadAbort === controller) {
+        state.currentDownloadAbort = null;
+      }
+    };
+    const abortPrefix = (fallback: string) => {
+      if (!controller.signal.aborted) return fallback;
+      switch (controller.signal.reason) {
+        case ABORT_REASON_TIMEOUT:
+          return `Seed download for feed "${feed.id}" timed out`;
+        case ABORT_REASON_FEED_SWITCH:
+          return `Seed download for feed "${feed.id}" was cancelled (feed switched)`;
+        default:
+          return `Seed download for feed "${feed.id}" was aborted`;
+      }
+    };
     let res: Response;
     try {
       res = await fetch(url, { signal: controller.signal });
     } catch (e) {
-      clearTimeout(timeoutId);
-      const reason = controller.signal.aborted ? 'timed out' : 'network error';
-      throw new Error(`Seed download for feed "${feed.id}" ${reason}: ${(e as Error).message}`);
+      clearDownloadState();
+      throw new Error(`${abortPrefix(`Seed download for feed "${feed.id}" failed with network error`)}: ${(e as Error).message}`);
     }
     if (!res.ok || !res.body) {
-      clearTimeout(timeoutId);
+      clearDownloadState();
       throw new Error(`Seed download for feed "${feed.id}" failed (HTTP ${res.status})`);
     }
 
-    // Stream the body so we can report progress. Buffering to an
-    // ArrayBuffer up front would still work but leaves the UI opaque
-    // for the entire duration of a big feed (the Swiss 122 MB is the
-    // reason this streams). Content-Length comes from R2's response;
-    // fall back to null so downstream shows an indeterminate state.
+    // The uncompressed Swiss sqlite is ~778 MB. Buffering it in the
+    // worker heap before calling importDb pushes iOS Safari past its
+    // per-tab ceiling and the tab is killed. Instead: pipe fetch →
+    // (optional) DecompressionStream → importDb's chunked-callback
+    // form, so at any moment we only hold one stream chunk (~64 KB)
+    // beyond what SQLite writes to the SAH file. Content-Length comes
+    // from R2's response; progress is reported over compressed bytes
+    // (matches the UI's byte-count convention).
     const totalHeader = res.headers.get('content-length');
     const totalBytes = totalHeader ? Number(totalHeader) : null;
-    const reader = res.body.getReader();
-    const chunks: Uint8Array[] = [];
-    let received = 0;
-    let lastReportMs = 0;
-    const REPORT_INTERVAL_MS = 250;
+
+    let compressedRead = 0;
+    const decompressed = await buildImportStream(res.body, (compressedBytes) => {
+      compressedRead = compressedBytes;
+      if (!onProgress) return;
+      try { onProgress(compressedBytes, Number.isFinite(totalBytes) ? totalBytes : null); } catch {}
+    });
+
+    const reader = decompressed.getReader();
+    let imported = 0;
+    console.log(`[gtfs.worker] Streaming import into ${opfsFile}…`);
     try {
-      while (true) {
+      await poolUtil.importDb(opfsFile, async () => {
+        // Bail cheaply if the user switched feeds mid-import. SAH pool
+        // writes aren't cancellable, but returning undefined here stops
+        // any further writes and the outer catch cleans up the OPFS file.
+        if (controller.signal.aborted) throw new Error(String(controller.signal.reason ?? 'aborted'));
         const { done, value } = await reader.read();
-        if (done) break;
-        chunks.push(value);
-        received += value.byteLength;
-        const now = performance.now();
-        if (onProgress && now - lastReportMs >= REPORT_INTERVAL_MS) {
-          try { onProgress(received, Number.isFinite(totalBytes) ? totalBytes : null); } catch {}
-          lastReportMs = now;
-        }
-      }
+        if (done) return undefined;
+        imported += value.byteLength;
+        return value;
+      });
     } catch (e) {
-      clearTimeout(timeoutId);
-      const reason = controller.signal.aborted ? 'timed out' : 'network error';
-      throw new Error(`Seed download for feed "${feed.id}" ${reason} mid-stream: ${(e as Error).message}`);
-    }
-    clearTimeout(timeoutId);
-    // Final progress tick so the UI reaches 100% before the (blocking)
-    // decompress + import steps start.
-    if (onProgress) {
-      try { onProgress(received, Number.isFinite(totalBytes) ? totalBytes : null); } catch {}
-    }
-
-    // Concatenate the streamed chunks into a single Uint8Array for
-    // DecompressionStream + importDb. Memory-equivalent to the old
-    // arrayBuffer() path; the stream is just about UI feedback.
-    let bytes = new Uint8Array(received);
-    let offset = 0;
-    for (const chunk of chunks) {
-      bytes.set(chunk, offset);
-      offset += chunk.byteLength;
-    }
-    chunks.length = 0; // free the array of chunk refs eagerly
-
-    // Magic-byte detection: some static servers (Vite's sirv during dev)
-    // auto-decompress `.gz` responses; Cloudflare R2 does not.
-    // Decompress only when the body still starts with the gzip header.
-    if (bytes.length >= 2 && bytes[0] === 0x1f && bytes[1] === 0x8b) {
-      const stream = new Response(bytes).body!.pipeThrough(new DecompressionStream('gzip'));
-      bytes = new Uint8Array(await new Response(stream).arrayBuffer());
-    }
-    console.log(`[gtfs.worker] Importing ${bytes.byteLength} bytes into ${opfsFile}…`);
-    try {
-      poolUtil.importDb(opfsFile, bytes);
-    } catch (e) {
+      clearDownloadState();
+      try { await reader.cancel(); } catch {}
       // Best-effort cleanup: leave nothing partial in OPFS so a retry
       // isn't blocked by a corrupt file that seems to already exist.
       try { poolUtil.unlink(opfsFile); } catch {}
-      throw new Error(`Import into OPFS failed for feed "${feed.id}": ${(e as Error).message}`);
+      throw new Error(`${abortPrefix(`Import into OPFS failed for feed "${feed.id}"`)}: ${(e as Error).message}`);
+    }
+    clearDownloadState();
+    console.log(`[gtfs.worker] Imported ${imported} bytes into ${opfsFile}`);
+    // Truncation guard. importDb only checks that the total bytes written
+    // is >=512 and a multiple of 512; a short-but-page-aligned read can
+    // therefore slip through and produce an OPFS file that opens cleanly
+    // but has empty data pages (the downstream integrity check catches
+    // this, but only after we've marked the file as available). Compare
+    // what we actually pulled off the wire against Content-Length so we
+    // fail fast, unlink the partial file, and force a fresh re-download.
+    if (
+      totalBytes !== null &&
+      Number.isFinite(totalBytes) &&
+      compressedRead < totalBytes
+    ) {
+      try { poolUtil.unlink(opfsFile); } catch {}
+      throw new Error(
+        `Seed download for feed "${feed.id}" was truncated: received ${compressedRead} of ${totalBytes} compressed bytes`,
+      );
     }
     // After a successful import, drop any older snapshot of THIS feed
     // so OPFS doesn't fill with one file per upstream rebuild.
@@ -238,6 +326,17 @@ export async function bootstrap(
  *  on the live pipeline are intentionally NOT cleared — they belong
  *  to the main-side store which survives feed switches. */
 export function closeCurrent(): void {
+  // Cancel any seed download that's still in flight for the outgoing
+  // feed (issue #148). The bootstrap() catch handles cleanup of the
+  // partial OPFS file; here we only trip the signal.
+  if (state.currentDownloadAbort) {
+    try {
+      state.currentDownloadAbort.abort(ABORT_REASON_FEED_SWITCH);
+    } catch (e) {
+      console.warn('[gtfs.worker] aborting in-flight seed download failed', e);
+    }
+    state.currentDownloadAbort = null;
+  }
   if (state.currentDb) {
     try {
       state.currentDb.close();

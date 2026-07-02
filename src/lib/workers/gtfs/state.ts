@@ -25,6 +25,11 @@ class WorkerState {
   /** Promise of the in-flight bootstrap when setFeed is mid-fetch.
    *  Used by ensureDb so the very first call can await the bind. */
   bootstrapping: Promise<Database> | null = null;
+  /** AbortController wrapping the seed download currently being streamed
+   *  by bootstrap(). `closeCurrent()` calls abort() on it so a feed
+   *  switch mid-download stops the old fetch instead of running it to
+   *  completion. Cleared once bootstrap succeeds (or fails). */
+  currentDownloadAbort: AbortController | null = null;
 }
 
 export const state = new WorkerState();
