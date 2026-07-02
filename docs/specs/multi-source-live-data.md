@@ -27,9 +27,9 @@ parse as `FeedMessage`.
 For agencies that don't publish GTFS-RT natively (e.g. operators
 exposing a custom JSON API like Tranzy), a separate adapter service
 converts that API to GTFS-RT and exposes a URL. That adapter is **out
-of scope for this repo** — it can live anywhere (a tiny Worker / Lambda
-/ Netlify Function on a different host). From neary's POV it's just
-another GTFS-RT URL in `realtime.vehicle_positions[]`.
+of scope for this repo** — it can live anywhere (a Worker / Lambda /
+Cloud Function on any host). From neary's POV it's just another
+GTFS-RT URL in `realtime.vehicle_positions[]`.
 
 ## What we explicitly will NOT do
 

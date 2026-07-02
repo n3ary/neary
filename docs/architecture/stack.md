@@ -29,7 +29,7 @@ Tech stack and non-functional targets. Authoritative dependency list is
 
 ## Deployment
 
-- Netlify static deploy of `build/` after `vite build --config vite.config.ts`.
+- Cloudflare Pages static deploy of `build/` after `vite build --config vite.config.ts`.
 - GitHub Actions: PR validation, auto-bump version on merge, deploy to production on push to `main`.
 - See [../specs/ci-and-versioning.md](../specs/ci-and-versioning.md).
 

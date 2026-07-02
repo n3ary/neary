@@ -46,8 +46,7 @@ Push to main
        ├─ setup node v24 (actions/setup-node@v6)
        ├─ npm ci
        ├─ npm run build
-       ├─ npm install -g netlify-cli@latest
-       └─ netlify deploy --prod --dir=build
+       └─ cloudflare/wrangler-action@v3 → wrangler pages deploy build --project-name=neary --branch=main
 ```
 
 Concurrency: `production-deploy` with `cancel-in-progress` so a fast-second

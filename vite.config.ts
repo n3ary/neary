@@ -9,9 +9,9 @@ export default defineConfig({
   server: {
     port: 5173,
     // CORS-busting proxies for GTFS-RT endpoints in dev. Mirrors the
-    // Netlify production redirects in netlify.toml so the same client
-    // code (`fetch('/api/rt/<feed>/<endpoint>')`) works in both
-    // environments.
+    // Cloudflare Pages production rewrites in static/_redirects so
+    // the same client code (`fetch('/api/rt/<feed>/<endpoint>')`) works
+    // in both environments.
     proxy: {
       '/api/rt/cluj-napoca': {
         target: 'https://cluj-rt-feed.gtfs.ro',

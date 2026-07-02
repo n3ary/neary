@@ -2,7 +2,7 @@
 
 Reasoning behind the PWA setup. Implementation:
 [svelte.config.js](../../svelte.config.js), [vite.config.ts](../../vite.config.ts),
-[netlify.toml](../../netlify.toml), [src/routes/+layout.svelte](../../src/routes/+layout.svelte).
+[static/_headers](../../static/_headers), [src/routes/+layout.svelte](../../src/routes/+layout.svelte).
 
 ## Goals
 
@@ -52,7 +52,7 @@ minutes.
 
 ## Cache headers
 
-[netlify.toml](../../netlify.toml) explicitly excludes `version.json`,
+[static/_headers](../../static/_headers) explicitly excludes `version.json`,
 the service worker, and `index.html` from CDN caching. Without these
 overrides the version poll would lag the CDN TTL and the update story
 silently breaks.

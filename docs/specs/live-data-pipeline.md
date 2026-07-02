@@ -157,8 +157,8 @@ in system-local tz and compared to feed-local scheduled times. In Cluj
 
 Tranzy sends `Access-Control-Allow-Origin: *`, so the worker can fetch directly.
 
-GTFS-RT feeds do NOT, so a Netlify Edge proxy at `/api/rt/<feed>/<endpoint>`
-forwards with a short cache. Vite dev server mirrors the same proxy paths
+GTFS-RT feeds do NOT, so a Cloudflare Pages rewrite at `/api/rt/<feed>/<endpoint>`
+forwards to the upstream. Vite dev server mirrors the same proxy paths
 in [vite.config.ts](../../vite.config.ts) so the same client code works in
 both environments.
 

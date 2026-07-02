@@ -11,7 +11,7 @@ const pkg = JSON.parse(readFileSync(new URL('./package.json', import.meta.url), 
 /**
  * SvelteKit config — static adapter because v2 is a pure PWA with no server
  * runtime. All routes prerendered; data lives in OPFS / IndexedDB. Hosting
- * is just a static bucket (Netlify, GitHub Pages, etc.).
+ * is just a static bucket (Cloudflare Pages).
  */
 const config = {
   preprocess: vitePreprocess(),

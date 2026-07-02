@@ -37,5 +37,6 @@ rules; everything else cascades from there.
 
 ## Deployment
 
-Netlify auto-deploys `main`. See [docs/specs/ci-and-versioning.md](docs/specs/ci-and-versioning.md)
-for the PR validation, auto-bump, and release flow.
+Cloudflare Pages auto-deploys `main` to https://n3ary.com. See
+[docs/specs/ci-and-versioning.md](docs/specs/ci-and-versioning.md) for
+the PR validation, auto-bump, and release flow.

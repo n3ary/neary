@@ -4,8 +4,8 @@
  * GTFS-RT is a protobuf format ([spec](https://gtfs.org/realtime/reference/)).
  * Upstream endpoints don't return CORS headers, so the client hits a
  * same-origin proxy at `/api/rt/<feedId>/<endpoint>` — wired up in
- *   - apps/web/vite.config.ts (dev)
- *   - /netlify.toml          (prod)
+ *   - vite.config.ts     (dev, via Vite proxy)
+ *   - static/_redirects  (prod, via Cloudflare Pages rewrites)
  *
  * This module is "the I/O layer for live data". It returns a thin
  * shape (`LiveVehicleObservation`) that the reconciler can consume.
