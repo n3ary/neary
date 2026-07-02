@@ -110,7 +110,10 @@ export async function getPool() {
   return poolPromise;
 }
 
-export async function bootstrap(feed: Feed): Promise<Database> {
+export async function bootstrap(
+  feed: Feed,
+  onProgress?: (bytesReceived: number, totalBytes: number | null) => void,
+): Promise<Database> {
   const poolUtil = await getPool();
   const opfsFile = opfsFileFor(feed);
 
@@ -131,14 +134,61 @@ export async function bootstrap(feed: Feed): Promise<Database> {
       const reason = controller.signal.aborted ? 'timed out' : 'network error';
       throw new Error(`Seed download for feed "${feed.id}" ${reason}: ${(e as Error).message}`);
     }
-    clearTimeout(timeoutId);
     if (!res.ok || !res.body) {
+      clearTimeout(timeoutId);
       throw new Error(`Seed download for feed "${feed.id}" failed (HTTP ${res.status})`);
     }
+
+    // Stream the body so we can report progress. Buffering to an
+    // ArrayBuffer up front would still work but leaves the UI opaque
+    // for the entire duration of a big feed (the Swiss 122 MB is the
+    // reason this streams). Content-Length comes from R2's response;
+    // fall back to null so downstream shows an indeterminate state.
+    const totalHeader = res.headers.get('content-length');
+    const totalBytes = totalHeader ? Number(totalHeader) : null;
+    const reader = res.body.getReader();
+    const chunks: Uint8Array[] = [];
+    let received = 0;
+    let lastReportMs = 0;
+    const REPORT_INTERVAL_MS = 250;
+    try {
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        chunks.push(value);
+        received += value.byteLength;
+        const now = performance.now();
+        if (onProgress && now - lastReportMs >= REPORT_INTERVAL_MS) {
+          try { onProgress(received, Number.isFinite(totalBytes) ? totalBytes : null); } catch {}
+          lastReportMs = now;
+        }
+      }
+    } catch (e) {
+      clearTimeout(timeoutId);
+      const reason = controller.signal.aborted ? 'timed out' : 'network error';
+      throw new Error(`Seed download for feed "${feed.id}" ${reason} mid-stream: ${(e as Error).message}`);
+    }
+    clearTimeout(timeoutId);
+    // Final progress tick so the UI reaches 100% before the (blocking)
+    // decompress + import steps start.
+    if (onProgress) {
+      try { onProgress(received, Number.isFinite(totalBytes) ? totalBytes : null); } catch {}
+    }
+
+    // Concatenate the streamed chunks into a single Uint8Array for
+    // DecompressionStream + importDb. Memory-equivalent to the old
+    // arrayBuffer() path; the stream is just about UI feedback.
+    let bytes = new Uint8Array(received);
+    let offset = 0;
+    for (const chunk of chunks) {
+      bytes.set(chunk, offset);
+      offset += chunk.byteLength;
+    }
+    chunks.length = 0; // free the array of chunk refs eagerly
+
     // Magic-byte detection: some static servers (Vite's sirv during dev)
     // auto-decompress `.gz` responses; Cloudflare R2 does not.
     // Decompress only when the body still starts with the gzip header.
-    let bytes = new Uint8Array(await res.arrayBuffer());
     if (bytes.length >= 2 && bytes[0] === 0x1f && bytes[1] === 0x8b) {
       const stream = new Response(bytes).body!.pipeThrough(new DecompressionStream('gzip'));
       bytes = new Uint8Array(await new Response(stream).arrayBuffer());

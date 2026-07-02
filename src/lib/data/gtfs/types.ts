@@ -56,16 +56,26 @@ export interface ReconciledSnapshot {
 export interface GtfsRepo {
   /**
    * Bind the repo to a feed. First call for a given feed.id seeds the OPFS
-   * file (downloads its sqlite_gz from `raw.githubusercontent.com` +
+   * file (downloads its sqlite_gz from `gtfs.n3ary.com` +
    * decompresses + opens). Subsequent calls with the same id are a no-op;
    * calls with a different id close the current DB and re-bootstrap
    * against the new one.
+   *
+   * `onProgress`, when passed, is invoked from inside the worker with the
+   * running download counter. Wrap it with `Comlink.proxy()` on the caller
+   * side so Comlink marshals it back across the worker boundary. Fires at
+   * most every ~250 ms so a 122 MB Swiss feed on a slow link doesn't spam
+   * postMessages. `totalBytes` is `null` when the upstream doesn't send
+   * Content-Length.
    *
    * Throws (rejects) with a descriptive message when the seed download or
    * open fails — the caller (typically the +layout effect) surfaces it via
    * StatusBar.
    */
-  setFeed(feed: Feed): Promise<void>;
+  setFeed(
+    feed: Feed,
+    onProgress?: (bytesReceived: number, totalBytes: number | null) => void,
+  ): Promise<void>;
 
   /** All routes, sorted by short_name (numeric where possible). */
   getRoutes(): Promise<Route[]>;

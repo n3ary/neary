@@ -10,6 +10,7 @@
   import { goto } from '$app/navigation';
   import { page, updated } from '$app/state';
   import { Heart, MapPin, Settings } from 'lucide-svelte';
+  import * as Comlink from 'comlink';
   import { AppLayout, type HeaderHealth } from '$lib/ui';
   import { connectionStore } from '$lib/stores/connectionStore.svelte';
   import { feedsStore } from '$lib/stores/feedsStore.svelte';
@@ -110,12 +111,26 @@
     untrack(() => {
       statusBus.push({
         id: 'gtfs-bind',
-        kind: 'loading',
+        kind: 'progress',
         message: `Loading schedule for ${feed.name}…`,
+        progress: 0,
       });
     });
+    // Callback that surfaces byte-level download progress from the
+    // worker as a percentage on the same status entry. Wrapped in
+    // Comlink.proxy so it can cross the worker boundary. Fires at
+    // most every ~250 ms (throttled worker-side). When the upstream
+    // omits Content-Length (totalBytes is null) we leave the bar at
+    // its last determinate value rather than jumping around.
+    const onProgress = Comlink.proxy((bytes: number, total: number | null) => {
+      if (total && total > 0) {
+        untrack(() => {
+          statusBus.progress('gtfs-bind', Math.min(100, Math.round((bytes / total) * 100)));
+        });
+      }
+    });
     repo
-      .setFeed($state.snapshot(feed) as typeof feed)
+      .setFeed($state.snapshot(feed) as typeof feed, onProgress)
       .then(() => {
         feedsStore.boundFeedId = feed.id;
         // Subscribe to the worker's reconciliation broadcast. The worker

@@ -45,7 +45,10 @@ import { getDeparturesFromStop, getOriginRoutesAtStop, getStopsNear, searchStops
 import { getWeeklySchedule } from './gtfs/queries/weeklySchedule';
 
 const api: GtfsRepo = {
-  async setFeed(feed: Feed): Promise<void> {
+  async setFeed(
+    feed: Feed,
+    onProgress?: (bytesReceived: number, totalBytes: number | null) => void,
+  ): Promise<void> {
     // Already bound to this exact feed build — nothing to do. We key on
     // (id, hash) rather than id alone so a fresher publish of the same
     // feed (new hash → new OPFS file via opfsFileFor()) re-bootstraps
@@ -67,7 +70,7 @@ const api: GtfsRepo = {
     state.currentFeedId = feed.id;
     state.currentFeedHash = feed.hash ?? null;
     state.currentFeedTz = feed.timezone || 'UTC';
-    state.bootstrapping = bootstrap(feed);
+    state.bootstrapping = bootstrap(feed, onProgress);
     try {
       state.currentDb = await state.bootstrapping;
     } catch (e) {
