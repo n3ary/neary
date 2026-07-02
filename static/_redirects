@@ -1,18 +1,11 @@
-# Cloudflare Pages redirects — mirrors what netlify.toml used to do.
-# Pages reads this file at the root of the deploy directory.
+# Cloudflare Pages redirects — mirrors what netlify.toml used to do,
+# minus the cross-origin API proxies (Pages `_redirects` only supports
+# same-site proxying; external hosts silently fall through to the SPA
+# fallback). Cross-origin proxies live as Pages Functions:
+#   /api/rt/<feed>/<endpoint>  →  functions/api/rt/[feed]/[[endpoint]].js
+#   /api/tranzy/<path>         →  functions/api/tranzy/[[path]].js
+# Functions run before this file so their routes win.
 # Docs: https://developers.cloudflare.com/pages/configuration/redirects/
-#
-# Order matters: API proxies (rewrite = 200) MUST come before the SPA
-# fallback below, otherwise the SPA rule swallows /api/* paths.
-
-# GTFS-RT feeds are protobuf-binary and don't expose CORS. Proxy them
-# so the client can fetch /api/rt/<feed>/<endpoint> regardless of
-# origin. Mirrors the dev-time Vite proxy in vite.config.ts.
-/api/rt/cluj-napoca/*      https://cluj-rt-feed.gtfs.ro/:splat        200
-/api/rt/bucuresti-ilfov/*  https://gtfs.tpbi.ro/api/gtfs-rt/:splat    200
-
-# Tranzy.ai advanced-signal proxy (used only when user has an API key).
-/api/tranzy/*              https://api.tranzy.ai/:splat               200
 
 # SPA fallback for client-side routing (SvelteKit outputs index.html
 # from adapter-static). Must be last.

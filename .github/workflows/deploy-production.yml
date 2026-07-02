@@ -41,7 +41,7 @@ jobs:
       # scope. Custom domain (n3ary.com) is attached to the project
       # once (out of band); each deploy is picked up automatically.
       - name: Deploy to Cloudflare Pages
-        uses: cloudflare/wrangler-action@v3
+        uses: cloudflare/wrangler-action@v4
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           accountId: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}

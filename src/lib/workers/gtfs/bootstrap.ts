@@ -117,12 +117,26 @@ export async function bootstrap(feed: Feed): Promise<Database> {
   if (!poolUtil.getFileNames().includes(opfsFile)) {
     const url = seedUrlFor(feed);
     console.log(`[gtfs.worker] Seeding OPFS for feed ${feed.id} from`, url);
-    const res = await fetch(url);
+    // 10-minute hard timeout: covers the ~122 MB Swiss feed on a slow
+    // connection with headroom. Without this, a stalled fetch would
+    // hang forever with no user-visible signal — precisely the class
+    // of failure that made large feeds appear "silently empty".
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 10 * 60_000);
+    let res: Response;
+    try {
+      res = await fetch(url, { signal: controller.signal });
+    } catch (e) {
+      clearTimeout(timeoutId);
+      const reason = controller.signal.aborted ? 'timed out' : 'network error';
+      throw new Error(`Seed download for feed "${feed.id}" ${reason}: ${(e as Error).message}`);
+    }
+    clearTimeout(timeoutId);
     if (!res.ok || !res.body) {
       throw new Error(`Seed download for feed "${feed.id}" failed (HTTP ${res.status})`);
     }
     // Magic-byte detection: some static servers (Vite's sirv during dev)
-    // auto-decompress `.gz` responses; jsDelivr / GitHub raw do not.
+    // auto-decompress `.gz` responses; Cloudflare R2 does not.
     // Decompress only when the body still starts with the gzip header.
     let bytes = new Uint8Array(await res.arrayBuffer());
     if (bytes.length >= 2 && bytes[0] === 0x1f && bytes[1] === 0x8b) {
@@ -130,15 +144,41 @@ export async function bootstrap(feed: Feed): Promise<Database> {
       bytes = new Uint8Array(await new Response(stream).arrayBuffer());
     }
     console.log(`[gtfs.worker] Importing ${bytes.byteLength} bytes into ${opfsFile}…`);
-    poolUtil.importDb(opfsFile, bytes);
+    try {
+      poolUtil.importDb(opfsFile, bytes);
+    } catch (e) {
+      // Best-effort cleanup: leave nothing partial in OPFS so a retry
+      // isn't blocked by a corrupt file that seems to already exist.
+      try { poolUtil.unlink(opfsFile); } catch {}
+      throw new Error(`Import into OPFS failed for feed "${feed.id}": ${(e as Error).message}`);
+    }
     // After a successful import, drop any older snapshot of THIS feed
     // so OPFS doesn't fill with one file per upstream rebuild.
     const removed = pruneStaleFeedFiles(poolUtil, feed.id, opfsFile);
     if (removed > 0) console.log(`[gtfs.worker] Pruned ${removed} stale OPFS file(s) for ${feed.id}`);
   }
 
-  const db = new poolUtil.OpfsSAHPoolDb(opfsFile);
-  db.exec('PRAGMA query_only = 1;');
+  let db: Database | undefined;
+  try {
+    db = new poolUtil.OpfsSAHPoolDb(opfsFile);
+    db.exec('PRAGMA query_only = 1;');
+    // Integrity check: a truncated or empty file may open cleanly but
+    // return zero rows, presenting as "search shows no results". If
+    // the schedule table is empty, treat as corrupt and force a
+    // re-download on the next attempt.
+    const hasTable = db.selectValue('SELECT count(*) FROM sqlite_master WHERE type=\'table\' AND name=\'stop_times\'') as number | null;
+    if (hasTable !== 1) {
+      throw new Error('sqlite is missing the stop_times table (schema mismatch or truncated import)');
+    }
+    const hasRows = db.selectValue('SELECT EXISTS(SELECT 1 FROM stop_times LIMIT 1)') as 0 | 1;
+    if (!hasRows) {
+      throw new Error('stop_times is empty (truncated import or upstream produced an empty feed)');
+    }
+  } catch (e) {
+    try { db?.close(); } catch {}
+    try { poolUtil.unlink(opfsFile); } catch {}
+    throw new Error(`Feed "${feed.id}" failed integrity check: ${(e as Error).message}`);
+  }
   return db;
 }
 

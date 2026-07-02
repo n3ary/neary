@@ -17,7 +17,7 @@
 import * as Comlink from 'comlink';
 
 import type { ReconciledSnapshot } from '$lib/data/gtfs/types';
-import { fetchVehiclePositions } from '$lib/data/live/gtfsRtClient';
+import { fetchVehiclePositions, RtUnavailableError } from '$lib/data/live/gtfsRtClient';
 import { DEFAULT_CONFIG } from '$lib/domain/config';
 import { enrichObservations } from '$lib/domain/enrichObservations';
 import { quirksForFeed } from '$lib/domain/feedQuirks';
@@ -50,6 +50,11 @@ let livePollTimerId: ReturnType<typeof setInterval> | null = null;
 let liveInFlight = false;
 let lastSnapshot: ReconciledSnapshot | null = null;
 const liveListeners = new Set<ReconciledListener>();
+/** Feeds for which the RT proxy has returned 404 / non-protobuf in
+ *  this session. Marked so we don't spin up 404s every 15 s and so
+ *  the UI doesn't flash a persistent error for feeds that legitimately
+ *  don't have a working live-data endpoint. Cleared on feed close. */
+const rtUnavailableFeeds = new Set<string>();
 
 export function stopLiveTimer(): void {
   if (livePollTimerId !== null) {
@@ -65,9 +70,11 @@ export function ensureLiveTimer(): void {
 
 /** Drop the cached snapshot — used on feed switch so the new feed's
  *  first tick replaces the previous feed's data. Listeners stay
- *  registered. */
+ *  registered. Also forgets the "RT unavailable" marker on the
+ *  previous feed so re-selecting it retries once. */
 export function resetLiveSnapshot(): void {
   lastSnapshot = null;
+  rtUnavailableFeeds.clear();
 }
 
 function broadcast(snap: ReconciledSnapshot): void {
@@ -88,6 +95,7 @@ function broadcast(snap: ReconciledSnapshot): void {
 export async function tickLive(): Promise<void> {
   const feedId = state.currentFeedId;
   if (!feedId || !state.currentDb) return;
+  if (rtUnavailableFeeds.has(feedId)) return;
   if (liveInFlight) return;
   liveInFlight = true;
   try {
@@ -128,6 +136,26 @@ export async function tickLive(): Promise<void> {
     // in the same tick — keeps station UI in lockstep with map UI.
     pushAllStationSubscribers(payload);
   } catch (e) {
+    // RtUnavailableError = the feed doesn't have a working RT proxy
+    // (either the Pages Function 404s for this feed id, or the
+    // response wasn't protobuf). Suppress from the UI, mark the feed
+    // as no-RT for this session so we don't keep hammering the same
+    // endpoint every 15 s, and broadcast a clean snapshot so any
+    // "Live feed error" toast disappears.
+    if (e instanceof RtUnavailableError) {
+      rtUnavailableFeeds.add(feedId);
+      console.info(`[gtfs.worker] ${feedId}: ${e.message} — schedule-only from now on`);
+      const payload: ReconciledSnapshot = {
+        vehicles: lastSnapshot?.vehicles ?? [],
+        feedTimestampMs: null,
+        lastFetchMs: Date.now(),
+        stats: lastSnapshot?.stats ?? null,
+        error: null,
+      };
+      lastSnapshot = payload;
+      broadcast(payload);
+      return;
+    }
     const msg = e instanceof Error ? e.message : String(e);
     // Keep the previous vehicles + status so the UI stays usable; just
     // surface the error so the StatusBar can show "Refresh failed".
