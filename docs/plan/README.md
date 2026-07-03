@@ -20,6 +20,7 @@ fixes two real pain points in the current app:
 | Document | Scope |
 |---|---|
 | [prediction-v2.md](prediction-v2.md) | Prediction overhaul — active priority |
+| [producer-monorepo.md](producer-monorepo.md) | Producer monorepo restructure for the live RT adapter — on hold until PR #159 ships |
 
 ## Where the app is
 
