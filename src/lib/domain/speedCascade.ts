@@ -31,7 +31,7 @@
  * Pure. No DOM, no stores, no I/O.
  */
 
-import { haversineMeters } from './distance';
+import { haversineMeters } from '@n3ary/neary-gtfs-spec/shape';
 import type { Confidence } from './types';
 import type { TodBucket } from './timeOfDay';
 

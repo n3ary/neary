@@ -432,7 +432,7 @@ describe('reconcileWithLive (kind:live emission for unmatched obs)', () => {
 // positions along it.
 // ---------------------------------------------------------------------------
 
-import { measurePolyline } from './shapeProjection';
+import { measurePolyline } from '@n3ary/neary-gtfs-spec/shape';
 
 describe('reconcileWithLive (route-order pairing with shape)', () => {
   // 10 km straight-line shape east of (46.7, 23.6). At Cluj's latitude,

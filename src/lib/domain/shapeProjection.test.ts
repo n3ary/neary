@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { distAlongBetween, projectOnPolyline, type Polyline } from './shapeProjection';
+import { distAlongBetween, projectOnPolyline, type Polyline } from '@n3ary/neary-gtfs-spec/shape';
 
 // A straight east-west polyline near Cluj (~46.77°N). At this
 // latitude, 1° of longitude ≈ 76 km. Vertices roughly 1 km apart so

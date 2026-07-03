@@ -5,7 +5,7 @@
  */
 
 import type { Database } from '@sqlite.org/sqlite-wasm';
-import { haversineMeters } from '$lib/domain/distance';
+import { haversineMeters } from '@n3ary/neary-gtfs-spec/shape';
 import { timeToMinutes } from '$lib/domain/pipeline/timeUtils';
 import type { StopWithDistance, UpcomingDeparture } from '$lib/data/gtfs/types';
 import { dayKeyCols, selectAll } from '../sqlHelpers';
