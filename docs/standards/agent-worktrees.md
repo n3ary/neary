@@ -79,3 +79,35 @@ When a worktree's task is merged:
 - `git branch -d <branch>` only after the merge lands
 
 Never delete a worktree branch before its changes are integrated.
+
+## How work lands in main
+
+`main` is protected. Every change goes through a PR. Direct commits and pushes to `main` are forbidden for humans and AI agents.
+
+Rules:
+
+- **Always open a PR.** Even small fixes; even when you're the only maintainer. The PR is the unit of review and the place where the auto-bump and validation pipeline run.
+- **Linear history.** Squash or rebase merge only. No merge commits. The `main` branch tip is always the most recent commit on a single line.
+- **No force-push on `main`.** No branch deletion of `main`.
+- **No direct push to `main`.** Even when in a hurry, even for trivial edits. The PR pipeline catches more than people think.
+
+Branch protection (configured in GitHub repo settings):
+
+| Setting | Value |
+|---|---|
+| Require PR before merging | yes |
+| Required approvals | 0 (solo-dev friendly; bump when the team grows) |
+| Require linear history | yes |
+| Allow force-push | no |
+| Allow branch deletion | no |
+| Admin override | allowed for genuine emergencies only; the bypass commit must include a `[skip ci]` or equivalent marker explaining why |
+
+### Exception: documented automation
+
+Dependabot and the auto-bump version workflow push directly to `main`. Both are explicitly named in `.github/workflows/` and reviewable in this repo's CI docs. They are **not** human commits; they are pre-approved automation. Adding a new automated push-to-main pipeline requires a PR that updates the relevant CI doc.
+
+### Why this rule exists
+
+- The PR is the only place the auto-bump version and PR-validation pipeline run. Direct pushes skip them — the published bundle can end up reporting the wrong version or land with broken tests.
+- Linear history means `git bisect` works, `git log` is readable, and rebases don't have surprise merge commits to resolve.
+- "Always open a PR" forces a written rationale for every change. Even when the answer is "trivial fix, no review needed", writing it down is the cheapest form of review.
