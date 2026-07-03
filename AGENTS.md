@@ -56,6 +56,15 @@ workarounds, no city-specific fallbacks. Feeds that ship non-conformant
 data fix themselves upstream (neary-gtfs or the source adapter). Full
 rules: [docs/standards/feed-agnostic.md](docs/standards/feed-agnostic.md).
 
+### Worktrees
+
+Default to working on the current branch. Before creating any git
+worktree (or tool equivalent — Kilo Agent Manager, Copilot coding
+agent, Cursor background agent), the agent MUST ask the user for
+explicit confirmation. Full decision rubric, pre-flight check, and
+abort signals in
+[docs/standards/agent-worktrees.md](docs/standards/agent-worktrees.md).
+
 ### Follow the placement framework
 
 When adding a doc, ask in order — see [docs/standards/documentation.md](docs/standards/documentation.md):

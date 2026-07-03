@@ -25,3 +25,12 @@
 ## Domain identifiers
 
 See [../concepts/terminology.md](../concepts/terminology.md).
+
+## Branches
+
+- `<type>/<kebab-case-slug>` — lowercase, type prefix from conventional
+  commits (`feat`, `fix`, `chore`, `docs`, `refactor`, `test`, `plan`).
+- Include the issue / PR number when one exists: `feat/123-feed-config`,
+  `fix/158-bootstrap-stream`.
+- Slug is short and scannable; mirror the PR title's noun phrase in
+  kebab-case, not the full sentence.
