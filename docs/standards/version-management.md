@@ -1,3 +1,6 @@
+<!-- synced from ciotlosm/neary-shared@7e7c68b on 2026-07-03 -->
+<!-- do not edit locally; run scripts/vendor-standards.mjs to update -->
+
 # Version management
 
 The version in `package.json` is bumped on every PR via a bot commit on the PR branch. When the PR merges to `main`, `main` already has the new version. Other open PRs rebase onto `main` to pick up the new version (or get auto-rebased by Dependabot).
@@ -40,5 +43,19 @@ Two PRs open at the same time:
 
 ## Implementation reference
 
-- `.github/workflows/pr-validation.yml` implements the bump. See its comments for the exact shell sequence (`npm version <next> --no-git-tag-version`, `git commit`, `git push`).
-- For sister repos adopting the same pattern: the workflow YAML is portable; copy it and adjust the validation commands (`npm run check` / `npm test` / `npm run build` may differ).
+The bump is implemented as a shared composite action: [ciotlosm/neary-shared/.github/actions/version-bump](https://github.com/ciotlosm/neary-shared/tree/main/.github/actions/version-bump). All three repos (neary, neary-gtfs, cluj-napoca-gtfs-adapter) use the same action, pinned to `@v1`.
+
+Why shared (and not copy-pasted into each repo's `pr-validation.yml`):
+- The bug we hit (`0.2.0-m1` parsing as `0.2.NaN`) was caused by copy-paste drift. Extracting to a shared action fixes the bug once and makes it testable in isolation.
+- Bumping the action version is a coordinated change across all consumers. A versioned action (`@v1`) lets consumers pin to a known-good revision and update deliberately.
+
+Usage:
+
+```yaml
+- name: Auto-bump version
+  uses: ciotlosm/neary-shared/.github/actions/version-bump@v1
+  with:
+    bump-skip-paths: '.github/,docs/,.gitignore,LICENSE'
+```
+
+The workflow still calls this action on every `pull_request` event; the action handles the bump and pushes the bot commit to the PR branch.

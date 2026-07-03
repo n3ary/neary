@@ -1,3 +1,6 @@
+<!-- synced from ciotlosm/neary-shared@7e7c68b on 2026-07-03 -->
+<!-- do not edit locally; run scripts/vendor-standards.mjs to update -->
+
 # Issue vs plan lifecycle
 
 > **One-line rule**: issues are long-lived records of intent on the repo where the code will be written. Plans are short-lived work artifacts on a branch. Plans never live in `main`.

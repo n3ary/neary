@@ -1,3 +1,6 @@
+<!-- synced from ciotlosm/neary-shared@7e7c68b on 2026-07-03 -->
+<!-- do not edit locally; run scripts/vendor-standards.mjs to update -->
+
 # Agent worktrees
 
 Rules for any AI agent (Kilo, Copilot, Cursor, Claude Code, etc.) working
