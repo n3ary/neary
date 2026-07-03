@@ -13,6 +13,12 @@ concurrency:
   group: production-deploy
   cancel-in-progress: true
 
+# packages: read so `npm ci` can install @n3ary/neary-gtfs-spec from
+# GitHub Packages (the org's default token has read access).
+permissions:
+  contents: read
+  packages: read
+
 jobs:
   deploy:
     runs-on: ubuntu-latest

@@ -1,7 +1,7 @@
 {
   "name": "neary",
   "private": true,
-  "version": "1.5.74",
+  "version": "1.5.75",
   "type": "module",
   "scripts": {
     "dev": "vite dev",
@@ -29,6 +29,7 @@
     "vitest": "^4.1.9"
   },
   "dependencies": {
+    "@n3ary/neary-gtfs-spec": "file:../neary-gtfs/packages/spec",
     "@sqlite.org/sqlite-wasm": "^3.53.0-build1",
     "@types/leaflet": "^1.9.21",
     "bits-ui": "^2.18.1",

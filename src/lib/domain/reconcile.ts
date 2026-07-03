@@ -40,7 +40,7 @@
 import type { LiveVehicleObservation } from '$lib/data/live/gtfsRtClient';
 import type { Vehicle } from './types';
 import { minSinceMidnightInTz, timeToMinutes } from './pipeline/timeUtils';
-import { projectOnPolyline, type MeasuredPolyline } from './shapeProjection';
+import { projectOnPolyline, type MeasuredPolyline } from '@n3ary/neary-gtfs-spec/shape';
 
 const TOLERANCE_FLOOR_MIN = 1;
 const TOLERANCE_CEILING_MIN = 30;

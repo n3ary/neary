@@ -45,8 +45,8 @@
     type TripShapePlan,
   } from '$lib/domain/predictPosition';
   import { predictArrivalFromGps } from '$lib/domain/predictArrivalAlongShape';
-  import { bearingBetween, measurePolyline, projectOnPolyline } from '$lib/domain/shapeProjection';
-  import { haversineMeters } from '$lib/domain/distance';
+  import { bearingBetween, measurePolyline, projectOnPolyline } from '@n3ary/neary-gtfs-spec/shape';
+  import { haversineMeters } from '@n3ary/neary-gtfs-spec/shape';
   import { clockToBucket } from '$lib/domain/timeOfDay';
   import { favoritesStore } from '$lib/stores/favoritesStore.svelte';
   import { feedsStore } from '$lib/stores/feedsStore.svelte';

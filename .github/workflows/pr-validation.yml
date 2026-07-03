@@ -10,6 +10,7 @@ on:
 
 permissions:
   contents: write  # needed to push version-bump commit back to PR branch
+  packages: read   # needed to install @n3ary/neary-gtfs-spec from GitHub Packages
 
 jobs:
   validate:
