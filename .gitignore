@@ -76,3 +76,4 @@ refactoring-toolkit/
 src/debug-*.js
 tools/test/
 tools/debug/
+vendor/
