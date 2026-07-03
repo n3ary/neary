@@ -104,10 +104,10 @@ Branch protection (configured in GitHub repo settings):
 
 ### Exception: documented automation
 
-Dependabot and the auto-bump version workflow push directly to `main`. Both are explicitly named in `.github/workflows/` and reviewable in this repo's CI docs. They are **not** human commits; they are pre-approved automation. Adding a new automated push-to-main pipeline requires a PR that updates the relevant CI doc.
+There is **no exception** for direct pushes to `main`. CI workflows don't push to `main` — they respond to events:
 
-### Why this rule exists
+- **Dependabot** opens PRs (`open-pull-requests-limit: 10` in `.github/dependabot.yml`); humans/reviewers merge.
+- **Auto-bump version** runs on `pull_request` events and bumps the PR branch's `package.json#version`, not `main`. The bumped version lands in `main` when the PR merges.
+- **Deploy workflows** run on `push: branches: [main]` triggers — they're responses to PR merges via the GitHub API, not direct pushes.
 
-- The PR is the only place the auto-bump version and PR-validation pipeline run. Direct pushes skip them — the published bundle can end up reporting the wrong version or land with broken tests.
-- Linear history means `git bisect` works, `git log` is readable, and rebases don't have surprise merge commits to resolve.
-- "Always open a PR" forces a written rationale for every change. Even when the answer is "trivial fix, no review needed", writing it down is the cheapest form of review.
+If a new automation needs to push to `main` for some reason, the rule is: don't add it. Use a PR. There is no exception clause because there is no exception to grant.
