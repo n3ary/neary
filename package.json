@@ -38,5 +38,6 @@
     "gtfs-realtime-bindings": "2.1.0",
     "leaflet": "^1.9.4",
     "lucide-svelte": "^1.0.1"
-  }
+  },
+  "license": "PolyForm-Noncommercial-1.0.0"
 }
