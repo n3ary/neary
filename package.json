@@ -29,7 +29,7 @@
     "vitest": "^4.1.9"
   },
   "dependencies": {
-    "@n3ary/neary-gtfs-spec": "file:vendor/neary-gtfs/packages/spec",
+    "@n3ary/neary-gtfs-spec": "0.2.0",
     "@sqlite.org/sqlite-wasm": "^3.53.0-build1",
     "@types/leaflet": "^1.9.21",
     "bits-ui": "^2.18.1",

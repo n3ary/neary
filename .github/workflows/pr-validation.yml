@@ -10,7 +10,9 @@ on:
 
 permissions:
   contents: write  # needed to push version-bump commit back to PR branch
-  packages: read   # needed to install @n3ary/neary-gtfs-spec from GitHub Packages
+  # The @n3ary/neary-gtfs-spec install uses the NPM_TOKEN secret
+  # (an org token with read:packages on the org) rather than the
+  # GITHUB_TOKEN.
 
 jobs:
   validate:
@@ -24,31 +26,6 @@ jobs:
           fetch-depth: 0
           token: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: "Checkout neary-gtfs (provides @n3ary/neary-gtfs-spec for the file: dep)"
-        uses: actions/checkout@v7
-        with:
-          repository: n3ary/neary-gtfs
-          path: vendor/neary-gtfs
-
-      - name: Setup Node (for vendored neary-gtfs build)
-        uses: actions/setup-node@v6.4.0
-        with:
-          node-version: 24
-
-      - name: Install pnpm
-        uses: pnpm/action-setup@v6.0.9
-        with:
-          version: 11
-
-      - name: Build vendored @n3ary/neary-gtfs-spec
-        # The file: dep points at vendor/neary-gtfs/packages/spec which
-        # is a fresh git checkout — src/ exists but dist/ doesn't.
-        # The TypeScript + vite build needs the compiled .d.ts and
-        # .js files. Build them once before npm ci so the dep is
-        # self-contained when symlinked into node_modules.
-        working-directory: vendor/neary-gtfs
-        run: pnpm install --frozen-lockfile --trust-lockfile && pnpm build
-
       - name: Setup Node
         uses: actions/setup-node@v6.4.0
         with:
@@ -56,6 +33,15 @@ jobs:
           cache: npm
 
       - name: Install dependencies
+        # The @n3ary scope maps to GitHub Packages (see .npmrc).
+        # NPM_TOKEN is an org token with read:packages + read:packages
+        # on @n3ary/neary-gtfs-spec. Set via the repo's secrets in
+        # GitHub web UI. Same token format as the publisher: the
+        # @n3ary/neary-gtfs-spec repo's workflow used `secrets.GITHUB_TOKEN`
+        # to publish; the consumer uses an org-level token (or the
+        # same GITHUB_TOKEN) to install.
+        env:
+          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
         run: npm ci
 
       - name: Auto-bump version to main + 1
