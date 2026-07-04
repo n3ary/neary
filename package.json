@@ -29,7 +29,7 @@
     "vitest": "^4.1.9"
   },
   "dependencies": {
-    "@n3ary/gtfs-spec": "0.3.0",
+    "@n3ary/gtfs-spec": "0.3.1",
     "@sqlite.org/sqlite-wasm": "^3.53.0-build1",
     "@types/leaflet": "^1.9.21",
     "bits-ui": "^2.18.1",

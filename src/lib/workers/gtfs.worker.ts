@@ -10,7 +10,8 @@
  *   gtfs/state.ts          — currentFeedId/Tz/Db + ensureDb()
  *   gtfs/bootstrap.ts      — OPFS pool, per-feed bootstrap, closeCurrent
  *   gtfs/livePipeline.ts   — live poll + reconcile + broadcast
- *   gtfs/sqlHelpers.ts     — selectAll, dayKeyCols
+ *   gtfs/sqlHelpers.ts     — selectAll
+ *   @n3ary/gtfs-spec/spec  — DAY_KEY_COLS (GTFS calendar day-of-week columns)
  *   gtfs/shapeCache.ts     — shape polyline cache (singleton)
  *   gtfs/activeServices.ts — service_id calendar resolution
  *   gtfs/queries/*.ts      — one file per query (or small cluster)

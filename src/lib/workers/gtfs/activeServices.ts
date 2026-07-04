@@ -9,7 +9,8 @@
  */
 
 import type { Database } from '@sqlite.org/sqlite-wasm';
-import { dayKeyCols, selectAll } from './sqlHelpers';
+import { DAY_KEY_COLS } from '@n3ary/gtfs-spec/spec';
+import { selectAll } from './sqlHelpers';
 
 export function activeServicesOn(db: Database, localDate: string): string[] {
   const dow = new Date(
@@ -17,7 +18,7 @@ export function activeServicesOn(db: Database, localDate: string): string[] {
     Number(localDate.slice(4, 6)) - 1,
     Number(localDate.slice(6, 8)),
   ).getDay();
-  const dayCol = dayKeyCols[(dow + 6) % 7];
+  const dayCol = DAY_KEY_COLS[(dow + 6) % 7];
 
   type IdRow = { service_id: string };
   const base = selectAll<IdRow>(

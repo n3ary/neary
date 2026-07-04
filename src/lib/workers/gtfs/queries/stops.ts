@@ -6,9 +6,10 @@
 
 import type { Database } from '@sqlite.org/sqlite-wasm';
 import { haversineMeters } from '@n3ary/gtfs-spec/shape';
+import { DAY_KEY_COLS } from '@n3ary/gtfs-spec/spec';
 import { timeToMinutes } from '$lib/domain/pipeline/timeUtils';
 import type { StopWithDistance, UpcomingDeparture } from '$lib/data/gtfs/types';
-import { dayKeyCols, selectAll } from '../sqlHelpers';
+import { selectAll } from '../sqlHelpers';
 
 /** Stops within `radiusMeters` of (lat, lon). Bounding-box prefilter
  *  in SQL (uses the lat/lon index) then Haversine refinement in JS.
@@ -227,7 +228,7 @@ export function getDeparturesFromStop(
     Number(localDate.slice(4, 6)) - 1,
     Number(localDate.slice(6, 8)),
   ).getDay();
-  const dayCol = dayKeyCols[(dow + 6) % 7];
+  const dayCol = DAY_KEY_COLS[(dow + 6) % 7];
 
   type ServiceRow = { service_id: string };
   const services = selectAll<ServiceRow>(

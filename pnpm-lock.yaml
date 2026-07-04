@@ -9,8 +9,8 @@ importers:
   .:
     dependencies:
       '@n3ary/gtfs-spec':
-        specifier: 0.3.0
-        version: 0.3.0
+        specifier: 0.3.1
+        version: 0.3.1
       '@sqlite.org/sqlite-wasm':
         specifier: ^3.53.0-build1
         version: 3.53.0-build1
@@ -703,8 +703,8 @@ packages:
     resolution: {integrity: sha512-TuB0x50EoAvEX/UEWITd8Mkn3WhiTjSvbTMCLj0BhsQEl5iUzjXdA0bETEVpTk+5TGTLR6QktI9H4hLviVeaAQ==}
     engines: {node: '>=v12.0.0'}
 
-  '@n3ary/gtfs-spec@0.3.0':
-    resolution: {integrity: sha512-4NtS8BhB5OYNSiwqEd7NsIfdDCMWE8tcJREfXVw6pYFW1xTUXJDI4YsZhAtYaqsGZBCmK45Q+5UVuNZdopj08Q==, tarball: https://npm.pkg.github.com/download/@n3ary/gtfs-spec/0.3.0/331dbd47bbc674fe1f2700ce23e0fc4f5eaccd29}
+  '@n3ary/gtfs-spec@0.3.1':
+    resolution: {integrity: sha512-Wnww+Nc98KW/zjL2NygKMMnBdZls/1hk/NHJogU2vaIOCjCbDmJePrCIMRUj7fGTUdCqNPV+oesGrS8YOhfjSA==, tarball: https://npm.pkg.github.com/download/@n3ary/gtfs-spec/0.3.1/99d55668c950775120338ae92dcf74a96aeddc95}
 
   '@napi-rs/wasm-runtime@1.1.6':
     resolution: {integrity: sha512-ZLv/JdUfkvOy9eCnnBaGfiO+XimbjebAeO+MRQqD/B+FR1tnRN0tpKSJHRbE8sFfS6aqsXZ67TQjfwfsxULVbg==}
@@ -3644,7 +3644,7 @@ snapshots:
     dependencies:
       lodash: 4.18.1
 
-  '@n3ary/gtfs-spec@0.3.0':
+  '@n3ary/gtfs-spec@0.3.1':
     dependencies:
       csv-parse: 7.0.1
       zod: 4.4.3
