@@ -18,6 +18,8 @@
  * on `kind`. See docs/concepts/vehicle.md.
  */
 
+import type { LatLon } from '@n3ary/neary-gtfs-spec/shape';
+
 /** A single transit route as the UI sees it. */
 export interface Route {
   /** GTFS route_id — a free-form text identifier per the GTFS spec.
@@ -89,9 +91,7 @@ export interface Station {
 }
 
 /** GPS fix snapshot — used historically; kept for compat. */
-export interface GpsFix {
-  lat: number;
-  lon: number;
+export interface GpsFix extends LatLon {
   /** Unix ms timestamp. */
   observedAt: number;
 }
@@ -108,9 +108,7 @@ export type LiveSource = 'gtfs-rt';
 export type Confidence = 'high' | 'medium' | 'low';
 /** Vehicle position with provenance, so the UI can choose how much to
  *  trust it without re-deriving from kind. */
-export interface VehiclePosition {
-  lat: number;
-  lon: number;
+export interface VehiclePosition extends LatLon {
   /** Where this position came from. */
   source: 'gps' | 'predicted-from-schedule' | 'predicted-from-gps';
   /** Unix ms — GPS fix time for `source=gps`, prediction time otherwise. */
