@@ -25,7 +25,7 @@ isn't obvious from reading [src/](../src/).
 
 ## For AI agents
 
-Start at [../AGENTS.md](../AGENTS.md) for the canonical agent guide, then:
+Start at [AGENTS.md](../AGENTS.md) for the canonical agent guide, then:
 
 1. [architecture/system-overview.md](architecture/system-overview.md) — what does the system do.
 2. [concepts/](concepts/) — what does this term mean.

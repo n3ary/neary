@@ -31,7 +31,7 @@
  * Pure. No DOM, no stores, no I/O.
  */
 
-import { haversineMeters } from '@n3ary/neary-gtfs-spec/shape';
+import { haversineMeters } from '@n3ary/gtfs-spec/shape';
 import type { Confidence } from './types';
 import type { TodBucket } from './timeOfDay';
 
@@ -80,7 +80,7 @@ export interface FeedSpeedConfig {
 /** Generic fallback used when a feed's blob has no `_neary_config` table
  *  or no `timing` key. Values approximate a typical European urban bus
  *  network. Feed-specific values always win and are written by the
- *  neary-gtfs pipeline into `_neary_config`. */
+ *  gtfs pipeline into `_neary_config`. */
 export const DEFAULT_FEED_SPEED_CONFIG: FeedSpeedConfig = {
   kmh_peak: 15,
   kmh_offpeak: 25,

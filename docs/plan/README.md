@@ -5,7 +5,7 @@ Plans are short-lived work artifacts on a feature branch. They do
 into `../specs/` or `../concepts/` and the unfinished pieces become
 GitHub issues on the repo where the code will be written.
 
-For the full lifecycle, see [../standards/issue-plan-lifecycle.md](../standards/issue-plan-lifecycle.md).
+For the full lifecycle, see [standards/issue-plan-lifecycle.md](../standards/issue-plan-lifecycle.md).
 
 ## How to use this directory
 

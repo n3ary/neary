@@ -109,7 +109,7 @@ describe('enrichObservations — orphan passthrough', () => {
 describe('enrichObservations — TEMP cluj trip_id recovery', () => {
   // REMOVE this describe block when `packages/gtfs-rt` ships canonical
   // direction_id + start_time upstream (see
-  // https://github.com/ciotlosm/neary-gtfs/issues/36)
+  // https://github.com/n3ary/gtfs/issues/36)
   // step 4). The block under test lives in enrichObservations.ts.
 
   it('recovers direction_id + start_time from a Cluj-shaped trip_id when start_time is empty', () => {

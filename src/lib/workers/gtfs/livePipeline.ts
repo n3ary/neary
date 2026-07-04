@@ -21,7 +21,7 @@ import { fetchVehiclePositions, RtUnavailableError } from '$lib/data/live/gtfsRt
 import { DEFAULT_CONFIG } from '$lib/domain/config';
 import { enrichObservations } from '$lib/domain/enrichObservations';
 import { reconcileWithLive } from '$lib/domain/reconcile';
-import { measurePolyline, type MeasuredPolyline } from '@n3ary/neary-gtfs-spec/shape';
+import { measurePolyline, type MeasuredPolyline } from '@n3ary/gtfs-spec/shape';
 import type { Vehicle } from '$lib/domain/types';
 
 import { getActiveTrips } from './queries/activeTrips';

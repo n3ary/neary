@@ -6,7 +6,7 @@
  * Abstracted so per-stop-class lookup (terminal vs through-stop) is a
  * one-file change when we have observation data.
  *
- * Mirrors `intermediateDwellSec` in `neary-gtfs/feeds/cluj-napoca/config.json`.
+ * Mirrors `intermediateDwellSec` in `gtfs/feeds/cluj-napoca/config.json`.
  */
 
 const DEFAULT_INTERMEDIATE_DWELL_SEC = 20;

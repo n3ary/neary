@@ -84,7 +84,7 @@ export interface GtfsRepo {
    *  Empty array for feeds that pre-date networks.txt support. */
   getNetworks(): Promise<Network[]>;
 
-  /** Per-feed config written by the neary-gtfs pipeline into `_neary_config`.
+  /** Per-feed config written by the gtfs pipeline into `_neary_config`.
    *  Returns an empty object for blobs that pre-date this table. */
   getFeedConfig(): Promise<NearyFeedConfig>;
 

@@ -82,12 +82,12 @@ Reads as a ladder of certainty:
 
 Two metadata fields complete the row:
 
-- `confidence: 'high' | 'medium' | 'low'` — see [../concepts/confidence.md](../concepts/confidence.md).
+- `confidence: 'high' | 'medium' | 'low'` — see [concepts/confidence.md](../concepts/confidence.md).
 - `liveSources: LiveSource[]` — empty for `scheduled`; populated for the GPS-backed kinds.
 
 Whether the trip "should be running right now" is on a separate axis,
 `schedule.tripPhase` (`next` / `last` / `on-route` / `later`). See
-[../concepts/vehicle.md](../concepts/vehicle.md).
+[concepts/vehicle.md](../concepts/vehicle.md).
 
 ### Why a discriminated union
 
@@ -108,7 +108,7 @@ The board is a sorted, capped, filtered list of `Vehicle`s for one stop.
 | Cap rows: now-group and `off-route` uncapped; context buckets (`incoming` / `drop-off` / `departed`) capped at `stationBoardMaxRows`; per-`(route, direction)` dedup when the board spans multiple cohorts | `capStationBoard()` in [stationBoard.ts](../../src/lib/domain/stationBoard.ts) |
 
 Buckets, ordering and urgency colors are documented in
-[../concepts/arrival-buckets.md](../concepts/arrival-buckets.md).
+[concepts/arrival-buckets.md](../concepts/arrival-buckets.md).
 
 ### Shared GPS ETA logic with the map
 

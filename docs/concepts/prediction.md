@@ -13,9 +13,9 @@ Source: [src/lib/domain/predictEta.ts](../../src/lib/domain/predictEta.ts), [src
 
 ## Settled decisions
 
-Distilled from the prediction-v2 plan (now deleted; tracked across issues on `neary` and `neary-gtfs`).
+Distilled from the prediction-v2 plan (now deleted; tracked across issues on `neary` and `gtfs`).
 
-- **Speed profile is per-feed, not per-route.** Lives in `neary-gtfs/feeds/<id>/config.json`.
+- **Speed profile is per-feed, not per-route.** Lives in `gtfs/feeds/<id>/config.json`.
 - **Intermediate-stop dwell flat 20 s.** Per-stop-class lookup is a future refinement.
 - **Cascade includes the city-centre tier** (v1 formula). Centroid baked once per feed at build time.
 - **`nowTicker = 15 s`** globally, synced with `livePollMs`. Map marker smoothness comes from RAF interpolation between ticks, not from a faster global tick.
@@ -23,7 +23,7 @@ Distilled from the prediction-v2 plan (now deleted; tracked across issues on `ne
 - **No Kalman, no ML, no always-on historical service.** Cascade is heuristic; everything's debuggable line by line.
 - **Validation is empirical.** No formal test corpus; quality is judged by using the app. A regression-MAE pipeline is explicit anti-goal until we feel the lack of one.
 - **Reconciliation matches by route order, not per-obs greedy.** Same `(route, dir)` cohort pairs bus with scheduled trip by sorted position, not by closest-match independently (which can swap two adjacent buses on a high-frequency line).
-- **Cross-repo math sharing is deferred.** `neary-gtfs` already maintains a manual vendored copy of polyline math and it has held up fine. No mirror tooling until the duplication actually hurts.
+- **Cross-repo math sharing is deferred.** `gtfs` already maintains a manual vendored copy of polyline math and it has held up fine. No mirror tooling until the duplication actually hurts.
 
 ## Three loops
 

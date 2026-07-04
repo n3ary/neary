@@ -1,13 +1,13 @@
 /*
- * Feed registry — fetches the app-facing feeds.json catalog from neary-gtfs.
+ * Feed registry — fetches the app-facing feeds.json catalog from gtfs.
  * The registry is published nightly to the `binaries` branch and fetched
  * via `raw.githubusercontent.com` (CORS-open, ~5-min edge cache).
  *
  * Each entry is one publishable transit feed. Where the underlying GTFS
  * zip came from is recorded in `source` but is otherwise an implementation
- * detail of neary-gtfs — the app only consumes `files.sqlite_gz`.
+ * detail of gtfs — the app only consumes `files.sqlite_gz`.
  *
- * Source contract: https://github.com/ciotlosm/neary-gtfs (schema at
+ * Source contract: https://github.com/n3ary/gtfs (schema at
  * schemas/feeds.schema.json).
  */
 
@@ -36,7 +36,7 @@ export interface Feed {
     type: 'transitous' | 'mobility-database' | 'remote';
     publisher: string;
     upstream_url?: string | null;
-    /** Set by neary-gtfs build-all.js for change-detection (HEAD ETag match ⇒ skip rebuild). */
+    /** Set by gtfs build-all.js for change-detection (HEAD ETag match ⇒ skip rebuild). */
     upstream_etag?: string | null;
   };
   files: {

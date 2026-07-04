@@ -18,7 +18,7 @@
  * on `kind`. See docs/concepts/vehicle.md.
  */
 
-import type { LatLon } from '@n3ary/neary-gtfs-spec/shape';
+import type { LatLon } from '@n3ary/gtfs-spec/shape';
 
 /** A single transit route as the UI sees it. */
 export interface Route {

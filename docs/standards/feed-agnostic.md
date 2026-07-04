@@ -17,7 +17,7 @@ Feeds that ship non-conformant data fix themselves upstream.
   in any code under `src/` is a CI-grade smell.
 - **MUST NOT** import feed-specific palettes, name maps, schedule
   patches, route-type overrides, or vehicle-type fallbacks. If a feed
-  needs them, they live in the producer (neary-gtfs and/or its source
+  needs them, they live in the producer (gtfs and/or its source
   adapters like cluj-napoca-gtfs-adapter), not here.
 - **MUST** fail loudly on missing required GTFS fields rather than
   silently substituting a feed-aware default. Optional fields degrade
@@ -30,7 +30,7 @@ Feeds that ship non-conformant data fix themselves upstream.
 
 | Symptom | Fix lives in |
 |---|---|
-| One feed renders wrong colors, names, routes | The feed's producer (neary-gtfs or its source adapter) |
+| One feed renders wrong colors, names, routes | The feed's producer (gtfs or its source adapter) |
 | GTFS spec violation (e.g. `route_desc` duplicates `route_long_name`) | The feed's producer, not here |
 | Real-time payload deviates from GTFS-RT proto | The feed's RT gateway, not here |
 | Every feed renders wrong | This repo — it's a bug in neary |

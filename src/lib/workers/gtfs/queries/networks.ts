@@ -5,7 +5,7 @@ import { selectAll } from '../sqlHelpers';
 /** Fallback for blobs built before network_color was added to the pipeline. */
 const FALLBACK_COLOR = '#5B2D8E';
 
-/** Networks from the feed. `color` is pre-computed by the neary-gtfs pipeline
+/** Networks from the feed. `color` is pre-computed by the gtfs pipeline
  *  and stored in the `network_color` column — the app reads it verbatim.
  *  Old blobs without the column get a neutral fallback; no color math here. */
 export function getNetworks(db: Database): Network[] {

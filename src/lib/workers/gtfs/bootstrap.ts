@@ -26,7 +26,7 @@ import { state } from './state';
 // ---------------------------------------------------------------------------
 // Source URL resolution per feed.
 //
-// neary-gtfs publishes to Cloudflare R2 served via the custom domain
+// gtfs publishes to Cloudflare R2 served via the custom domain
 // gtfs.n3ary.com. Each feeds.json entry has `files.sqlite_gz` as a
 // filename that embeds the first 12 hex chars of the gzipped-blob
 // sha256, so the URL is content-addressed: a content change produces

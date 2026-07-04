@@ -32,7 +32,7 @@ import {
   type LatLon,
   type MeasuredPolyline,
   type Polyline,
-} from '@n3ary/neary-gtfs-spec/shape';
+} from '@n3ary/gtfs-spec/shape';
 import { minSinceMidnightInTz } from './pipeline/timeUtils';
 import {
   DEFAULT_FEED_SPEED_CONFIG,

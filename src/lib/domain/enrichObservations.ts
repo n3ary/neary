@@ -72,7 +72,7 @@ function enrichOne(
 // TEMP: cluj-napoca trip_id recovery — REMOVE THIS ENTIRE BLOCK when
 // the producer's `packages/gtfs-rt` adapter ships canonical
 // `direction_id` + `start_time` for Cluj upstream. Tracked at
-// https://github.com/ciotlosm/neary-gtfs/issues/36 (producer-side
+// https://github.com/n3ary/gtfs/issues/36 (producer-side
 // fix) and https://github.com/ciotlosm/neary/issues/161 (consumer-side
 // removal trigger). Until the adapter lands, this is the only thing
 // keeping Cluj observations from collapsing to gps-only orphans.

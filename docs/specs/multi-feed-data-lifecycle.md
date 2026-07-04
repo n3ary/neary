@@ -63,7 +63,7 @@ Rules (run at end of every successful switch):
 3. If total OPFS bytes > 100 MB, evict by least-recent `last_used_at`
    until under budget.
 4. When evicting a feed, also drop any favorites scoped to that feed
-   (see [../concepts/feeds.md](../concepts/feeds.md)). Soft-warn the
+   (see [concepts/feeds.md](../concepts/feeds.md)). Soft-warn the
    user; they can re-pick the city to re-download.
 
 100 MB / ~5 MB per feed ≈ 20 cities cached. iOS Safari shows an install

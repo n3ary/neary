@@ -9,7 +9,7 @@ never picks an agency — they pick a feed.
 
 ## Where feeds come from
 
-The [neary-gtfs](https://github.com/ciotlosm/neary-gtfs) repo publishes
+The [gtfs](https://github.com/n3ary/gtfs) repo publishes
 [feeds.json](../specs/feeds-json.md) to Cloudflare R2, read by the app
 via `gtfs.n3ary.com`. The schema and per-feed fields are documented
 there.
@@ -40,7 +40,7 @@ Consequences:
 
 ## Lifecycle
 
-See [../specs/multi-feed-data-lifecycle.md](../specs/multi-feed-data-lifecycle.md) for:
+See [specs/multi-feed-data-lifecycle.md](../specs/multi-feed-data-lifecycle.md) for:
 - Cold vs warm switch flow
 - Freshness checks (ETag + per-feed hash)
 - LRU eviction (~100 MB budget)
