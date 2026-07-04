@@ -3,6 +3,7 @@ packages:
 minimumReleaseAgeExclude:
   - '@n3ary/gtfs-spec@0.3.0'
   - '@n3ary/gtfs-spec@0.3.1'
+  - '@n3ary/gtfs-spec@0.3.2'
 
 # Minimum release age for newly published packages. Protects against
 # freshly-published typosquats slipping into the install. Set to 0
