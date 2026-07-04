@@ -8,3 +8,17 @@ minimumReleaseAgeExclude:
 # here because the @n3ary/gtfs-spec dep is a private in-org package
 # that's versioned in lockstep with the consumer; no supply-chain
 # risk from short windows. Bump if adopting from npmjs.
+
+# pnpm 11 blocks postinstall/build scripts by default. The Cloudflare
+# Pages deploy workflow runs `pnpm add wrangler@4` from the
+# cloudflare/wrangler-action@v4, which transitively needs native
+# binaries built from esbuild + sharp + workerd's install scripts.
+# Pre-approve these so the deploy doesn't fail with
+# ERR_PNPM_IGNORED_BUILDS.
+#
+# Re-evaluate if any of these packages get compromised upstream —
+# these scripts run on the deploy runner, not in the published bundle.
+allowBuilds:
+  esbuild: true
+  sharp: true
+  workerd: true
