@@ -76,7 +76,7 @@ jobs:
         uses: cloudflare/wrangler-action@v4
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          accountId: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           # --commit-dirty=true silences wrangler's "uncommitted changes"
           # warning. The wrangler-action@v4 auto-runs `pnpm add wrangler@4`
           # which mutates package.json + pnpm-lock.yaml in the runner's
