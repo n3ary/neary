@@ -1,11 +1,11 @@
 # feeds.json
 
-The app-facing catalog published by the [neary-gtfs](https://github.com/ciotlosm/neary-gtfs) repo.
+The app-facing catalog published by the [gtfs](https://github.com/n3ary/gtfs) repo.
 
 **Live URL**: `https://gtfs.n3ary.com/feeds.json` (Cloudflare R2 via custom domain)
 
 **Schema** (authoritative, Ajv-validated at build time):
-`https://github.com/ciotlosm/neary-gtfs/blob/main/schemas/feeds.schema.json`
+`https://github.com/n3ary/gtfs/blob/main/schemas/feeds.schema.json`
 
 This doc captures the contract from the app's perspective.
 
@@ -76,9 +76,9 @@ See [multi-feed-data-lifecycle.md](multi-feed-data-lifecycle.md#freshness-check)
 
 If `feeds.json` needs a breaking schema change:
 
-1. Open a PR on the neary-gtfs repo first.
+1. Open a PR on the gtfs repo first.
 2. Land app-side reader changes that handle both shapes (back-compat window).
-3. Cut neary-gtfs pipeline to publish the new schema to R2.
+3. Cut gtfs pipeline to publish the new schema to R2.
 4. Remove the back-compat code from the app.
 
 Versioning: no `/v1/feeds.json` style; one file at a stable URL.

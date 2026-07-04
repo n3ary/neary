@@ -208,7 +208,7 @@ describe('reconcileWithLive (route+direction+startTime match)', () => {
     // observation that reaches reconcile with an empty startTime —
     // because the feed didn't populate it — cannot be matched. Feeds
     // that publish missing `start_time` should be fixed in the producer
-    // (neary-gtfs) before the data reaches the browser; this test pins
+    // (gtfs) before the data reaches the browser; this test pins
     // the contract that without a populated startTime, no match happens.
     const sched = [scheduled({ tripId: 't-1', tripStartMin: 14 * 60 + 21 })];
     const { stats } = reconcileWithLive(
@@ -425,14 +425,14 @@ describe('reconcileWithLive (kind:live emission for unmatched obs)', () => {
   });
 });
 
-// ---------------------------------------------------------------------------
+// ------------------------------------------------------------------------
 // Route-order pairing (resolves the "no-overtake invariant" cases that
 // greedy-by-timing-delta can mis-pair on high-frequency lines). Tests
 // build a 10 km straight-line shape and place live obs at known
 // positions along it.
-// ---------------------------------------------------------------------------
+// ------------------------------------------------------------------------
 
-import { measurePolyline } from '@n3ary/neary-gtfs-spec/shape';
+import { measurePolyline } from '@n3ary/gtfs-spec/shape';
 
 describe('reconcileWithLive (route-order pairing with shape)', () => {
   // 10 km straight-line shape east of (46.7, 23.6). At Cluj's latitude,

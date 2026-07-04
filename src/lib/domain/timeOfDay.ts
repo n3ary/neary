@@ -21,7 +21,7 @@ export interface TodProfile {
  *  table or no `timing` key. Values are a rough approximation of a typical
  *  European urban network — good enough to avoid catastrophic speed estimates
  *  but not tuned to any specific city. Feed-specific values always win and
- *  are written by the neary-gtfs pipeline into `_neary_config`. */
+ *  are written by the gtfs pipeline into `_neary_config`. */
 export const DEFAULT_TOD_PROFILE: TodProfile = {
   peak_windows: [
     { from: '07:30', to: '09:00' },

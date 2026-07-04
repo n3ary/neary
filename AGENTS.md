@@ -53,7 +53,7 @@ The rules below are how those principles apply to agent behavior in this repo.
 
 Neary is a generic GTFS consumer. No per-feed branches, no per-agency
 workarounds, no city-specific fallbacks. Feeds that ship non-conformant
-data fix themselves upstream (neary-gtfs or the source adapter). Full
+data fix themselves upstream (gtfs or the source adapter). Full
 rules: [docs/standards/feed-agnostic.md](docs/standards/feed-agnostic.md).
 
 ### Worktrees

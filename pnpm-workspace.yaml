@@ -1,0 +1,10 @@
+packages:
+  - '.'
+minimumReleaseAgeExclude:
+  - '@n3ary/gtfs-spec@0.3.0'
+
+# Minimum release age for newly published packages. Protects against
+# freshly-published typosquats slipping into the install. Set to 0
+# here because the @n3ary/gtfs-spec dep is a private in-org package
+# that's versioned in lockstep with the consumer; no supply-chain
+# risk from short windows. Bump if adopting from npmjs.

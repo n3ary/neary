@@ -13,7 +13,7 @@ export interface NearyFeedConfig {
 }
 
 /** Read per-feed config from the `_neary_config` table written by the
- *  neary-gtfs pipeline. Returns an empty object for older blobs that
+ *  gtfs pipeline. Returns an empty object for older blobs that
  *  pre-date this table — callers should fall back to app-side defaults. */
 export function getFeedConfig(db: Database): NearyFeedConfig {
   const tables = selectAll<{ name: string }>(

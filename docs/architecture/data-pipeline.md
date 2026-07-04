@@ -2,9 +2,9 @@
 
 How GTFS data gets from the world into the app.
 
-## Upstream: neary-gtfs
+## Upstream: gtfs
 
-The separate [neary-gtfs](https://github.com/ciotlosm/neary-gtfs) repo runs
+The separate [gtfs](https://github.com/n3ary/gtfs) repo runs
 a daily GitHub Action (00:30 UTC) that:
 
 1. Reads `countries.json` (whitelist of Transitous source names).
@@ -15,7 +15,7 @@ a daily GitHub Action (00:30 UTC) that:
 5. Converts each feed's `.gtfs.zip` to `<id>-<hash12>.sqlite3.gz`.
 6. Writes [feeds.json](../specs/feeds-json.md) (Ajv-validated against
    `schemas/feeds.schema.json`).
-7. Uploads `outputs/` to the `neary-gtfs` Cloudflare R2 bucket via S3 API.
+7. Uploads `outputs/` to the Cloudflare R2 bucket named `gtfs` via S3 API.
 
 All published artifacts are served from Cloudflare R2 via the custom
 domain: `https://gtfs.n3ary.com/feeds.json`
@@ -89,7 +89,7 @@ Inputs joined per trip:
 | Trip polyline | `getShapesForTrips` | Map markers and station ETA |
 | Per-stop `shape_dist_traveled[]` | `getStopDistancesForTrips` (station) / inline on `getRouteMapView` (map) | Per-segment + dwell walk |
 
-Values come from neary-gtfs's `stop_times.shape_dist_traveled` (Cluj
+Values come from gtfs's `stop_times.shape_dist_traveled` (Cluj
 writes it at build time via the timing/shape pipeline). Trips missing
 the column fall back to single-segment ETA.
 

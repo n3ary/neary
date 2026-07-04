@@ -43,7 +43,7 @@ matched rows to `kind: 'tracked'` and appending route-relevant
 
 Additional live sources are added as more GTFS-RT URLs in the same
 field (see [multi-source-live-data.md](multi-source-live-data.md)).
-Any non-GTFS-RT provider is out of scope for neary itself and lives
+Any non-GTFS-RT provider is out of scope for app itself and lives
 in an adapter service that emits GTFS-RT.
 
 ## Why GTFS-RT (and only GTFS-RT)
@@ -53,7 +53,7 @@ in an adapter service that emits GTFS-RT.
 2. **Direct trip-level metadata** — `trip_id`, `route_id`,
    `direction_id` come out of the box.
 3. **No API keys in the client.** If a source needs auth, the
-   adapter service holds the key; neary only speaks the open,
+   adapter service holds the key; app only speaks the open,
    unauthenticated protocol.
 
 > [!CAUTION]

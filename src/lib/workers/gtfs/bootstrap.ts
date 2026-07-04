@@ -23,17 +23,17 @@ import { shapeCache } from './shapeCache';
 import { resetLiveSnapshot, stopLiveTimer } from './livePipeline';
 import { state } from './state';
 
-// ---------------------------------------------------------------------------
+// ------------------------------------------------------------------------
 // Source URL resolution per feed.
 //
-// neary-gtfs publishes to Cloudflare R2 served via the custom domain
+// gtfs publishes to Cloudflare R2 served via the custom domain
 // gtfs.n3ary.com. Each feeds.json entry has `files.sqlite_gz` as a
 // filename that embeds the first 12 hex chars of the gzipped-blob
 // sha256, so the URL is content-addressed: a content change produces
 // a new filename, and any cached copy at an old URL is by construction
 // still correct for that URL. After first fetch the file lives in OPFS
 // so we never re-download unless the hash changes.
-// ---------------------------------------------------------------------------
+// ------------------------------------------------------------------------
 
 const BINARIES_BASE = 'https://gtfs.n3ary.com';
 const OPFS_POOL_NAME = 'neary-gtfs';
@@ -50,11 +50,11 @@ function seedUrlFor(feed: Feed): string {
   return `${BINARIES_BASE}/${feed.files.sqlite_gz}`;
 }
 
-// ---------------------------------------------------------------------------
+// ------------------------------------------------------------------------
 // Lazy + feed-aware OPFS-SAH pool. Pool is created once (it persists
 // across feed switches — multiple feed files coexist in OPFS). The
 // per-feed Database is opened by `bootstrap()` below.
-// ---------------------------------------------------------------------------
+// ------------------------------------------------------------------------
 
 let poolPromise: Promise<Awaited<ReturnType<Sqlite3Static['installOpfsSAHPoolVfs']>>> | null = null;
 
@@ -115,7 +115,7 @@ export async function getPool() {
   return poolPromise;
 }
 
-// ---------------------------------------------------------------------------
+// ------------------------------------------------------------------------
 // Streaming seed pipeline. Peeks the first chunk so we can decide whether
 // to run the body through DecompressionStream (some dev servers like Vite's
 // sirv auto-decompress `.gz` responses; R2 does not), reports progress over
@@ -135,7 +135,7 @@ export async function getPool() {
 // one ~16 MB coalesced chunk + DecompressionStream's own small internal
 // buffer (~17 MB total) — still well under iOS Safari's per-tab ceiling
 // and orders of magnitude below what buffering the whole blob would need.
-// ---------------------------------------------------------------------------
+// ------------------------------------------------------------------------
 const CHUNK_COALESCE_BYTES = 16 * 1024 * 1024;
 const COMPRESSED_HIGHWATERMARK_BYTES = 1024 * 1024;
 

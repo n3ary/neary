@@ -1,7 +1,7 @@
 # Neary
 
 Real-time transit PWA for Cluj-Napoca and other GTFS feeds, powered by the
-separate [neary-gtfs](https://github.com/ciotlosm/neary-gtfs) data pipeline.
+separate [gtfs](https://github.com/n3ary/gtfs) data pipeline.
 
 ## Repository layout
 

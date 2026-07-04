@@ -23,7 +23,7 @@ The drift check workflow (`.github/workflows/check-standards-drift.yml`) fails a
 
 ## Local (neary-specific)
 
-- `feed-agnostic.md` — the "no per-feed exceptions in app code" rule is specific to the neary PWA's contract with feed data. The producer repos (`neary-gtfs`, `cluj-napoca-gtfs-adapter`) are upstream of neary's data and don't apply.
+- `feed-agnostic.md` — the "no per-feed exceptions in app code" rule is specific to the app PWA's contract with feed data. The producer repos (`gtfs`, `cluj-napoca-gtfs-adapter`) are upstream of app's data and don't apply.
 
 ## When you add a new standard
 

@@ -28,7 +28,7 @@ import {
   projectOnPolyline,
   type LatLon,
   type Polyline,
-} from '@n3ary/neary-gtfs-spec/shape';
+} from '@n3ary/gtfs-spec/shape';
 import {
   estimateSegmentSpeed,
   type FeedSpeedConfig,

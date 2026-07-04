@@ -131,7 +131,7 @@
   // first route of that type, straight from GTFS. No selection logic,
   // no fallback overrides — whatever the feed shipped is what the
   // chip shows. The data layer substitutes a single neutral fallback
-  // (#F3513C, the anchor neary-gtfs uses for feeds with no usable
+  // (#F3513C, the anchor gtfs uses for feeds with no usable
   // colors) when route_color is missing; that flows through here.
   const colorByType = $derived.by<Map<VehicleType, string>>(() => {
     const m = new Map<VehicleType, string>();

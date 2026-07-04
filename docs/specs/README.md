@@ -8,7 +8,7 @@ is in the code, there's no spec doc here.
 |---|---|
 | [vehicles-and-views.md](vehicles-and-views.md) | Cross-cutting design: Vehicle union + UI taxonomy + per-bucket interaction. Long-lived design reasoning |
 | [multi-feed-data-lifecycle.md](multi-feed-data-lifecycle.md) | OPFS storage model, switch flow, eviction policy, pin-for-offline. Cross-layer contract (worker ↔ UI) |
-| [feeds-json.md](feeds-json.md) | feeds.json schema published by the separate `neary-gtfs` repo. Cross-repo contract |
+| [feeds-json.md](feeds-json.md) | feeds.json schema published by the separate `gtfs` repo. Cross-repo contract |
 | [gtfs-rt-contract.md](gtfs-rt-contract.md) | Producer / consumer split on RT cleanup; spec-cited rules for `TripDescriptor` fields. Locks in the feed-agnostic boundary |
 | [live-data-pipeline.md](live-data-pipeline.md) | Reconciler rationale, source-of-truth for tz handling, freshness rules |
 | [multi-source-live-data.md](multi-source-live-data.md) | Multi-URL `realtime.vehicle_positions`, per-tick merge, no provider-specific clients, no client-side keys |

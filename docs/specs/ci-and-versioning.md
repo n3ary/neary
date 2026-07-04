@@ -46,7 +46,7 @@ Push to main
        ├─ setup node v24 (actions/setup-node@v6)
        ├─ npm ci
        ├─ npm run build
-       └─ cloudflare/wrangler-action@v3 → wrangler pages deploy build --project-name=neary --branch=main
+       └─ cloudflare/wrangler-action@v3 → wrangler pages deploy build --project-name=app --branch=main
 ```
 
 Concurrency: `production-deploy` with `cancel-in-progress` so a fast-second

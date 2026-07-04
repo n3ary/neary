@@ -40,7 +40,7 @@
 import type { LiveVehicleObservation } from '$lib/data/live/gtfsRtClient';
 import type { Vehicle } from './types';
 import { minSinceMidnightInTz, timeToMinutes } from './pipeline/timeUtils';
-import { projectOnPolyline, type MeasuredPolyline } from '@n3ary/neary-gtfs-spec/shape';
+import { projectOnPolyline, type MeasuredPolyline } from '@n3ary/gtfs-spec/shape';
 
 const TOLERANCE_FLOOR_MIN = 1;
 const TOLERANCE_CEILING_MIN = 30;
@@ -346,12 +346,12 @@ function clampTolerance(value: number): number {
   return Math.max(TOLERANCE_FLOOR_MIN, Math.min(TOLERANCE_CEILING_MIN, value));
 }
 
-// ---------------------------------------------------------------------------
+// ------------------------------------------------------------------------
 // Cohort-level matchers. Each takes one (route, dir) cohort's scheduled
 // rows and live observations and returns the matched pairs (plus an
 // `ambiguous` telemetry count). The outer reconciler aggregates results
 // across cohorts.
-// ---------------------------------------------------------------------------
+// ------------------------------------------------------------------------
 
 type SchedEntry = {
   idx: number;

@@ -14,7 +14,7 @@ concurrency:
   cancel-in-progress: true
 
 # Contents: read so we can check out the source.
-# The @n3ary/neary-gtfs-spec install uses the NPM_TOKEN secret
+# The @n3ary/gtfs-spec install uses the NPM_TOKEN secret
 # (an org token with read:packages on the org) rather than the
 # GITHUB_TOKEN.
 permissions:
@@ -34,28 +34,31 @@ jobs:
         uses: actions/setup-node@v6.4.0
         with:
           node-version: 24
-          cache: npm
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v6.0.9
+        with:
+          version: 11
 
       - name: Install dependencies
         # The @n3ary scope maps to GitHub Packages (see .npmrc).
-        # NPM_TOKEN is an org token with read:packages + read:packages
-        # on @n3ary/neary-gtfs-spec. Set via the repo's secrets in
-        # GitHub web UI.
+        # NPM_TOKEN is an org token with read:packages on @n3ary/gtfs-spec.
+        # Set via the repo's secrets in GitHub web UI.
         env:
           NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
-        run: npm ci
+        run: pnpm install --frozen-lockfile
 
       - name: Build production bundle
-        run: npm run build
+        run: pnpm run build
 
       # Deploy the static build to Cloudflare Pages via wrangler.
       # Wrangler reads CLOUDFLARE_API_TOKEN + CLOUDFLARE_ACCOUNT_ID from
       # the environment; the token needs the "Cloudflare Pages: Edit"
-      # scope. Custom domain (n3ary.com) is attached to the project
+      # scope. Custom domain (app.n3ary.com) is attached to the project
       # once (out of band); each deploy is picked up automatically.
       - name: Deploy to Cloudflare Pages
         uses: cloudflare/wrangler-action@v4
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           accountId: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
-          command: pages deploy build --project-name=neary --branch=main
+          command: pages deploy build --project-name=app --branch=main

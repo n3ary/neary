@@ -58,6 +58,7 @@ deno.lock
 .kiro/settings/
 .kiro/user/
 .kiro/cache/
+.kilo/worktrees/
 
 # Temporary files
 *.tmp

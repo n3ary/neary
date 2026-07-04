@@ -65,10 +65,10 @@ flowchart TB
 | Component | Role | Owner | Cost driver | Failure impact |
 |---|---|---|---|---|
 | **GitHub Actions — PR validation** | `npm run check` + `npm test` + `npm run build` on every PR (also auto-bumps `package.json#version` on the PR branch) | GitHub | Free tier (2 000 min/month) | PR can't merge |
-| **GitHub Actions — deploy-production** | `wrangler pages deploy build --project-name=neary --branch=main` on push to `main` | GitHub + Cloudflare | Free tier + Wrangler invocation | Latest commits not live in production |
+| **GitHub Actions — deploy-production** | `wrangler pages deploy build --project-name=app --branch=main` on push to `main` | GitHub + Cloudflare | Free tier + Wrangler invocation | Latest commits not live in production |
 | **Cloudflare Pages** | Static hosting for the PWA (`build/`) | Cloudflare | Free tier (unlimited requests) | PWA down |
 | **Cloudflare Pages Function** — `/functions/api/rt/[feed]/[[endpoint]].js` | RT passthrough proxy: fetch `feeds.json`, look up upstream RT URL, fetch + return protobuf | Cloudflare | Workers Paid $5/mo + $0.30/M requests after 10 M | Live RT offline (UI shows schedule-only data) |
-| **Cloudflare R2** — `neary-gtfs` bucket | Stores `feeds.json` + `<id>-<hash12>.sqlite3.gz`. Populated by the sister `neary-gtfs` repo's daily pipeline; consumed via `gtfs.n3ary.com` | Cloudflare | $0.015/GB/month + $0.36/M Class A operations | App can't bootstrap (no manifest, no blobs) |
+| **Cloudflare R2** — `gtfs` bucket | Stores `feeds.json` + `<id>-<hash12>.sqlite3.gz`. Populated by the sister `gtfs` repo's daily pipeline; consumed via `gtfs.n3ary.com` | Cloudflare | $0.015/GB/month + $0.36/M Class A operations | App can't bootstrap (no manifest, no blobs) |
 | **Cloudflare DNS** — `n3ary.com` → Pages, `gtfs.n3ary.com` → R2 | Custom-domain routing for both the app and the data | Cloudflare | Free with Pages + R2 | App URL down (`n3ary.com`) and/or data URL down (`gtfs.n3ary.com`) |
 | **Per-feed RT endpoints** (e.g. `cluj-rt-feed.gtfs.ro`) | Live protobuf per operator; consumed via the Pages Function | Operators | Free | Live view falls back to schedule-only for that feed |
 | **Browser — PWA bundle** | The actual app | User device | Free | — |
@@ -76,6 +76,6 @@ flowchart TB
 | **Browser — OPFS** | `feeds-meta.json` + per-feed `*.sqlite3` blobs | User device | Free | App can't load feeds (forces re-download on next launch) |
 | **Browser — localStorage** | `userPrefs` (theme, feedId, toggles) + `favorites` per-feed | User device | Free | App may not remember settings between sessions |
 
-## Planned: Hetzner RT adapter (tracking [neary-gtfs#34](https://github.com/ciotlosm/neary-gtfs/issues/34))
+## Planned: Hetzner RT adapter (tracking [gtfs#34](https://github.com/n3ary/gtfs/issues/34))
 
-When the producer monorepo ships, the per-feed RT adapter moves to a Hetzner CX22 (€4.50/month fixed), with the existing Pages Function becoming a thin cache-and-passthrough layer in front. Spec: [gtfs-rt-contract.md](../specs/gtfs-rt-contract.md). Until then, the existing Pages Function does the passthrough and the producer-side quirks live inline in [neary](https://github.com/ciotlosm/neary) via the TEMP `recoverClujTripFields` block in `src/lib/domain/enrichObservations.ts` (tracked by [#161](https://github.com/ciotlosm/neary/issues/161)).
+When the producer monorepo ships, the per-feed RT adapter moves to a Hetzner CX22 (€4.50/month fixed), with the existing Pages Function becoming a thin cache-and-passthrough layer in front. Spec: [gtfs-rt-contract.md](../specs/gtfs-rt-contract.md). Until then, the existing Pages Function does the passthrough and the producer-side quirks live inline in [neary](https://github.com/n3ary/app) via the TEMP `recoverClujTripFields` block in `src/lib/domain/enrichObservations.ts` (tracked by [#161](https://github.com/n3ary/app/issues/161)).

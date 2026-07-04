@@ -1,6 +1,6 @@
 /*
  * feedConfigStore — reads per-feed timing/speed config from the SQLite blob
- * (written by the neary-gtfs pipeline) and exposes it as Svelte 5 reactive
+ * (written by the gtfs pipeline) and exposes it as Svelte 5 reactive
  * state. Falls back to app-side defaults for feeds or blobs that pre-date
  * the _neary_config table.
  *

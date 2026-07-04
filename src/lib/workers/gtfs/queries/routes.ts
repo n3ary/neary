@@ -21,7 +21,7 @@ type RouteRow = {
   network_ids: string | null;
 };
 
-// `route_desc` was added to the SQLite schema (neary-gtfs `make-sqlite.js`)
+// `route_desc` was added to the SQLite schema (`gtfs` `make-sqlite.js`)
 // after the initial release; older feed blobs cached by clients won't
 // have the column and a bare SELECT would throw `no such column`.
 // Probe `PRAGMA table_info` once and project NULL when absent so the

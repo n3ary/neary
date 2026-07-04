@@ -20,10 +20,10 @@ import {
   filterForStationView,
   type ArrivalBucket,
 } from './buckets';
-import { haversineMeters } from '@n3ary/neary-gtfs-spec/shape';
+import { haversineMeters } from '@n3ary/gtfs-spec/shape';
 import { minSinceMidnightInTz } from './pipeline/timeUtils';
 import { predictArrivalFromGps } from './predictArrivalAlongShape';
-import { projectOnPolyline, type Polyline } from '@n3ary/neary-gtfs-spec/shape';
+import { projectOnPolyline, type Polyline } from '@n3ary/gtfs-spec/shape';
 import {
   DEFAULT_FEED_SPEED_CONFIG,
   type FeedSpeedConfig,

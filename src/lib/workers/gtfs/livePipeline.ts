@@ -21,7 +21,7 @@ import { fetchVehiclePositions, RtUnavailableError } from '$lib/data/live/gtfsRt
 import { DEFAULT_CONFIG } from '$lib/domain/config';
 import { enrichObservations } from '$lib/domain/enrichObservations';
 import { reconcileWithLive } from '$lib/domain/reconcile';
-import { measurePolyline, type MeasuredPolyline } from '@n3ary/neary-gtfs-spec/shape';
+import { measurePolyline, type MeasuredPolyline } from '@n3ary/gtfs-spec/shape';
 import type { Vehicle } from '$lib/domain/types';
 
 import { getActiveTrips } from './queries/activeTrips';
@@ -29,7 +29,7 @@ import { getShapesForTrips } from './queries/shapes';
 import { pushAllStationSubscribers } from './stationSubscribers';
 import { ensureDb, state } from './state';
 
-// ---------------------------------------------------------------------------
+// ------------------------------------------------------------------------
 // Tuning constants.
 //
 // LOOKBACK_MIN  — how far back to include trips that started in the past
@@ -38,7 +38,7 @@ import { ensureDb, state } from './state';
 // LOOKAHEAD_MIN — how far forward to include trips parked at origin
 //                 that haven't departed yet. 30 min catches the next
 //                 service window without growing the cohort excessively.
-// ---------------------------------------------------------------------------
+// ------------------------------------------------------------------------
 
 const LIVE_RECONCILE_LOOKBACK_MIN = 120;
 const LIVE_RECONCILE_LOOKAHEAD_MIN = 30;

@@ -1,7 +1,7 @@
 # GTFS-RT contract — producer owns cleanup
 
 The contract that makes the consumer feed-agnostic: the
-[neary-gtfs](https://github.com/ciotlosm/neary-gtfs) producer is the
+[gtfs](https://github.com/n3ary/gtfs) producer is the
 **single owner of per-feed RT cleanup**. The consumer treats every
 `realtime.vehicle_positions` URL in [feeds-json.md](feeds-json.md)
 as **plain, spec-compliant GTFS-RT protobuf** and never branches on
@@ -23,7 +23,7 @@ knowledge and therefore must live upstream, not in the consumer.
 
 The split:
 
-- **Producer's RT adapter** (`neary-gtfs/packages/gtfs-rt/`) — owns
+- **Producer's RT adapter** (`gtfs/packages/gtfs-rt/`) — owns
   per-feed quirks, multi-source merge, and any other RT shaping.
   Publishes a clean `FeedMessage` to a URL the consumer can fetch.
 - **Consumer** (`neary`, this repo) — fetches the clean URL, decodes
@@ -155,7 +155,7 @@ would put per-feed knowledge back into the consumer.
 
 ## What the producer does
 
-The producer's RT adapter (`neary-gtfs/packages/gtfs-rt/`):
+The producer's RT adapter (`gtfs/packages/gtfs-rt/`):
 
 1. Polls one or more upstream RT endpoints per feed at ~30 s cadence.
 2. **Merges multi-source observations** (per
@@ -202,7 +202,7 @@ If the GTFS-RT spec itself changes (rare), or if we add a new
 `realtime.*` endpoint type, the contract above is the canonical
 reference. Changes should be coordinated across both repos:
 
-1. Producer: add the new shape or quirk in `neary-gtfs`.
+1. Producer: add the new shape or quirk in `gtfs`.
 2. Consumer: add a reader for the new shape in this repo.
 3. Both: ship together or with a back-compat window.
 
