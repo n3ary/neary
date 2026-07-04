@@ -76,3 +76,6 @@ refactoring-toolkit/
 src/debug-*.js
 tools/test/
 tools/debug/
+
+# CI deploy bundle (Cloudflare Pages) — never committed
+deploy/
