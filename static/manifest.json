@@ -3,15 +3,31 @@
   "short_name": "Neary",
   "description": "Real-time transit companion",
   "start_url": "/",
+  "scope": "/",
   "display": "standalone",
-  "background_color": "#1d4ed8",
-  "theme_color": "#1d4ed8",
+  "orientation": "portrait",
+  "lang": "en",
+  "categories": ["transit", "travel", "navigation"],
+  "background_color": "#4F46E5",
+  "theme_color": "#4F46E5",
   "icons": [
     {
-      "src": "/favicon.svg",
+      "src": "https://branding.n3ary.com/neary-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "https://branding.n3ary.com/neary-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "https://branding.n3ary.com/logo/neary-logo-maskable.svg",
       "sizes": "any",
       "type": "image/svg+xml",
-      "purpose": "any maskable"
+      "purpose": "maskable"
     }
   ]
 }

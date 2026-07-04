@@ -2,13 +2,38 @@
 <html lang="en" data-theme="auto">
   <head>
     <meta charset="utf-8" />
-    <link rel="icon" type="image/svg+xml" href="%sveltekit.assets%/favicon.svg" />
-    <link rel="apple-touch-icon" href="%sveltekit.assets%/favicon.svg" />
+    <!--
+      Brand assets (favicon, apple-touch-icon, manifest icons, social
+      card) are served from the canonical CDN at branding.n3ary.com
+      rather than this repo's /static. See
+      https://github.com/n3ary/branding/blob/main/SETUP.md for the
+      asset URL map and the consumer-update issue #183 for context.
+    -->
+
+    <link rel="icon" type="image/x-icon" href="https://branding.n3ary.com/favicon.ico" />
+    <link rel="icon" type="image/png" sizes="32x32" href="https://branding.n3ary.com/neary-32.png" />
+    <link rel="icon" type="image/png" sizes="16x16" href="https://branding.n3ary.com/neary-16.png" />
+    <link
+      rel="apple-touch-icon"
+      sizes="180x180"
+      href="https://branding.n3ary.com/neary-180.png"
+    />
+
     <link rel="manifest" href="/manifest.json" />
+
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-    <meta name="theme-color" content="#1d4ed8" />
+    <meta name="theme-color" content="#4F46E5" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+
+    <!-- Open Graph / Twitter card — served from the brand CDN -->
+    <meta property="og:image" content="https://branding.n3ary.com/social/social-preview.png" />
+    <meta property="og:image:width" content="1280" />
+    <meta property="og:image:height" content="640" />
+    <meta property="og:image:alt" content="Neary — real-time transit companion" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:image" content="https://branding.n3ary.com/social/social-preview.png" />
+
     %sveltekit.head%
   </head>
   <body>
