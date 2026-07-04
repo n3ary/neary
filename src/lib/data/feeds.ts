@@ -33,7 +33,7 @@ export interface Feed {
     agency_url: string | null;
   }>;
   source: {
-    type: 'transitous' | 'mobility-database' | 'remote';
+    type: 'transitous' | 'mobility-database' | 'remote' | 'adapter';
     publisher: string;
     upstream_url?: string | null;
     /** Set by gtfs build-all.js for change-detection (HEAD ETag match ⇒ skip rebuild). */
@@ -41,9 +41,16 @@ export interface Feed {
   };
   files: {
     sqlite_gz: string | null;
+    /** Content-addressed GTFS Schedule .zip artifact. New in feeds.json
+     *  schema 2026-07 — every adapter-driven feed (and any feed opted
+     *  into the upstream-zip R2 publish) gets one. The app doesn't
+     *  consume the zip directly, but `bootstrap.ts` may opportunistically
+     *  expose it for debugging. */
+    gtfs_zip: string | null;
   };
   size_bytes: {
     sqlite_gz: number | null;
+    gtfs_zip: number | null;
   };
   /** sha256-... of sqlite_gz (the file the app actually downloads). */
   hash: string;
