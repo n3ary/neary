@@ -41,3 +41,7 @@ rules; everything else cascades from there.
 Cloudflare Pages auto-deploys `main` to https://n3ary.com. See
 [docs/specs/ci-and-versioning.md](docs/specs/ci-and-versioning.md) for
 the PR validation, auto-bump, and release flow.
+
+## License
+
+[PolyForm Noncommercial License 1.0.0](./LICENSE) — free for individuals, hobbyists, education, research, and charitable organizations. Any commercial use (paid products, paid services, or hosted services for revenue) needs a separate license from the author. See the LICENSE file for the full terms.
