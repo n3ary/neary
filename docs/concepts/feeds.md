@@ -40,7 +40,7 @@ Consequences:
 
 ## Lifecycle
 
-See [../specs/multi-feed-data-lifecycle.md](../specs/multi-feed-data-lifecycle.md) for:
+See [multi-feed-data-lifecycle.md](../specs/multi-feed-data-lifecycle.md) for:
 - Cold vs warm switch flow
 - Freshness checks (ETag + per-feed hash)
 - LRU eviction (~100 MB budget)

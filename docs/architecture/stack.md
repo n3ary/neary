@@ -31,7 +31,7 @@ Tech stack and non-functional targets. Authoritative dependency list is
 
 - Cloudflare Pages static deploy of `build/` after `vite build --config vite.config.ts`.
 - GitHub Actions: PR validation, auto-bump version on merge, deploy to production on push to `main`.
-- See [../specs/ci-and-versioning.md](../specs/ci-and-versioning.md).
+- See [ci-and-versioning.md](../specs/ci-and-versioning.md).
 
 ## Performance targets
 
