@@ -5,9 +5,9 @@ Every cloud / external / browser piece the app touches, in one diagram + one tab
 Cross-refs:
 - Tech stack table — [stack.md](stack.md)
 - Data flow (R2 → app → reconciler) — [data-pipeline.md](data-pipeline.md)
-- CI / versioning / deploy — [../specs/ci-and-versioning.md](../specs/ci-and-versioning.md)
-- PWA specifics (version polling, cache headers, safe-area) — [../specs/pwa.md](../specs/pwa.md)
-- Storage lifecycle (OPFS eviction, pinning, offline) — [../specs/multi-feed-data-lifecycle.md](../specs/multi-feed-data-lifecycle.md)
+- CI / versioning / deploy — [ci-and-versioning.md](../specs/ci-and-versioning.md)
+- PWA specifics (version polling, cache headers, safe-area) — [pwa.md](../specs/pwa.md)
+- Storage lifecycle (OPFS eviction, pinning, offline) — [multi-feed-data-lifecycle.md](../specs/multi-feed-data-lifecycle.md)
 
 ## Diagram
 

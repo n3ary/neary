@@ -60,7 +60,7 @@ PWA boot
 ```
 
 Lifecycle details (eviction, pinning, offline behavior) live in
-[../specs/multi-feed-data-lifecycle.md](../specs/multi-feed-data-lifecycle.md).
+[multi-feed-data-lifecycle.md](../specs/multi-feed-data-lifecycle.md).
 
 ## App side: steady state
 
@@ -71,7 +71,7 @@ Lifecycle details (eviction, pinning, offline behavior) live in
 | Manual refresh (L3) | on tap | Refresh button forces L1 + L2 immediately |
 
 The three loops are decoupled. Refresh button reasoning: see
-[../concepts/prediction.md](../concepts/prediction.md) and issue #163.
+[prediction.md](../concepts/prediction.md) and issue #163.
 
 ## ETA inputs shared by station + map
 
@@ -102,4 +102,4 @@ the column fall back to single-segment ETA.
 - `favorites` → localStorage, scoped per feed.
 
 OPFS budget cap is ~100 MB; eviction policy and switch flow in
-[../specs/multi-feed-data-lifecycle.md](../specs/multi-feed-data-lifecycle.md).
+[multi-feed-data-lifecycle.md](../specs/multi-feed-data-lifecycle.md).

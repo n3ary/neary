@@ -218,5 +218,5 @@ reference. Changes should be coordinated across both repos:
   semantics; the merge step moves to the producer's adapter
 - [feeds-json.md](feeds-json.md) — manifest contract; the
   `realtime.vehicle_positions` URL must point at a clean source
-- [../standards/feed-agnostic.md](../standards/feed-agnostic.md) —
+- [feed-agnostic.md](../standards/feed-agnostic.md) —
   the rule this contract enforces

@@ -70,7 +70,7 @@ Drill-downs (path-based for shareability + iOS back button):
    re-renders.
 
 Full data pipeline: [data-pipeline.md](data-pipeline.md).
-Multi-feed lifecycle in the worker: [../specs/multi-feed-data-lifecycle.md](../specs/multi-feed-data-lifecycle.md).
+Multi-feed lifecycle in the worker: [multi-feed-data-lifecycle.md](../specs/multi-feed-data-lifecycle.md).
 
 ## Three root-cause fixes vs v1
 
@@ -81,7 +81,7 @@ Multi-feed lifecycle in the worker: [../specs/multi-feed-data-lifecycle.md](../s
    thread reads from `reconciledVehiclesStore`; no live polling on main.
 3. **Vehicle taxonomy is data.** Discriminated union encodes what we know
    about each vehicle's position source — see
-   [../concepts/vehicle.md](../concepts/vehicle.md).
+   [vehicle.md](../concepts/vehicle.md).
 
 ## Feed-agnostic by construction
 
@@ -89,4 +89,4 @@ The app consumes GTFS as a contract; it carries no per-feed knowledge.
 Any non-conformance (e.g. `route_desc` duplicating `route_long_name`,
 placeholder route colors, malformed RT payloads) is fixed in the
 producer — gtfs or the upstream source adapter — never patched
-here. Rules: [../standards/feed-agnostic.md](../standards/feed-agnostic.md).
+here. Rules: [feed-agnostic.md](../standards/feed-agnostic.md).

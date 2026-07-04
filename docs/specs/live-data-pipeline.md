@@ -128,7 +128,7 @@ using a per-stop sibling's travel-time-from-origin (the global
 reconciler doesn't know the consumer's stop, so its ETA is
 terminus-relative).
 
-Future direction: see [../concepts/prediction.md](../concepts/prediction.md) and open issues #106, #162, #163.
+Future direction: see [prediction.md](../concepts/prediction.md) and open issues #106, #162, #163.
 
 ## Direction-id resolution
 
