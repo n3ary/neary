@@ -7,6 +7,11 @@ on:
     # if we ever re-enable auto-bump).
     paths-ignore:
       - '**/CHANGELOG.md'
+  # Manual trigger — use `gh workflow run deploy-production.yml --repo n3ary/app`
+  # to re-deploy without pushing a commit. The push trigger is the normal
+  # path; this exists for the case where the secrets / config changed but
+  # the code didn't (e.g. rotating CLOUDFLARE_API_TOKEN).
+  workflow_dispatch:
 
 # Only one deploy at a time; cancel in-progress if a new merge lands.
 concurrency:
