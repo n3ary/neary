@@ -127,6 +127,11 @@ The auto-version + deploy flow is documented in
 [docs/specs/ci-and-versioning.md](docs/specs/ci-and-versioning.md).
 Don't change workflow files without reading that spec first.
 
+Before opening a PR that touches anything under `.github/`, run
+`gh pr list --state open` to confirm no in-flight PR is already
+refactoring CI on the same files. Two parallel CI refactors both
+end up stale — one of them lands, the other gets closed.
+
 ## Asking for help
 
 If a request is ambiguous, ask one focused question. Don't ask a battery of
