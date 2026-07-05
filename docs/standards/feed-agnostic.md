@@ -18,7 +18,7 @@ Feeds that ship non-conformant data fix themselves upstream.
 - **MUST NOT** import feed-specific palettes, name maps, schedule
   patches, route-type overrides, or vehicle-type fallbacks. If a feed
   needs them, they live in the producer (gtfs and/or its source
-  adapters like cluj-napoca-gtfs-adapter), not here.
+  adapters like the cluj adapter in `gtfs-adapters`), not here.
 - **MUST** fail loudly on missing required GTFS fields rather than
   silently substituting a feed-aware default. Optional fields degrade
   gracefully, not specifically.
