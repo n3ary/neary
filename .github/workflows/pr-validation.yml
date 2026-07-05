@@ -34,7 +34,7 @@ jobs:
           fetch-depth: 0
           token: ${{ secrets.GITHUB_TOKEN }}
 
-- name: Setup pnpm with GH Packages auth + install
+      - name: Setup pnpm with GH Packages auth + install
         # Replaces the previous ~20-line manual setup (checkout +
         # setup-node + setup-pnpm + HOME-scoped .npmrc + pnpm
         # install). App uses --no-frozen-lockfile because pnpm 11's
