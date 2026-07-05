@@ -9,6 +9,14 @@ on:
 # Repo-specific jobs (npm-based check/test/build + version-bump) stay
 # local - the validate job uses pnpm to install @n3ary/gtfs-spec
 # from GH Packages, then runs npm-style scripts.
+#
+# Auto-bump lives in its own non-required job (`auto-bump`) below.
+# It depends on `validate` and is intentionally NOT in the required
+# status checks: the auto-bump only edits `package.json#version`,
+# so it can't introduce a code regression, and making it required
+# would force every PR to wait for a second CI cycle (the bot
+# pushes a new commit after `validate` passes, which would otherwise
+# re-block the PR with `strict: true` status checks).
 
 permissions:
   contents: write  # needed to push version-bump commit back to PR branch
@@ -64,6 +72,31 @@ jobs:
           pnpm clean --lockfile
           pnpm install --no-frozen-lockfile
 
+      - name: Type check
+        run: pnpm run check
+
+      - name: Run tests
+        run: pnpm test
+
+      - name: Build
+        run: pnpm run build
+
+  auto-bump:
+    # Not in required status checks by design: see comment at the
+    # top of this file.
+    needs: validate
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout PR branch
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ github.head_ref }}
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
       - name: Auto-bump version to main + 1
         run: |
           # Skip version bump if PR only touches CI/workflow files
@@ -108,16 +141,27 @@ jobs:
             git config user.email "github-actions[bot]@users.noreply.github.com"
             git add package.json pnpm-lock.yaml
             git commit -m "chore(release): auto-bump to v${NEXT_VERSION}"
-            git push
+            # Race-safe push: a concurrent push (e.g. an admin merging
+            # main into the PR branch via the web UI) can land on the
+            # remote between this job's checkout and push. Plain
+            # `git push` then fails with "Updates were rejected ...
+            # fetch first". Rebase onto origin first; if that
+            # conflicts (e.g. origin also bumped version), reset to
+            # origin and let the re-computed NEXT apply cleanly on
+            # the new base.
+            BRANCH="${GITHUB_HEAD_REF:-$(git rev-parse --abbrev-ref HEAD)}"
+            git fetch origin "$BRANCH" --depth=1 2>/dev/null || true
+            if ! git merge-base --is-ancestor HEAD "origin/$BRANCH"; then
+              echo "Remote has new commits; rebasing local bump"
+              if git rebase "origin/$BRANCH" 2>/dev/null; then
+                echo "Rebased cleanly"
+              else
+                echo "Rebase conflicted (likely origin also bumped); resetting"
+                git rebase --abort || true
+                git reset --hard "origin/$BRANCH"
+              fi
+            fi
+            git push --force-with-lease
           else
             echo "Version already correct ($CURRENT_VERSION), skipping bump"
           fi
-
-      - name: Type check
-        run: pnpm run check
-
-      - name: Run tests
-        run: pnpm test
-
-      - name: Build
-        run: pnpm run build
