@@ -31,6 +31,7 @@
   import { refreshBus } from '$lib/stores/refreshBus.svelte';
   import { searchOverlayStore } from '$lib/stores/searchOverlayStore.svelte';
   import { statusBus } from '$lib/stores/statusBus.svelte';
+  import { stationsViewStore } from '$lib/stores/stationsViewStore.svelte';
   import { userPrefs } from '$lib/stores/userPrefs.svelte';
 
   // Query a single, wide radius that covers BOTH the primary nearby
@@ -82,21 +83,36 @@
 
   let boards = $state<StationBoardInput[] | null>(null);
   let boardsError = $state<string | null>(null);
-  let expandedStopId = $state<string | null>(null);
-  // Per-stop route filter — click a route badge on a StationCard to scope
-  // its board to that route; click again to clear. Lives in page state
-  // (not in a store) because the spec is: temporary, view-only, cleared
-  // on view-swap (this component remounts) or refresh (we reset below).
-  let routeFilters = $state<Record<string, string | null>>({});
-  function toggleRouteFilter(stopId: string, routeId: string) {
-    routeFilters[stopId] = routeFilters[stopId] === routeId ? null : routeId;
-  }
+
+  // Effective expansion - what the cards see:
+  //   - if userHasExpandedChoice: their explicit pick (still in boards?)
+  //   - else: the selector's auto-pick (closest of current boards)
+  // The selector's auto-pick is computed lazily from the boards list
+  // (same rule as `selectBoardsForView`: distance-ascending first entry)
+  // so the store doesn't need a separate "autoExpandedStopId" field -
+  // the boards are themselves the source of truth for the auto-pick.
+  const effectiveExpandedStopId = $derived.by(() => {
+    if (!boards) return null;
+    const stopIds = new Set(boards.map((b) => b.stop.id));
+    if (stationsViewStore.userHasExpandedChoice) {
+      const picked = stationsViewStore.expandedStopId;
+      // Pruned: user's choice is for a stop that's no longer in the
+      // boards (they moved out of range). Drop to "no expansion" so the
+      // card matches nothing rather than lying about a phantom pick.
+      return picked && stopIds.has(picked) ? picked : null;
+    }
+    // Selector's auto-pick is "closest of the boards in distance order".
+    const sorted = [...boards].sort(
+      (a, b) => (a.stop.distance ?? Infinity) - (b.stop.distance ?? Infinity),
+    );
+    return sorted[0]?.stop.id ?? null;
+  });
 
   // Shared controller owns shapes cache, the shape-sync $effect, and the
   // per-board assembly. We just hand it the boards we select and the
   // per-stop route filter getter; it exposes `assembled` + totals.
   const boardsController = createStationBoardsController({
-    routeFilterFor: (stopId) => routeFilters[stopId] ?? null,
+    routeFilterFor: (stopId) => stationsViewStore.routeFilterByStop[stopId] ?? null,
   });
   $effect(() => { boardsController.setBoards(boards); });
 
@@ -123,6 +139,11 @@
     });
   });
 
+  // Tick gate. The header refresh button bumps `refreshBus.tick`; we
+  // remember the last tick this effect applied so a GPS-driven re-run
+  // (same tick) can hit the hysteresis gate while a manual refresh
+  // (new tick) always re-queries - even if the user hasn't moved.
+  let lastAppliedRefreshTick = 0;
   $effect(() => {
     // Wait until the worker has actually been bound to the user's chosen
     // feed (set by +layout after repo.setFeed resolves). Without this gate
@@ -138,9 +159,17 @@
     if (queryLat == null || queryLon == null) return;
     // Subscribe to manual-refresh ticks so the header refresh button
     // re-fires this effect.
-    refreshBus.tick;
+    const tick = refreshBus.tick;
     const lat = queryLat;
     const lon = queryLon;
+    // Manual refresh (tick advanced) always re-queries; otherwise we
+    // skip the SQLite query unless the user moved >= `significantMoveM`
+    // meters since the last successful query. The worker subscription
+    // still updates per-vehicle ETAs / positions during the skipped
+    // window - only the stop *selection* is frozen, which is the whole
+    // point: a 15 s worker push never reflows the cards.
+    const isManualRefresh = tick !== lastAppliedRefreshTick;
+    if (!stationsViewStore.shouldRefetchByPosition(lat, lon, isManualRefresh)) return;
     (async () => {
       try {
         const repo = getGtfsRepo();
@@ -150,7 +179,7 @@
         // The worker already filters out stops with zero scheduled
         // service ever (legacy / terminus-pad entries). Stops whose
         // last bus of the day has departed still flow through here
-        // with an empty `vehicles` list — that's a real piece of
+        // with an empty `vehicles` list - that's a real piece of
         // information ("the stop is here, no service right now"),
         // so the selector + card both handle empty vehicle lists.
         const selection = selectBoardsForView({
@@ -158,11 +187,42 @@
           config: DEFAULT_CONFIG,
           favoriteRouteIds: favoritesStore.routeIds,
         });
+        // The store's `shouldRefetchByPosition` returns true either
+        // because the rider moved >= significantMoveM, or because this
+        // is a manual refresh. The two have different semantics:
+        //   - move: they're in a new neighborhood; their previous
+        //     expansion + route filter no longer apply.
+        //   - manual refresh: they want fresher data, not a reset.
+        // The store doesn't see the GPS at gate time, so we pass the
+        // "moved" decision in. `lastQueryPosition` is null on the very
+        // first run after a tab-swap reset - treat that as "moved" so
+        // auto-expand kicks in for a fresh visit.
+        const moved =
+          stationsViewStore.lastQueryPosition === null ||
+          stationsViewStore.shouldRefetchByPosition(lat, lon, false);
+        if (moved) {
+          stationsViewStore.resetUserChoices();
+        }
         boards = selection.boards;
+        // Cache the same boards on the store so a remount (e.g. tapping
+        // a route badge into /schedule and pressing back) renders the
+        // prior frame instead of the spinner.
+        stationsViewStore.lastBoards = selection.boards;
         boardsError = null;
-        // Route filters are view-only: reset on every refresh / re-fetch.
-        routeFilters = {};
-        expandedStopId = selection.expandedStopId;
+        // On the very first ever run, seed the user's expansion to
+        // the selector's pick. After this point the effective-expansion
+        // derived above takes over: it returns the user's explicit
+        // choice (once they make one) or the boards' closest stop.
+        // Subtle: if `moved` is true AND the user previously had an
+        // expansion in the store, `resetUserChoices` already cleared it
+        // - `userHasExpandedChoice` is false - so `effectiveExpandedStopId`
+        // resolves to the boards' closest, no extra write needed.
+        if (stationsViewStore.lastQueryPosition === null) {
+          stationsViewStore.expandedStopId = selection.expandedStopId;
+          stationsViewStore.userHasExpandedChoice = false;
+        }
+        stationsViewStore.recordQueryPosition(lat, lon);
+        lastAppliedRefreshTick = tick;
       } catch (e) {
         boardsError = e instanceof Error ? e.message : String(e);
       }
@@ -363,12 +423,12 @@
             station={{ id: stop.id, name: stop.name, distance: stop.distance, lat: stop.lat, lon: stop.lon }}
             rows={rows}
             allRoutes={allRoutes}
-            selectedRouteId={routeFilters[stop.id] ?? null}
-            onRouteClick={(rid) => toggleRouteFilter(stop.id, rid)}
+            selectedRouteId={stationsViewStore.routeFilterByStop[stop.id] ?? null}
+            onRouteClick={(rid) => stationsViewStore.toggleRouteFilter(stop.id, rid)}
             favoriteRouteIds={favoritesStore.routeIds}
             getUpcomingStops={getUpcomingStops}
-            expanded={expandedStopId === stop.id}
-            ontoggle={() => (expandedStopId = expandedStopId === stop.id ? null : stop.id)}
+            expanded={effectiveExpandedStopId === stop.id}
+            ontoggle={() => stationsViewStore.pickExpand(effectiveExpandedStopId === stop.id ? null : stop.id)}
           />
         {/each}
       {/if}

@@ -19,6 +19,7 @@
   import { locationStore } from '$lib/stores/locationStore.svelte';
   import { nowTicker } from '$lib/stores/nowTicker.svelte';
   import { refreshBus } from '$lib/stores/refreshBus.svelte';
+  import { stationsViewStore } from '$lib/stores/stationsViewStore.svelte';
   import { statusBus } from '$lib/stores/statusBus.svelte';
   import { userPrefs } from '$lib/stores/userPrefs.svelte';
   import { getGtfsRepo } from '$lib/data/gtfs/repo';
@@ -37,22 +38,51 @@
     }
   });
 
-  // Dev/debug console hooks. Lets the user pin a fake GPS location from
-  // the browser console — useful in Safari where DevTools doesn't have a
+// Dev/debug console hooks. Lets the user pin a fake GPS location from
+  // the browser console - useful in Safari where DevTools doesn't have a
   // built-in location override. Always installed (cheap, no harm in
   // production) so internal users can exercise different neighborhoods.
   //
   //   neary.setLocation(<lat>, <lon>)        // pin a mock GPS fix
   //   neary.clearLocation()                  // resume real GPS
+  //   neary.jitter(10)                       // shift mock GPS by 10 m
+  //                                           // (under the 50 m
+  //                                           // significantMoveM
+  //                                           // threshold - boards
+  //                                           // should NOT re-query)
+  //   neary.jitter(80)                       // shift by 80 m (past
+  //                                           // threshold - boards
+  //                                           // SHOULD re-query)
   $effect(() => {
     if (typeof window === 'undefined') return;
     (window as unknown as { neary?: unknown }).neary = {
       setLocation: (lat: number, lon: number, accuracy = 25) =>
         locationStore.setMockPosition(lat, lon, accuracy),
       clearLocation: () => locationStore.clearMockPosition(),
-      stores: { locationStore, feedsStore, statusBus, userPrefs, refreshBus, reconciledVehiclesStore, favoritesStore },
+      // Dev hook for issue #203. Force a synthetic GPS jitter - sets
+      // the mock position to a slightly-shifted location, lets the
+      // effect re-run, and shows whether the 50 m hysteresis holds.
+      jitter: (meters: number, bearingDeg = 0) => {
+        const pos = locationStore.position;
+        if (!pos) return false;
+        const rad = (bearingDeg * Math.PI) / 180;
+        const dLat = (meters * Math.cos(rad)) / 111_320;
+        const dLon = (meters * Math.sin(rad)) / (111_320 * Math.cos((pos.coords.latitude * Math.PI) / 180));
+        locationStore.setMockPosition(
+          pos.coords.latitude + dLat,
+          pos.coords.longitude + dLon,
+        );
+        return true;
+      },
+      stores: { locationStore, feedsStore, statusBus, userPrefs, refreshBus, reconciledVehiclesStore, favoritesStore, stationsViewStore },
     };
   });
+
+  // Tab-swap reset: deliberately NOT wired. Returning from /favorites
+  // or /settings back to / should restore the rider's previous
+  // expansion + route filter rather than wipe them - that's the same
+  // preservation semantics we already use for drilldown navigation
+  // (/map/..., /schedule/...). Issue #203.
 
   // Persist user prefs on any change. Browser-only — $effect doesn't run on
   // the server during prerender.
@@ -118,6 +148,11 @@
     // watches boundFeedId needs to see null until the new setFeed
     // resolves, otherwise it fires queries during the bind window.
     feedsStore.boundFeedId = null;
+    // New feed = new geography. Drop the previous selection so the
+    // user doesn't land on a stale "expanded stop" that isn't in the
+    // new feed's stop table (issue #203: state should not leak across
+    // feed swaps).
+    stationsViewStore.reset();
     lastBoundFeedKey = key;
     const repo = getGtfsRepo();
     // Mark this feed as in-flight so the Settings feed row can render

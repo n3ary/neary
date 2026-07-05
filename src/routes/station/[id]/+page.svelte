@@ -20,6 +20,7 @@
   import { feedsStore } from '$lib/stores/feedsStore.svelte';
   import { favoritesStore } from '$lib/stores/favoritesStore.svelte';
   import { refreshBus } from '$lib/stores/refreshBus.svelte';
+  import { stationsViewStore } from '$lib/stores/stationsViewStore.svelte';
   import { userPrefs } from '$lib/stores/userPrefs.svelte';
 
   // Arrivals window owned by DEFAULT_CONFIG (shared with the
@@ -34,13 +35,14 @@
   let originRouteIds = $state<Set<string>>(new Set());
   let error = $state<string | null>(null);
   let notFound = $state(false);
-  let routeFilter = $state<string | null>(null);
 
-  // Shared controller — same shape as /+page.svelte. We feed it a
+  // Shared controller - same shape as /+page.svelte. We feed it a
   // single-element array when board is loaded; it owns shape cache +
-  // assembly. routeFilterFor closes over the single-board routeFilter.
+  // assembly. routeFilterFor reads from the cross-mount store so the
+  // user's route-filter selection survives navigation back from
+  // /map/... or /schedule/... (issue #203).
   const boardsController = createStationBoardsController({
-    routeFilterFor: () => routeFilter,
+    routeFilterFor: (sid) => stationsViewStore.routeFilterByStop[sid] ?? null,
   });
   $effect(() => { boardsController.setBoards(board ? [board] : null); });
   const assembled = $derived(boardsController.assembled[0] ?? null);
@@ -63,7 +65,9 @@
           notFound = false;
           board = result;
           error = null;
-          routeFilter = null; // reset on every refresh
+          // Per-stop route filter is shared via stationsViewStore and
+          // persists across refreshes + remounts. Only re-populate
+          // originRouteIds (cheap, derived from schedule).
           originRouteIds = new Set(await repo.getOriginRoutesAtStop(sid));
         }
       } catch (e) {
@@ -107,12 +111,13 @@
       </CardContent>
     </Card>
   {:else}
+    {@const stopKey = board.stop.id}
     <StationCard
-      station={{ id: board.stop.id, name: board.stop.name, lat: board.stop.lat, lon: board.stop.lon }}
+      station={{ id: stopKey, name: board.stop.name, lat: board.stop.lat, lon: board.stop.lon }}
       rows={assembled?.rows ?? []}
       allRoutes={assembled?.allRoutes ?? []}
-      selectedRouteId={routeFilter}
-      onRouteClick={(rid) => (routeFilter = routeFilter === rid ? null : rid)}
+      selectedRouteId={stationsViewStore.routeFilterByStop[stopKey] ?? null}
+      onRouteClick={(rid) => stationsViewStore.toggleRouteFilter(stopKey, rid)}
       favoriteRouteIds={favoritesStore.routeIds}
       originRouteIds={originRouteIds}
       getUpcomingStops={getUpcomingStops}
