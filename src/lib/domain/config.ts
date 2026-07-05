@@ -49,6 +49,15 @@ export interface NearyConfig {
    *  `nearbyRadiusM`. The selector then surfaces the closest stop
    *  within this radius that carries a favorited route. */
   favoriteFallbackRadiusM: number;
+  /** Distance the user must move before the Stations view re-queries
+   *  its boards AND resets view-only user choices (expanded station,
+   *  route filter). Smaller than typical GPS jitter (~25 m on the
+   *  low-accuracy setting) to avoid silent re-queries when the rider
+   *  is stationary; large enough that walking slowly (~1.4 m/s)
+   *  triggers the reset after ~35 s rather than on every fix. Below
+   *  this threshold the boards are considered "same neighborhood"
+   *  and the existing selection + filters are kept verbatim. */
+  significantMoveM: number;
 
   // ── Arrivals window ───────────────────────────────────────────────
   /** How far into the future the Stations and Station-detail views
@@ -72,5 +81,6 @@ export const DEFAULT_CONFIG: NearyConfig = {
   nearbyRadiusM: 500,
   pairProximityM: 100,
   favoriteFallbackRadiusM: 2000,
+  significantMoveM: 50,
   arrivalsWindowMin: 24 * 60,
 };
