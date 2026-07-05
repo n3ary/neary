@@ -4,9 +4,11 @@ on:
   pull_request:
     branches: [main]
 
-# Ensure the PR is up-to-date before merging (protects version sequencing).
-# GitHub branch protection "Require branches to be up to date" enforces this
-# at the merge button level; this workflow re-validates on every push.
+# Shared base PR-validation lives in n3ary/actions. enable-drift-check
+# is true: app vendors n3ary/standards under docs/standards/.
+# Repo-specific jobs (npm-based check/test/build + version-bump) stay
+# local - the validate job uses pnpm to install @n3ary/gtfs-spec
+# from GH Packages, then runs npm-style scripts.
 
 permissions:
   contents: write  # needed to push version-bump commit back to PR branch
@@ -15,6 +17,9 @@ permissions:
   # GITHUB_TOKEN.
 
 jobs:
+  shared:
+    uses: n3ary/actions/.github/workflows/pr-validation.yml@v1
+
   validate:
     runs-on: ubuntu-latest
 
@@ -45,7 +50,7 @@ jobs:
         # considers the file committed and could leak the secret to
         # an attacker-controlled registry). Use `pnpm config set`
         # to write the credential to user-level ~/.npmrc at install
-        # time — that's an untracked, per-run path.
+        # time - that's an untracked, per-run path.
         env:
           NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
         run: |
@@ -65,16 +70,17 @@ jobs:
           CHANGED_FILES=$(git diff --name-only origin/main...HEAD)
           NON_CI_FILES=$(echo "$CHANGED_FILES" | grep -v '^\.github/' || true)
           if [ -z "$NON_CI_FILES" ]; then
-            echo "PR only changes CI files — skipping version bump"
+            echo "PR only changes CI files - skipping version bump"
             exit 0
           fi
 
           # Get the current version on main
-          MAIN_VERSION=$(git show origin/main:package.json | node -p "JSON.parse(require('fs').readFileSync('/dev/stdin','utf8')).version")
+          MAIN_VERSION=$(git show origin/main:package.json | node -p \
+            "JSON.parse(require('fs').readFileSync(0,'utf8')).version")
           # Increment the patch
           NEXT_VERSION=$(node -p "
-            const [major, minor, patch] = '${MAIN_VERSION}'.split('.').map(Number);
-            major + '.' + minor + '.' + (patch + 1)
+            const [m, n, p] = '${MAIN_VERSION}'.split('.').map(Number);
+            m + '.' + n + '.' + (p + 1)
           ")
           # Get this branch's current version
           CURRENT_VERSION=$(node -p "require('./package.json').version")
@@ -85,7 +91,19 @@ jobs:
 
           if [ "$CURRENT_VERSION" != "$NEXT_VERSION" ]; then
             echo "Bumping version from $CURRENT_VERSION to $NEXT_VERSION"
-            pnpm version "$NEXT_VERSION" --no-git-tag-version
+            # Edit package.json directly rather than via `pnpm version`:
+            # `pnpm version` rejects an unclean working tree, but the
+            # install step above can leave pnpm-lock.yaml dirty after
+            # `pnpm clean --lockfile` + `pnpm install --no-frozen-lockfile`.
+            # A direct JSON edit is atomic and doesn't need git to be clean.
+            node -e "
+              const fs = require('fs');
+              const pkg = JSON.parse(fs.readFileSync('package.json','utf8'));
+              const [m,n,p] = pkg.version.split('.').map(Number);
+              pkg.version = m + '.' + n + '.' + (p + 1);
+              fs.writeFileSync('package.json',
+                JSON.stringify(pkg, null, 2) + '\n');
+            "
             git config user.name "github-actions[bot]"
             git config user.email "github-actions[bot]@users.noreply.github.com"
             git add package.json pnpm-lock.yaml
