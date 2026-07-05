@@ -1529,8 +1529,8 @@ packages:
     engines: {node: '>=0.10.0'}
     hasBin: true
 
-  electron-to-chromium@1.5.385:
-    resolution: {integrity: sha512-78sa/M08MNAYHQfjoWMvOlKQqZ0ElhSm/L5HNUc96VZ3b+KvDVnngFm8sYQy0XrhTRgAhggHr5abA7yTvRdo4Q==}
+  electron-to-chromium@1.5.387:
+    resolution: {integrity: sha512-TaxwufTFDufvPEoXdhwVrA3UdFWBeWGkYoJ1K8ldF1xe6gKfth6iRNS5lTQ5JPNOHdGQm8PT1QYKUqFLCiUefQ==}
 
   enhanced-resolve@5.21.6:
     resolution: {integrity: sha512-aNnGCvbJ/RIyWo1IuhNdVjnNF+EjH9wpzpNHt+ci/m9He9LJvUN8wrCcXjp9cWsGNAuvSpVFTx/vraAFQ8qGjQ==}
@@ -2237,15 +2237,15 @@ packages:
     resolution: {integrity: sha512-Qb1gy5OrP5+zDf2Bvnzdl3jsTf1qXVMazbvCoKhtKqVs4/YK4ozX4gKQJJVyNe+cajNPn0KoC0MC3FUmaHWEmQ==}
     engines: {node: ^10.13.0 || ^12.13.0 || ^14.15.0 || >=15.0.0}
 
-  protobufjs-cli@2.5.6:
-    resolution: {integrity: sha512-3bvhveDbr+C5WFlGmEkgEmLZouhO6qXmOulFgvYRXtYir7Wkc6JUIb5iDlyizwaQi/eEjBt9jYa/mfG9vOQx0A==}
+  protobufjs-cli@2.5.7:
+    resolution: {integrity: sha512-vTO8KSAG6qAXZYOT4pulivSN1wV+1RgulUeT2NCUvfKnypfJ2kF0GGYFNhlqQr7I9o8syQbfhJLnq6OJglliqw==}
     engines: {node: '>=12.0.0'}
     hasBin: true
     peerDependencies:
-      protobufjs: ^8.6.5
+      protobufjs: ^8.6.6
 
-  protobufjs@8.6.5:
-    resolution: {integrity: sha512-zeE5LPpencAGXvsxyOYmEgJhxzHY8IsmPAFzstZVhDSVT8QH03q6gMZwZRaQGApevZbAL6u28ugs4CC+YKB2jQ==}
+  protobufjs@8.6.6:
+    resolution: {integrity: sha512-RkLIhE+Tdc2Kpq1F4Uw6OnpAXPca7B+GSDov/GqGCqNBpVyDskQ9yReZfgM+C7xw9AAix873iQZXbBWXj6NzYQ==}
     engines: {node: '>=12.0.0'}
 
   punycode.js@2.3.1:
@@ -4193,7 +4193,7 @@ snapshots:
     dependencies:
       baseline-browser-mapping: 2.10.41
       caniuse-lite: 1.0.30001800
-      electron-to-chromium: 1.5.385
+      electron-to-chromium: 1.5.387
       node-releases: 2.0.50
       update-browserslist-db: 1.2.3(browserslist@4.28.4)
 
@@ -4335,7 +4335,7 @@ snapshots:
     dependencies:
       jake: 10.9.4
 
-  electron-to-chromium@1.5.385: {}
+  electron-to-chromium@1.5.387: {}
 
   enhanced-resolve@5.21.6:
     dependencies:
@@ -4592,8 +4592,8 @@ snapshots:
 
   gtfs-realtime-bindings@2.1.0:
     dependencies:
-      protobufjs: 8.6.5
-      protobufjs-cli: 2.5.6(protobufjs@8.6.5)
+      protobufjs: 8.6.6
+      protobufjs-cli: 2.5.7(protobufjs@8.6.6)
 
   has-bigints@1.1.0: {}
 
@@ -5055,7 +5055,7 @@ snapshots:
       ansi-styles: 5.2.0
       react-is: 17.0.2
 
-  protobufjs-cli@2.5.6(protobufjs@8.6.5):
+  protobufjs-cli@2.5.7(protobufjs@8.6.6):
     dependencies:
       chalk: 4.1.2
       escodegen: 1.14.3
@@ -5064,10 +5064,10 @@ snapshots:
       glob: 8.1.0
       jsdoc: 4.0.5
       minimist: 1.2.8
-      protobufjs: 8.6.5
+      protobufjs: 8.6.6
       tmp: 0.2.7
 
-  protobufjs@8.6.5:
+  protobufjs@8.6.6:
     dependencies:
       long: 5.3.2
 
