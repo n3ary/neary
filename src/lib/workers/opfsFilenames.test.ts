@@ -17,8 +17,11 @@ function feed(overrides: Partial<Feed> = {}): Feed {
     center: { lat: 0, lon: 0 },
     agencies: [],
     source: { type: 'remote', publisher: 'cluj-napoca-gtfs-adapter' },
-    files: { sqlite_gz: 'cluj-napoca.sqlite3.gz' },
-    size_bytes: { sqlite_gz: 1 },
+    files: {
+      sqlite_gz: 'cluj-napoca.sqlite3.gz',
+      gtfs_zip: 'cluj-napoca.gtfs.zip',
+    },
+    size_bytes: { sqlite_gz: 1, gtfs_zip: 2 },
     hash: 'sha256-79e19efee5c2bc6926b9f9fda62ea140cafe4ade86d943a2c9831fbcf94ed8bb',
     generated_at: '2026-06-27T14:43:04.671Z',
     license: { attribution_text: '' },
