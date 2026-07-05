@@ -41,7 +41,7 @@ jobs:
         # lockfile supply-chain re-verification can fail on stale
         # entries from registry republishes; clean + re-resolve keeps
         # the install robust.
-        uses: n3ary/actions/.github/actions/setup-pnpm-gh-packages-auth@v7
+        uses: n3ary/actions/.github/actions/setup-pnpm-gh-packages-auth@v8
         with:
           install-args: '--no-frozen-lockfile'
           auth-secret: NPM_TOKEN
