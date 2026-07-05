@@ -75,8 +75,8 @@ jobs:
           fi
 
           # Get the current version on main
-          MAIN_VERSION=$(git show origin/main:package.json \
-            | node -p "JSON.parse(require('fs').readFileSync(0,'utf8')).version")
+          MAIN_VERSION=$(git show origin/main:package.json | node -p \
+            "JSON.parse(require('fs').readFileSync(0,'utf8')).version")
           # Increment the patch
           NEXT_VERSION=$(node -p "
             const [m, n, p] = '${MAIN_VERSION}'.split('.').map(Number);
@@ -91,7 +91,19 @@ jobs:
 
           if [ "$CURRENT_VERSION" != "$NEXT_VERSION" ]; then
             echo "Bumping version from $CURRENT_VERSION to $NEXT_VERSION"
-            pnpm version "$NEXT_VERSION" --no-git-tag-version
+            # Edit package.json directly rather than via `pnpm version`:
+            # `pnpm version` rejects an unclean working tree, but the
+            # install step above can leave pnpm-lock.yaml dirty after
+            # `pnpm clean --lockfile` + `pnpm install --no-frozen-lockfile`.
+            # A direct JSON edit is atomic and doesn't need git to be clean.
+            node -e "
+              const fs = require('fs');
+              const pkg = JSON.parse(fs.readFileSync('package.json','utf8'));
+              const [m,n,p] = pkg.version.split('.').map(Number);
+              pkg.version = m + '.' + n + '.' + (p + 1);
+              fs.writeFileSync('package.json',
+                JSON.stringify(pkg, null, 2) + '\n');
+            "
             git config user.name "github-actions[bot]"
             git config user.email "github-actions[bot]@users.noreply.github.com"
             git add package.json pnpm-lock.yaml
