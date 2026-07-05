@@ -6,9 +6,7 @@ on:
 
 # Shared base PR-validation lives in n3ary/actions. enable-drift-check
 # is true: app vendors n3ary/standards under docs/standards/.
-# Repo-specific jobs (npm-based check/test/build + version-bump) stay
-# local - the validate job uses pnpm to install @n3ary/gtfs-spec
-# from GH Packages, then runs npm-style scripts.
+# Repo-specific jobs (check/test/build + version-bump) stay local.
 #
 # Auto-bump lives in its own non-required job (`auto-bump`) below.
 # It depends on `validate` and is intentionally NOT in the required
@@ -19,10 +17,7 @@ on:
 # re-block the PR with `strict: true` status checks).
 
 permissions:
-  contents: write  # needed to push version-bump commit back to PR branch
-  # The @n3ary/gtfs-spec install uses the NPM_TOKEN secret
-  # (an org token with read:packages on the org) rather than the
-  # GITHUB_TOKEN.
+  contents: write  # needed by the version-bump action to push the bot commit
 
 jobs:
   shared:
@@ -39,38 +34,17 @@ jobs:
           fetch-depth: 0
           token: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Setup Node
-        uses: actions/setup-node@v6.4.0
+      - name: Setup pnpm with GH Packages auth + install
+        # Replaces the previous ~20-line manual setup (checkout +
+        # setup-node + setup-pnpm + HOME-scoped .npmrc + pnpm
+        # install). App uses --no-frozen-lockfile because pnpm 11's
+        # lockfile supply-chain re-verification can fail on stale
+        # entries from registry republishes; clean + re-resolve keeps
+        # the install robust.
+        uses: n3ary/actions/.github/actions/setup-pnpm-gh-packages-auth@v7
         with:
-          node-version: 24
-
-      - name: Setup pnpm
-        uses: pnpm/action-setup@v6.0.9
-        with:
-          version: 11
-
-      - name: Install dependencies
-        # The @n3ary scope maps to GitHub Packages (see .npmrc).
-        # NPM_TOKEN is an org token with read:packages on @n3ary/gtfs-spec.
-        # Set via the repo's secrets in GitHub web UI.
-        #
-        # pnpm 11 refuses to expand env vars in project .npmrc (it
-        # considers the file committed and could leak the secret to
-        # an attacker-controlled registry). Use `pnpm config set`
-        # to write the credential to user-level ~/.npmrc at install
-        # time - that's an untracked, per-run path.
-        env:
-          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
-        run: |
-          pnpm config set //npm.pkg.github.com/:_authToken "$NPM_TOKEN"
-          # pnpm 11 verifies the lockfile's tarball URLs against the
-          # registry on every install. A stale entry (e.g. a registry
-          # republish) will fail the verification and abort the install.
-          # Clean the lockfile and let pnpm re-resolve from the registry.
-          # --no-frozen-lockfile is required because pnpm enables it by
-          # default when CI=true.
-          pnpm clean --lockfile
-          pnpm install --no-frozen-lockfile
+          install-args: '--no-frozen-lockfile'
+          auth-secret: NPM_TOKEN
 
       - name: Type check
         run: pnpm run check
@@ -98,70 +72,8 @@ jobs:
           token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Auto-bump version to main + 1
-        run: |
-          # Skip version bump if PR only touches CI/workflow files
-          CHANGED_FILES=$(git diff --name-only origin/main...HEAD)
-          NON_CI_FILES=$(echo "$CHANGED_FILES" | grep -v '^\.github/' || true)
-          if [ -z "$NON_CI_FILES" ]; then
-            echo "PR only changes CI files - skipping version bump"
-            exit 0
-          fi
-
-          # Get the current version on main
-          MAIN_VERSION=$(git show origin/main:package.json | node -p \
-            "JSON.parse(require('fs').readFileSync(0,'utf8')).version")
-          # Increment the patch
-          NEXT_VERSION=$(node -p "
-            const [m, n, p] = '${MAIN_VERSION}'.split('.').map(Number);
-            m + '.' + n + '.' + (p + 1)
-          ")
-          # Get this branch's current version
-          CURRENT_VERSION=$(node -p "require('./package.json').version")
-
-          echo "Main version: $MAIN_VERSION"
-          echo "Next version: $NEXT_VERSION"
-          echo "PR branch version: $CURRENT_VERSION"
-
-          if [ "$CURRENT_VERSION" != "$NEXT_VERSION" ]; then
-            echo "Bumping version from $CURRENT_VERSION to $NEXT_VERSION"
-            # Edit package.json directly rather than via `pnpm version`:
-            # `pnpm version` rejects an unclean working tree, but the
-            # install step above can leave pnpm-lock.yaml dirty after
-            # `pnpm clean --lockfile` + `pnpm install --no-frozen-lockfile`.
-            # A direct JSON edit is atomic and doesn't need git to be clean.
-            node -e "
-              const fs = require('fs');
-              const pkg = JSON.parse(fs.readFileSync('package.json','utf8'));
-              const [m,n,p] = pkg.version.split('.').map(Number);
-              pkg.version = m + '.' + n + '.' + (p + 1);
-              fs.writeFileSync('package.json',
-                JSON.stringify(pkg, null, 2) + '\n');
-            "
-            git config user.name "github-actions[bot]"
-            git config user.email "github-actions[bot]@users.noreply.github.com"
-            git add package.json pnpm-lock.yaml
-            git commit -m "chore(release): auto-bump to v${NEXT_VERSION}"
-            # Race-safe push: a concurrent push (e.g. an admin merging
-            # main into the PR branch via the web UI) can land on the
-            # remote between this job's checkout and push. Plain
-            # `git push` then fails with "Updates were rejected ...
-            # fetch first". Rebase onto origin first; if that
-            # conflicts (e.g. origin also bumped version), reset to
-            # origin and let the re-computed NEXT apply cleanly on
-            # the new base.
-            BRANCH="${GITHUB_HEAD_REF:-$(git rev-parse --abbrev-ref HEAD)}"
-            git fetch origin "$BRANCH" --depth=1 2>/dev/null || true
-            if ! git merge-base --is-ancestor HEAD "origin/$BRANCH"; then
-              echo "Remote has new commits; rebasing local bump"
-              if git rebase "origin/$BRANCH" 2>/dev/null; then
-                echo "Rebased cleanly"
-              else
-                echo "Rebase conflicted (likely origin also bumped); resetting"
-                git rebase --abort || true
-                git reset --hard "origin/$BRANCH"
-              fi
-            fi
-            git push --force-with-lease
-          else
-            echo "Version already correct ($CURRENT_VERSION), skipping bump"
-          fi
+        # Replaces ~80 lines of inline auto-bump logic. The action
+        # handles metadata-only skip, computes next version (preserving
+        # pre-release suffixes like '1.5.87'), commits package.json
+        # (and pnpm-lock.yaml if dirty), and pushes race-safely.
+        uses: n3ary/actions/.github/actions/version-bump@v6
