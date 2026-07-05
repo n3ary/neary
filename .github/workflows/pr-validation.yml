@@ -34,17 +34,17 @@ jobs:
           fetch-depth: 0
           token: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Setup pnpm with GH Packages auth + install
+- name: Setup pnpm with GH Packages auth + install
         # Replaces the previous ~20-line manual setup (checkout +
         # setup-node + setup-pnpm + HOME-scoped .npmrc + pnpm
         # install). App uses --no-frozen-lockfile because pnpm 11's
         # lockfile supply-chain re-verification can fail on stale
         # entries from registry republishes; clean + re-resolve keeps
         # the install robust.
-        uses: n3ary/actions/.github/actions/setup-pnpm-gh-packages-auth@v8
+        uses: n3ary/actions/.github/actions/setup-pnpm-gh-packages-auth@v9
         with:
+          auth-token: ${{ secrets.NPM_TOKEN }}
           install-args: '--no-frozen-lockfile'
-          auth-secret: NPM_TOKEN
 
       - name: Type check
         run: pnpm run check
