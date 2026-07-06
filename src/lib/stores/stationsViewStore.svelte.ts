@@ -126,8 +126,12 @@ class StationsViewStore {
     this.routeFilterByStop = {};
   }
 
-  /** Wipe everything for a hard reset: tab swap to /favorites or
-   *  /settings, or feed change in +layout. */
+  /** Wipe everything for a hard reset. Currently called only from
+   *  +layout when the bound feed changes (new feed = new geography,
+   *  old expansion + filters are stale). Tab swap to /favorites or
+   *  /settings is deliberately NOT a reset trigger - the rider's
+   *  expansion + route filter survive those navigations. See the
+   *  file-level note for the full list of reset triggers. */
   reset(): void {
     this.resetUserChoices();
     this.lastQueryPosition = null;
