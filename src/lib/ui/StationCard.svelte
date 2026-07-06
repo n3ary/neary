@@ -46,6 +46,12 @@
      *  the groups look. Routes serving the station are derived from these
      *  unless `allRoutes` is supplied. */
     rows: BoardRow[];
+    /** Pre-filter / pre-cap vehicle count for this stop. When provided
+     *  AND `rows` is empty, the empty-state body explains "X vehicles
+     *  found but hidden — adjust Settings → Display" instead of the
+     *  default "No more departures today." Consumers that don't want
+     *  the hint (e.g. the showcase page) just omit it. */
+    rawVehicleCount?: number;
     /** Full route list serving this station (pre-cap, pre-filter). When
      *  set, drives the header badge row instead of `rows`, so all routes
      *  through the station are visible even when capped out of the 5-row
@@ -76,6 +82,7 @@
   let {
     station,
     rows,
+    rawVehicleCount,
     allRoutes,
     expanded,
     ontoggle,
@@ -265,9 +272,16 @@
 
     <Collapsible in={expanded} class="mt-2">
       {#if isEmpty}
-        <Box class="px-3 py-3 text-sm text-[color:var(--color-fg-muted)]">
-          No more departures today.
-        </Box>
+        {#if rawVehicleCount && rawVehicleCount > 0}
+          <Box class="px-3 py-3 text-sm text-[color:var(--color-warning)]">
+            {rawVehicleCount} vehicle{rawVehicleCount === 1 ? '' : 's'} found but hidden
+            — adjust in Settings → Display.
+          </Box>
+        {:else}
+          <Box class="px-3 py-3 text-sm text-[color:var(--color-fg-muted)]">
+            No more departures today.
+          </Box>
+        {/if}
       {:else}
         <Stack spacing={1.5} class="pt-1">
           {#each groups as group (group.bucket)}

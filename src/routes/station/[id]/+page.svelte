@@ -111,12 +111,13 @@
       </CardContent>
     </Card>
   {:else}
-    {@const stopKey = board.stop.id}
-    <StationCard
-      station={{ id: stopKey, name: board.stop.name, lat: board.stop.lat, lon: board.stop.lon }}
-      rows={assembled?.rows ?? []}
-      allRoutes={assembled?.allRoutes ?? []}
-      selectedRouteId={stationsViewStore.routeFilterByStop[stopKey] ?? null}
+  {@const stopKey = board.stop.id}
+  <StationCard
+    station={{ id: stopKey, name: board.stop.name, lat: board.stop.lat, lon: board.stop.lon }}
+    rows={assembled?.rows ?? []}
+    rawVehicleCount={assembled?.vehicles.length}
+    allRoutes={assembled?.allRoutes ?? []}
+    selectedRouteId={stationsViewStore.routeFilterByStop[stopKey] ?? null}
       onRouteClick={(rid) => stationsViewStore.toggleRouteFilter(stopKey, rid)}
       favoriteRouteIds={favoritesStore.routeIds}
       originRouteIds={originRouteIds}
