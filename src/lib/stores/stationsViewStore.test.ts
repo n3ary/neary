@@ -85,6 +85,20 @@ describe('stationsViewStore selection persistence (issue #203)', () => {
     });
   });
 
+  it('resetUserChoices also preserves lastBoards for remount seeding', () => {
+    // Regression guard for the spinner-stuck-after-settings bug: the
+    // home page seeds its local `boards` state from
+    // stationsViewStore.lastBoards so a remount renders the prior
+    // frame instead of the spinner. If resetUserChoices wiped the
+    // cache, every expansion toggle (which calls resetUserChoices
+    // indirectly via the "moved" branch of the boards effect on the
+    // next refetch) would re-introduce the spinner.
+    stationsViewStore.cacheBoards([] as never);
+    stationsViewStore.pickExpand('stop-1');
+    stationsViewStore.resetUserChoices();
+    expect(stationsViewStore.lastBoards).not.toBeNull();
+  });
+
   it('reset() wipes everything including GPS cache and boards', () => {
     stationsViewStore.pickExpand('stop-1');
     stationsViewStore.toggleRouteFilter('stop-1', 'route-24');

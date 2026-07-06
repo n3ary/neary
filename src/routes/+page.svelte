@@ -81,7 +81,14 @@
       : null,
   );
 
-  let boards = $state<StationBoardInput[] | null>(null);
+  // Seed `boards` from the cross-mount cache so a remount (returning from
+  // /settings or /favorites) renders the prior frame instead of the
+  // spinner. The fetch effect's GPS-hysteresis gate would otherwise skip
+  // the SQLite query when the rider hasn't moved >= significantMoveM,
+  // which is the common case after a settings toggle — leaving boards
+  // null until a manual refresh bumps the tick. Mirrors the cache
+  // discipline documented at stationsViewStore.lastBoards.
+  let boards = $state<StationBoardInput[] | null>(stationsViewStore.lastBoards);
   let boardsError = $state<string | null>(null);
 
   // Effective expansion - what the cards see:
