@@ -34,6 +34,12 @@ export interface NearyConfig {
   /** Poll cadence for GTFS-RT VehiclePositions, in ms. The upstream feed
    *  typically updates every ≈10–20 s. */
   livePollMs: number;
+  /** Cadence for the per-view device-GPS poll, in ms. Picked to match
+   *  `livePollMs` so the header dot's freshness state advances on the
+   *  same beat as the live-vehicle state. Independent enough to be
+   *  tuned separately if either source needs a different cadence —
+   *  see issue #206. */
+  gpsPollMs: number;
 
   // ── Station selection (Stations view) ───────────────────────────────
   /** Primary "nearby" search radius from the user's location. Only stops
@@ -78,6 +84,7 @@ export const DEFAULT_CONFIG: NearyConfig = {
   departingSpeedKmh: 5,
   minDwellGapMin: 1,
   livePollMs: 15_000,
+  gpsPollMs: 15_000,
   nearbyRadiusM: 500,
   pairProximityM: 100,
   favoriteFallbackRadiusM: 2000,

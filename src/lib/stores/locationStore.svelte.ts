@@ -16,9 +16,17 @@
  */
 
 import { userPrefs } from './userPrefs.svelte';
+import { DEFAULT_CONFIG } from '$lib/domain/config';
 
 export type FreshState = 'off' | 'idle' | 'ok' | 'stale' | 'error';
 export type PermissionState = 'unknown' | 'prompt' | 'granted' | 'denied';
+
+/** Watch + polling cache window + timeouts, all sourced from
+ *  NearyConfig. Pulled at module load so the polling keeps its cadence
+ *  even if config tuning gets wired into Settings later (issue #206). */
+const GPS_POLL_MS = DEFAULT_CONFIG.gpsPollMs;
+const GPS_TIMEOUT_MS = GPS_POLL_MS;
+const GPS_MAX_AGE_MS = GPS_POLL_MS;
 
 class LocationStore {
   position = $state<GeolocationPosition | null>(null);
@@ -31,6 +39,7 @@ class LocationStore {
 
   private watchId: number | null = null;
   private tickerId: ReturnType<typeof setInterval> | null = null;
+  private pollId: ReturnType<typeof setInterval> | null = null;
 
   constructor() {
     if (typeof navigator === 'undefined' || !('permissions' in navigator)) return;
@@ -56,7 +65,11 @@ class LocationStore {
     this.watchId = navigator.geolocation.watchPosition(
       (pos) => {
         this.position = pos;
-        this.lastUpdated = Date.now();
+        // Use the fix's own timestamp, NOT Date.now(). Date.now() would
+        // disagree with the freshness check the moment a fix is older
+        // than the callback time (cached / OS-delayed), pinning the dot
+        // green while the rest of the UI races a stale position. See #206.
+        this.lastUpdated = pos.timestamp;
         this.error = null;
       },
       (err) => {
@@ -74,8 +87,10 @@ class LocationStore {
           this.stop();
         }
       },
-      // Low-accuracy is fine for proximity filtering and saves battery on iOS.
-      { enableHighAccuracy: false, timeout: 10_000, maximumAge: 30_000 },
+      // Low-accuracy is fine for proximity filtering and saves battery
+      // on iOS. maxAge matches the polling cadence (15s) so a stalled
+      // watch cannot return a fix older than one poll cycle. See #206.
+      { enableHighAccuracy: false, timeout: 10_000, maximumAge: GPS_MAX_AGE_MS },
     );
 
     if (this.tickerId === null && typeof setInterval !== 'undefined') {
@@ -119,6 +134,83 @@ class LocationStore {
       clearInterval(this.tickerId);
       this.tickerId = null;
     }
+    // Settings-driven opt-out also drops any active polling.
+    this.stopPolling();
+  }
+
+  /**
+   * Per-view GPS polling. Starts a 15 s getCurrentPosition loop so a
+   * stalled watchPosition (documented iOS Safari behaviour for
+   * enableHighAccuracy:false, see #206) cannot leave the UI anchored
+   * to a stale fix. The underlying watchPosition is left alive — it
+   * continues to feed fresh fixes when the OS feels like it, and keeps
+   * the header dot honest on views that don't opt into polling (the
+   * Stations view's own $effect calls startPolling on mount and
+   * stopPolling on cleanup).
+   *
+   * Idempotent. Safe to call repeatedly.
+   */
+  startPolling(): void {
+    if (typeof navigator === 'undefined' || !('geolocation' in navigator)) return;
+    if (this.pollId !== null) return;
+    // Kick an immediate first fix so the dot updates without waiting
+    // one tick when the user lands on the Stations view.
+    this.pollOnce({
+      enableHighAccuracy: false,
+      maximumAge: GPS_MAX_AGE_MS,
+      timeout: GPS_TIMEOUT_MS,
+    });
+    this.pollId = setInterval(
+      () => this.pollOnce({
+        enableHighAccuracy: false,
+        maximumAge: GPS_MAX_AGE_MS,
+        timeout: GPS_TIMEOUT_MS,
+      }),
+      GPS_TIMEOUT_MS,
+    );
+  }
+
+  /** Counterpart to startPolling. Idempotent. */
+  stopPolling(): void {
+    if (this.pollId !== null) {
+      clearInterval(this.pollId);
+      this.pollId = null;
+    }
+  }
+
+  /**
+   * One-shot high-accuracy fix, bypassing the OS cache. Powers the
+   * "Position me" FAB on the Stations view — invoked when the cached
+   * GPS is older than the user is willing to wait for. Boards are
+   * still gated by stationsViewStore.shouldRefetchByPosition; this
+   * just guarantees a fresh position, not a forced re-query.
+   */
+  forceFreshFix(): void {
+    if (typeof navigator === 'undefined' || !('geolocation' in navigator)) return;
+    this.pollOnce({
+      enableHighAccuracy: true,
+      maximumAge: 0,
+      timeout: GPS_TIMEOUT_MS,
+    });
+  }
+
+  private pollOnce(
+    opts: PositionOptions,
+  ): void {
+    if (typeof navigator === 'undefined' || !('geolocation' in navigator)) return;
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        this.position = pos;
+        this.lastUpdated = pos.timestamp;
+        this.error = null;
+      },
+      // Polling failures are non-fatal: the underlying watch is still
+      // running and the header dot reflects whatever it produces.
+      // Surfacing them as the next fix would cause the dot to flap
+      // between fix and error on a flaky cellular connection.
+      () => { /* swallow */ },
+      opts,
+    );
   }
 
   /**
