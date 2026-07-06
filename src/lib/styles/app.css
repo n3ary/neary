@@ -8,3 +8,19 @@
 
 @import 'tailwindcss';
 @import './theme.css';
+
+/*
+ * Disable the browser's double-tap-to-zoom on app chrome so the PWA
+ * behaves like a native app (installing to home screen shouldn't give
+ * you a zoomy webpage when you double-tap a button). Pinch-zoom and
+ * panning stay enabled — `manipulation` only forbids the synthetic
+ * double-tap gesture.
+ *
+ * Leaflet sets `touch-action: none` on `.leaflet-container`, which is
+ * strictly more restrictive than `manipulation` and wins at the map
+ * area, so the map's built-in double-tap-to-zoom keeps working.
+ */
+html,
+body {
+  touch-action: manipulation;
+}
