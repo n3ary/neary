@@ -28,8 +28,26 @@ permissions:
 jobs:
   deploy:
     runs-on: ubuntu-latest
-    # Skip runs triggered by the bot's own commits (safety net).
-    if: "!contains(github.event.head_commit.message, '[skip ci]')"
+    # Only honor [skip ci] on a direct push to main with a single commit.
+    # The flag is meant to break the auto-bump loop where the bot pushes
+    # a version-bump commit and the workflow would otherwise deploy that
+    # bump on its own. It is NOT meant to skip a real production deploy
+    # that happens to include an auto-bump in the merge payload.
+    #
+    # Concretely:
+    #   - Direct push, 1 commit,    [skip ci]  -> skip  (the bot's own loop)
+    #   - Direct push, 1 commit,    no flag    -> deploy
+    #   - Direct push, many commits, [skip ci] -> deploy (rebase / merge
+    #     brought multiple PR commits including the bot's bump)
+    #   - Merge commit (2+ parents), [skip ci]  -> deploy
+    #   - Squash merge, 1 commit,    [skip ci]  -> deploy iff the squash
+    #     message itself does not contain [skip ci] (the bot's flag is
+    #     in the auto-bump's subject, not the squash subject, so this
+    #     case typically works out fine in practice).
+    if: |
+      !contains(github.event.head_commit.message, '[skip ci]')
+      || github.event.head_commit.parents.length > 1
+      || github.event.commits.length > 1
 
     steps:
       - name: Checkout
