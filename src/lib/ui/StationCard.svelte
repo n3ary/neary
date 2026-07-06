@@ -186,6 +186,12 @@
     warning: 'text-[color:var(--color-warning)]',
     muted:   'text-[color:var(--color-fg-muted)]',
   };
+
+  // The header chrome (avatar + name + chips) doubles as the collapse/expand
+  // tap target. False when callers pass a no-op `ontoggle` (e.g. the always-
+  // expanded /station/[id] view) so the keyboard / a11y surface area matches
+  // the actual toggle behavior — an inert click target would be confusing.
+  const interactive = $derived(typeof ontoggle === 'function');
 </script>
 
 <Card variant="station" class={className}>
@@ -195,7 +201,21 @@
         <Bus size={20} />
       </Avatar>
 
-      <Box class="flex-1 min-w-0">
+      <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
+      <div
+        role={interactive ? 'button' : undefined}
+        tabindex={interactive ? 0 : undefined}
+        aria-expanded={interactive ? expanded : undefined}
+        aria-label={interactive ? `${expanded ? 'Collapse' : 'Expand'} ${station.name}` : undefined}
+        onclick={interactive ? ontoggle : undefined}
+        onkeydown={interactive
+          ? (e: KeyboardEvent) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); ontoggle(); } }
+          : undefined}
+        class={cn(
+          'flex-1 min-w-0 rounded',
+          interactive && 'cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--color-primary)]',
+        )}
+      >
         <Stack spacing={0.5}>
           <Typography variant="h6" class="truncate">{station.name}</Typography>
 
@@ -224,13 +244,15 @@
                   colorMode="route"
                   isStart={originRouteIds?.has(route.id) ?? false}
                   selected={selectedRouteId === route.id}
-                  onclick={onRouteClick ? () => onRouteClick(route.id) : undefined}
+                  onclick={onRouteClick
+                    ? (e: MouseEvent) => { e.stopPropagation(); onRouteClick(route.id); }
+                    : undefined}
                 />
               {/each}
             </Stack>
           {/if}
         </Stack>
-      </Box>
+      </div>
 
       <IconButton
         onclick={ontoggle}
