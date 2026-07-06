@@ -5,6 +5,15 @@ minimumReleaseAgeExclude:
   - '@n3ary/gtfs-spec@0.3.1'
   - '@n3ary/gtfs-spec@0.3.2'
 
+# Force a patched cookie across the dep tree. cookie<0.7.0 is flagged
+# by Dependabot as GHSA-pxg6-pf52-xh8x / CVE-2024-47764; the package
+# is pulled in transitively (via sveltekit/svelte) and we wait on the
+# upstream bumps to roll through, so the override keeps the lockfile
+# deterministic in the meantime. Bump to a tilde once the upstream
+# constraint catches up and this override can be deleted.
+overrides:
+  cookie: ^0.7.0
+
 # Minimum release age for newly published packages. Protects against
 # freshly-published typosquats slipping into the install. Set to 0
 # here because the @n3ary/gtfs-spec dep is a private in-org package
