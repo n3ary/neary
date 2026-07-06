@@ -22,6 +22,8 @@ export function hasMovedSignificantly(
   thresholdM: number,
 ): boolean {
   if (!previous) return true;
-  const dist = haversineMeters(previous.lat, previous.lon, current.lat, current.lon);
+  const dist = haversineMeters(
+    previous.lat, previous.lon, current.lat, current.lon,
+  );
   return dist >= thresholdM;
 }

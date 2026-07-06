@@ -67,14 +67,18 @@
         if (!pos) return false;
         const rad = (bearingDeg * Math.PI) / 180;
         const dLat = (meters * Math.cos(rad)) / 111_320;
-        const dLon = (meters * Math.sin(rad)) / (111_320 * Math.cos((pos.coords.latitude * Math.PI) / 180));
+        const dLon = (meters * Math.sin(rad)) /
+          (111_320 * Math.cos((pos.coords.latitude * Math.PI) / 180));
         locationStore.setMockPosition(
           pos.coords.latitude + dLat,
           pos.coords.longitude + dLon,
         );
         return true;
       },
-      stores: { locationStore, feedsStore, statusBus, userPrefs, refreshBus, reconciledVehiclesStore, favoritesStore, stationsViewStore },
+      stores: {
+        locationStore, feedsStore, statusBus, userPrefs, refreshBus,
+        reconciledVehiclesStore, favoritesStore, stationsViewStore,
+      },
     };
   });
 

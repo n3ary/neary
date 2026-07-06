@@ -13,7 +13,7 @@ describe('stationsViewStore hysteresis (issue #203)', () => {
     ).toBe(true);
   });
 
-  it('refuses to refetch when GPS jitter stays under the configured threshold', () => {
+  it('skips refetch on jitter under the configured threshold', () => {
     stationsViewStore.recordQueryPosition(46.77, 23.62);
     // ~22 m east at lat 46.77 - under the 50 m threshold.
     expect(
@@ -29,7 +29,7 @@ describe('stationsViewStore hysteresis (issue #203)', () => {
     ).toBe(true);
   });
 
-  it('always refetches when the manual-refresh gate is set, even at 0 m drift', () => {
+  it('always refetches on manual refresh, even at 0 m drift', () => {
     stationsViewStore.recordQueryPosition(46.77, 23.62);
     expect(
       stationsViewStore.shouldRefetchByPosition(46.77, 23.62, true),
@@ -70,7 +70,7 @@ describe('stationsViewStore selection persistence (issue #203)', () => {
     expect(stationsViewStore.userHasExpandedChoice).toBe(true);
   });
 
-  it('resetUserChoices wipes expansion + filters + flag, preserves GPS cache', () => {
+  it('resetUserChoices wipes expansion + filters, preserves GPS cache', () => {
     stationsViewStore.pickExpand('stop-1');
     stationsViewStore.toggleRouteFilter('stop-1', 'route-24');
     stationsViewStore.recordQueryPosition(46.77, 23.62);
@@ -80,7 +80,9 @@ describe('stationsViewStore selection persistence (issue #203)', () => {
     expect(stationsViewStore.userHasExpandedChoice).toBe(false);
     // lastQueryPosition survives - caller still wants the hysteresis to
     // hold across an in-view reset.
-    expect(stationsViewStore.lastQueryPosition).toEqual({ lat: 46.77, lon: 23.62 });
+    expect(stationsViewStore.lastQueryPosition).toEqual({
+      lat: 46.77, lon: 23.62,
+    });
   });
 
   it('reset() wipes everything including GPS cache and boards', () => {

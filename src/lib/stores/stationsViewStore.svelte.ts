@@ -106,7 +106,9 @@ class StationsViewStore {
    *  `NearyConfig.significantMoveM`. */
   shouldRefetchByPosition(lat: number, lon: number, force: boolean): boolean {
     if (force) return true;
-    return hasMovedSignificantly(this.lastQueryPosition, { lat, lon }, DEFAULT_CONFIG.significantMoveM);
+    return hasMovedSignificantly(
+      this.lastQueryPosition, { lat, lon }, DEFAULT_CONFIG.significantMoveM,
+    );
   }
 
   /** Mark a position as applied. Called by the page after a successful

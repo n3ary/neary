@@ -112,7 +112,8 @@
   // per-board assembly. We just hand it the boards we select and the
   // per-stop route filter getter; it exposes `assembled` + totals.
   const boardsController = createStationBoardsController({
-    routeFilterFor: (stopId) => stationsViewStore.routeFilterByStop[stopId] ?? null,
+    routeFilterFor: (stopId) =>
+      stationsViewStore.routeFilterByStop[stopId] ?? null,
   });
   $effect(() => { boardsController.setBoards(boards); });
 
@@ -169,7 +170,9 @@
     // window - only the stop *selection* is frozen, which is the whole
     // point: a 15 s worker push never reflows the cards.
     const isManualRefresh = tick !== lastAppliedRefreshTick;
-    if (!stationsViewStore.shouldRefetchByPosition(lat, lon, isManualRefresh)) return;
+    if (!stationsViewStore.shouldRefetchByPosition(
+      lat, lon, isManualRefresh,
+    )) return;
     (async () => {
       try {
         const repo = getGtfsRepo();
@@ -428,7 +431,9 @@
             favoriteRouteIds={favoritesStore.routeIds}
             getUpcomingStops={getUpcomingStops}
             expanded={effectiveExpandedStopId === stop.id}
-            ontoggle={() => stationsViewStore.pickExpand(effectiveExpandedStopId === stop.id ? null : stop.id)}
+            ontoggle={() => stationsViewStore.pickExpand(
+              effectiveExpandedStopId === stop.id ? null : stop.id,
+            )}
           />
         {/each}
       {/if}
