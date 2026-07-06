@@ -13,7 +13,7 @@
 <script lang="ts">
   import { untrack } from 'svelte';
   import { goto } from '$app/navigation';
-  import { AlertTriangle, MapPin } from 'lucide-svelte';
+  import { AlertTriangle, Locate, MapPin } from 'lucide-svelte';
   import {
     Box, Button, Card, CardContent, InfoCard, SelectFeedCard, Spinner, Stack, StationCard,
     Typography,
@@ -145,6 +145,21 @@
         statusBus.dismiss('gps-pending');
       }
     });
+  });
+
+  // Per-view 15 s GPS polling. The +layout watchPosition alone can
+  // stall on iOS Safari with enableHighAccuracy:false (battery-mode
+  // throttling), pinning the nearest-stops view to a stale fix for
+  // minutes. Polling here is the safety net — every 15 s we ask the
+  // OS for a (cache-friendly) fix regardless of whether watch fired.
+  // Polling lifecycle is bound to this view's $effect cleanup, so
+  // navigating to /settings or /favorites naturally stops it. The
+  // underlying watchPosition stays alive so other views (and the
+  // header dot) keep reading a live freshness state. Issue #206.
+  $effect(() => {
+    if (!userPrefs.gpsOptedIn) return;
+    locationStore.startPolling();
+    return () => locationStore.stopPolling();
   });
 
   // Tick gate. The header refresh button bumps `refreshBus.tick`; we
@@ -457,3 +472,31 @@
 
   </Stack>
 </div>
+
+<!-- "Position me" escape hatch (issue #206). Visible only when GPS is
+     on AND we have a position to anchor from — opt-in flow stays
+     exclusive to the Enable banner above. Anchored above the bottom
+     nav (which is z-30 in BottomNavigation.svelte) at z-40 so a
+     transit StatusBar entry — handled by the AppLayout's sticky
+     strip — can never paint over it. Tap triggers a one-shot
+     high-accuracy getCurrentPosition with no cache, bypassing the
+     throttle that leaves the cached fix stale for the rider's
+     whole wait. -->
+{#if gpsState === 'available'}
+  <button
+    type="button"
+    onclick={() => locationStore.forceFreshFix()}
+    aria-label="Position me"
+    title="Position me"
+    class="fixed left-4 z-40 w-12 h-12 rounded-full bg-[color:var(--color-surface)]
+           border border-[color:var(--color-border)] shadow-md
+           flex items-center justify-center text-[color:var(--color-primary)]
+           hover:bg-[color:var(--color-primary)]/10 active:scale-95
+           transition-[transform,background-color]
+           focus-visible:outline-none focus-visible:ring-2
+           focus-visible:ring-[color:var(--color-primary)]"
+    style="bottom: calc(3.5rem + env(safe-area-inset-bottom, 0px))"
+  >
+    <Locate size={20} />
+  </button>
+{/if}
