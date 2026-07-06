@@ -22,12 +22,55 @@
 /index.html
   Cache-Control: no-cache, must-revalidate
 
-# Site-wide security headers.
-/*
-  X-Frame-Options: DENY
-  X-XSS-Protection: 1; mode=block
-  X-Content-Type-Options: nosniff
-
 # App-bundled static assets that ship with hashed filenames.
 /assets/*
   Cache-Control: public, max-age=31536000, immutable
+
+# ----------------------------------------------------------------------------
+# Security headers — see n3ary/app#186.
+#
+# Scope note: Cloudflare Pages applies these to every host bound to the
+# `neary` Pages project (currently app.n3ary.com). The same headers need to
+# be added to the matching _headers files in n3ary/website (apex n3ary.com)
+# and n3ary/branding (branding.n3ary.com). Zone-level HSTS in the Cloudflare
+# dashboard → SSL/TLS → Edge Certificates covers all subdomains including
+# R2 (gtfs.n3ary.com) and any future Workers / Tunnel origins in one toggle;
+# prefer that for the actual fix and keep these per-project headers in sync
+# as a defence-in-depth backstop.
+# ----------------------------------------------------------------------------
+/*
+  # HSTS — force HTTPS for one year across all subdomains of n3ary.com.
+  # Deliberately omits `preload`: preload is a one-way door (browsers cache
+  # the directive for the max-age) and needs a separate submission to
+  # hstspreload.org after a 1-year soak. Tracked in n3ary/app#186.
+  Strict-Transport-Security: max-age=31536000; includeSubDomains
+
+  # Clickjacking protection. Already on the n3ary.com apex; kept for parity
+  # and to defend against regressions.
+  X-Frame-Options: DENY
+
+  # XSS filter hint for older browsers. Modern browsers ignore the header;
+  # kept because Security Insights still checks for it and removing it
+  # would re-surface a warning on the dashboard.
+  X-XSS-Protection: 1; mode=block
+
+  # Block MIME-type sniffing. Already on the apex; kept for parity.
+  X-Content-Type-Options: nosniff
+
+  # Referrer policy — same-origin / strict-origin (no path leak on
+  # downgrade).
+  Referrer-Policy: strict-origin-when-cross-origin
+
+  # Permissions policy — opt out of FLoC/Topics + disable features the PWA
+  # does not use. Geolocation stays open because src/lib/stores/
+  # locationStore.svelte.ts uses navigator.geolocation.watchPosition; the
+  # rest are explicitly denied.
+  Permissions-Policy: accelerometer=(), camera=(), geolocation=(self), gyroscope=(), magnetometer=(), microphone=(), payment=(), usb=(), interest-cohort=()
+
+  # Baseline Content-Security-Policy. SvelteKit static + Svelte 5 need
+  # 'unsafe-inline' for both scripts and styles (inline <div style="...">
+  # in src/app.html, plus SvelteKit's hydration / module-preload bootstrap).
+  # The policy still blocks object/frame injection, restricts origins for
+  # images / data / workers, and forces HTTPS. Tighten with hashes once
+  # SvelteKit's static CSP integration is in place. Tracked in n3ary/app#186.
+  Content-Security-Policy: default-src 'self'; script-src 'self' 'unsafe-inline' 'wasm-unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https://branding.n3ary.com https://gtfs.n3ary.com; font-src 'self' data:; connect-src 'self' https://gtfs.n3ary.com; worker-src 'self' blob:; manifest-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'; upgrade-insecure-requests
