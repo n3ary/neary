@@ -135,7 +135,7 @@
   onclick={handleCardClick}
   onkeydown={interactive ? (e) => { if (e.key === 'Enter' || e.key === ' ') onclick?.(); } : undefined}
   class={cn(
-    'flex items-start gap-3 px-3 py-2 border-2 border-solid rounded-md transition-colors',
+    'flex items-center gap-3 px-3 py-2 border-2 border-solid rounded-md transition-colors',
     'border-[color:var(--color-border)]',
     dim && 'opacity-60',
     interactive && 'cursor-pointer hover:bg-[color:var(--color-border)]/30',
