@@ -265,7 +265,9 @@
   // Issue #226: the demoted "No location" card is dismissable. The
   // dismissal is sticky so it stops nagging users who intentionally
   // chose search; the header GPS dot is still available if they
-  // change their mind later.
+  // change their mind later. A fresh opt-in (any path: Card 3 Try
+  // again, settings toggle, header dot) resets the flag so the
+  // user gets one more nudge if their browser denies the prompt.
   const NO_LOCATION_DISMISS_KEY = 'neary:noLocationCardDismissed';
   function loadNoLocationDismissed(): boolean {
     if (typeof localStorage === 'undefined') return false;
@@ -284,6 +286,23 @@
       // Quota / disabled - silently noop. UI state already reflects dismissal.
     }
   }
+  // Track the previous opt-in flag so we can detect a fresh opt-in
+  // (false -> true) and reset the dismissal. Initialised to the
+  // current value so a returning user with stale permission doesn't
+  // see a spurious reset on mount.
+  let prevGpsOptedIn = userPrefs.gpsOptedIn;
+  $effect(() => {
+    const isOptedIn = userPrefs.gpsOptedIn;
+    if (isOptedIn && !prevGpsOptedIn) {
+      noLocationDismissed = false;
+      try {
+        localStorage.removeItem(NO_LOCATION_DISMISS_KEY);
+      } catch {
+        // ignore
+      }
+    }
+    prevGpsOptedIn = isOptedIn;
+  });
 
   // Issue #226: render the user's favorited routes inline on the
   // Favorites card instead of a "go to /favorites" CTA. The fetch is
