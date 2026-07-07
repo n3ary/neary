@@ -369,7 +369,7 @@
         </InfoCard>
       {/snippet}
       {#snippet favoritesCard()}
-        {#if favoritesStore.routeIds.size > 0}
+        {#if userPrefs.feedId != null && favoritesStore.routeIds.size > 0}
           <Card>
             <CardContent>
               <Stack direction="row" spacing={1} align="center">
