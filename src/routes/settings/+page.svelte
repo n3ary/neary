@@ -273,17 +273,18 @@
   </Card>
 
   <!-- ===== Privacy ===== -->
-  <Card>
-    <CardContent>
-      <Stack spacing={2}>
-        <Typography variant="h6">Privacy</Typography>
-
-        {#if denied}
-          <!-- Same card as the home page's denied-GPS stack. Non-
-               dismissible here because the user came to settings
-               specifically to fix the location state. -->
-          <NoLocationCard />
-        {:else}
+  {#if denied}
+    <!-- NoLocationCard is its own card - render the Privacy header
+         inline rather than nesting it inside another card wrapper. -->
+    <Stack spacing={2}>
+      <Typography variant="h6">Privacy</Typography>
+      <NoLocationCard />
+    </Stack>
+  {:else}
+    <Card>
+      <CardContent>
+        <Stack spacing={2}>
+          <Typography variant="h6">Privacy</Typography>
           <Stack direction="row" align="center" justify="between">
             <Box class="flex-1 min-w-0">
               <Typography variant="body2">Use location</Typography>
@@ -300,10 +301,10 @@
               aria-label="Use location"
             />
           </Stack>
-        {/if}
-      </Stack>
-    </CardContent>
-  </Card>
+        </Stack>
+      </CardContent>
+    </Card>
+  {/if}
 
   <!-- ===== Feed ===== -->
   <Card>
