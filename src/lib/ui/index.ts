@@ -47,6 +47,8 @@ export { default as TypeBadge } from './TypeBadge.svelte';
 // one edit.
 export { default as FavoriteRouteRow } from './FavoriteRouteRow.svelte';
 export { default as FavoriteStationRow } from './FavoriteStationRow.svelte';
+export { default as RouteChipsRow } from './RouteChipsRow.svelte';
+export { default as FavoritesCard } from './FavoritesCard.svelte';
 
 // Pure helpers (no DOM, no stores).
 export { formatBytes, formatWhen } from './formatters';

@@ -1,19 +1,41 @@
-<!-- Global search dialog opened from the header icon. Combines stops + routes in one result list so the rider can jump to either without switching UIs. Empty = nearby (when GPS) + favorited routes + fallback. Typed = matching routes (short_name only — long_name matches too broadly) + stops (diacritic-insensitive). Only surfaces stops with arrival_time and routes with hasSchedule !== false — a search hit should be actionable. Backdrop click + Escape dismiss via bits-ui Dialog. -->
+<!--
+  HeaderSearchOverlay - global search dialog opened from the header icon.
+  Combines stops + routes in one result list so the rider can jump to
+  either a station or a route without switching UIs.
 
+  Empty query:
+    - Favorited stations (any time the user has any)
+    - Favorited routes (only when GPS is on - the home-page Favorites
+      card already lists them for GPS-off users, so pre-filling here
+      would double up)
+    - Nearby stops (up to 4, only when GPS is on)
+    - Fallback message when all three are empty
+
+  Typed query:
+    - Matching routes (short_name only, diacritic-insensitive)
+    - Matching stops (name, diacritic-insensitive)
+
+  Only surfaces stops with at least one non-empty arrival_time and
+  routes with `hasSchedule !== false` — a search hit should be
+  actionable, not a dead-end.
+
+  Backdrop click + Escape dismiss via bits-ui Dialog. Self-contained:
+  reads locationStore, feedsStore, favoritesStore directly.
+-->
 <script lang="ts">
   import { goto } from '$app/navigation';
   import { Dialog as Bits } from 'bits-ui';
-  import { Calendar, Heart, Search, X } from 'lucide-svelte';
+  import { Search, X } from 'lucide-svelte';
   import { getGtfsRepo } from '$lib/data/gtfs/repo';
   import type { StopWithDistance } from '$lib/data/gtfs/types';
   import type { Route } from '$lib/domain/types';
-  import { compareRouteShortName, vehicleTypeLabel } from '$lib/domain/types';
+  import { compareRouteShortName } from '$lib/domain/types';
   import { favoritesStore } from '$lib/stores/favoritesStore.svelte';
   import { feedsStore } from '$lib/stores/feedsStore.svelte';
   import { locationStore } from '$lib/stores/gps/locationStore.svelte';
   import { cn } from './cn';
-  import { iconButtonClass } from './iconButtonClass';
-  import RouteBadge from './RouteBadge.svelte';
+  import FavoriteRouteRow from './FavoriteRouteRow.svelte';
+  import FavoriteStationRow from './FavoriteStationRow.svelte';
   import Spinner from './Spinner.svelte';
   import Stack from './Stack.svelte';
   import StopSearchCard from './StopSearchCard.svelte';
@@ -28,9 +50,18 @@
 
   let query = $state('');
   let debouncedQuery = $state('');
+  // Route catalogue for the bound feed, fetched once per feed. Small
+  // (~200-800 routes) so we filter in JS -- no need for a separate SQL
+  // search query.
   let allRoutes = $state<Route[] | null>(null);
   let stopResults = $state<StopWithDistance[] | null>(null);
   let routeResults = $state<Route[] | null>(null);
+  // Favorited stations resolved to name + id. Fetched lazily so users
+  // who never favorite a station never pay the worker round-trip.
+  let favoriteStations = $state<StopWithDistance[]>([]);
+  // Routes serving each result stop, fetched in one batched call after
+  // stops resolve. Keyed by stop_id; empty for stops with no scheduled
+  // routes (shouldn't happen after the arrival_time filter but guarded).
   let stopRoutes = $state<Record<string, Route[]>>({});
   let loading = $state(false);
   let errorMsg = $state<string | null>(null);
@@ -45,7 +76,8 @@
   const hasGps = $derived(locationStore.position != null);
   const sortMode = $derived<'distance' | 'name'>(hasGps ? 'distance' : 'name');
 
-  // 150 ms debounce so each keystroke doesn't kick off a worker round-trip.
+  // 150 ms debounce on the input so each keystroke doesn't kick off a
+  // worker round-trip.
   let debounceTimer: ReturnType<typeof setTimeout> | null = null;
   $effect(() => {
     const q = query;
@@ -58,7 +90,8 @@
     };
   });
 
-  // Reset + autofocus when opened. Autofocus on next tick so bits-ui has mounted the portal.
+  // Reset + autofocus when opened. Autofocus runs on the next tick so
+  // bits-ui has mounted the portal.
   $effect(() => {
     if (open) {
       query = '';
@@ -71,13 +104,15 @@
     }
   });
 
-  // Invalidate the route catalogue when the feed changes.
+  // Invalidate the route catalogue when the feed changes so the next
+  // open re-fetches for the new feed.
   $effect(() => {
     feedsStore.boundFeedId; // subscribe
     allRoutes = null;
   });
 
-  // Lazy-fetch the route catalogue on open.
+  // Fetch the route catalogue on demand: when the overlay opens and
+  // we don't have one cached for the current feed.
   $effect(() => {
     if (!open) return;
     const fid = feedsStore.boundFeedId;
@@ -93,14 +128,44 @@
     })();
   });
 
-  // Main search: typed → routes by short_name + nearest stops; empty → nearest 2 stops (if GPS) + favorited routes. NT-fallback routes are filtered (no arrival_time would dead-end).
+  // Resolve favorited station ids to name + id whenever the overlay is
+  // open AND the station-id set has changed. The catalogue above fetches
+  // all routes, so we still want to gate this on a non-empty set so a
+  // user with no station favorites never pays the worker round-trip.
+  $effect(() => {
+    if (!open) return;
+    const fid = feedsStore.boundFeedId;
+    if (!fid) return;
+    const ids = favoritesStore.stationIds;
+    if (ids.size === 0) {
+      favoriteStations = [];
+      return;
+    }
+    if (favoriteStations.length > 0) return;
+    (async () => {
+      try {
+        const repo = getGtfsRepo();
+        const resolved = await repo.getStopsByIds(Array.from(ids));
+        favoriteStations = resolved.sort((a, b) => a.name.localeCompare(b.name));
+      } catch (e) {
+        errorMsg = e instanceof Error ? e.message : String(e);
+      }
+    })();
+  });
+
+// Main search effect. Two branches: typed query filters routes +
+  // stops from the worker; empty query surfaces favorites + nearby
+  // stops (gated on GPS so they don't double up with the home card).
   $effect(() => {
     if (!open) return;
     const routes = allRoutes;
-    if (routes == null) return;
+    if (routes == null) return; // wait for catalogue
     const a = anchor;
     const q = debouncedQuery;
     const needle = normalizeForSearch(q);
+
+    // Filter to routes with schedule: NT-fallback (no-time) routes don't
+    // belong in results since tapping them would open an empty schedule.
     const scheduledRoutes = routes.filter((r) => r.hasSchedule !== false);
 
     loading = true;
@@ -109,6 +174,9 @@
       try {
         const repo = getGtfsRepo();
         if (needle) {
+          // Typed mode. Match route short_name only -- long_name is
+          // usually the origin/terminus pair and matches too broadly,
+          // drowning the exact-number match a rider actually wanted.
           const matchingRoutes = scheduledRoutes
             .filter((r) => normalizeForSearch(r.shortName).includes(needle))
             .sort((x, y) => compareRouteShortName(x.shortName, y.shortName))
@@ -119,16 +187,22 @@
           routeResults = matchingRoutes;
           stopResults = stops;
         } else {
+          // Empty mode. Show favorite routes + favorite stations
+          // unconditionally (no GPS gating - the home-page card is
+          // for users who haven't opened search yet; here the user
+          // has, so showing the same data again is correct and
+          // expected). Nearby is GPS-gated and deduped against the
+          // favorite-stations set so a station never appears twice.
+          const favs = scheduledRoutes
+            .filter((r) => favoritesStore.has(r.id))
+            .sort((x, y) => compareRouteShortName(x.shortName, y.shortName));
           const nearby = hasGps && a
-            ? await repo.searchStops('', a.lat, a.lon, 4, 'distance')
+            ? (await repo.searchStops('', a.lat, a.lon, 8, 'distance'))
+                .filter((s) => !favoritesStore.hasStation(s.id))
+                .slice(0, 4)
             : [];
-          const favs = hasGps
-            ? scheduledRoutes
-                .filter((r) => favoritesStore.has(r.id))
-                .sort((x, y) => compareRouteShortName(x.shortName, y.shortName))
-            : [];
-          stopResults = nearby;
           routeResults = favs;
+          stopResults = nearby;
         }
       } catch (e) {
         errorMsg = e instanceof Error ? e.message : String(e);
@@ -148,7 +222,9 @@
       routeResults.length === 0,
   );
 
-  // After each search settles, batched fetch the route chips for every result stop. Out-of-order guard: only apply if current stopResults still contains the same ids. Silent on failure — chips are supplementary.
+  // After each search settles, fetch the route chips for every result
+  // stop in one batched worker round-trip. Cleared between searches so
+  // stale chips don't paint while the next fetch is in flight.
   $effect(() => {
     if (!open) return;
     const stops = stopResults;
@@ -162,6 +238,11 @@
       try {
         const repo = getGtfsRepo();
         const routes = await repo.getRoutesForStops(ids);
+        // Guard against out-of-order resolution: only apply if the
+        // current stopResults still contains these ids. Also drop
+        // routes without a schedule -- consistent with the top-level
+        // route-search filter, and keeps the chip row honest (a badge
+        // that opens a dead-end schedule is worse than no badge).
         const currentIds = new Set((stopResults ?? []).map((s) => s.id));
         const filtered: Record<string, Route[]> = {};
         for (const id of Object.keys(routes)) {
@@ -171,7 +252,8 @@
         }
         stopRoutes = filtered;
       } catch {
-        // badge chips are supplementary; failure shouldn't tear down the search results
+        // Silent -- badge chips are supplementary; failure to fetch
+        // them shouldn't tear down the search results themselves.
       }
     })();
   });
@@ -186,6 +268,9 @@
   }
   function toggleFavorite(route: Route) {
     favoritesStore.toggle(route.id);
+  }
+  function toggleFavoriteStation(stopId: string) {
+    favoritesStore.toggleStation(stopId);
   }
   function normalizeForSearch(s: string): string {
     return s.normalize('NFD').replace(/\p{M}/gu, '').toLowerCase().trim();
@@ -258,20 +343,35 @@
           {:else}
             {#if routeResults && routeResults.length > 0}
               <Typography variant="caption" class="block px-2 pt-1 text-[color:var(--color-fg-muted)]">
-                {isTyping ? 'Routes' : 'Your favorites'}
+                {isTyping ? 'Routes' : 'Your favorite routes'}
               </Typography>
               {#each routeResults as route (route.id)}
-                {@const isFav = favoritesStore.has(route.id)}
-                {@const type = route.type ?? 'unknown'}
-                {@const typeLabel = vehicleTypeLabel(type)}
-                {@const primaryLabel = route.longName ?? typeLabel}
-                {@render routeCard(route, isFav, primaryLabel, typeLabel)}
+                <FavoriteRouteRow
+                  {route}
+                  isFav={favoritesStore.has(route.id)}
+                  onToggleFavorite={() => toggleFavorite(route)}
+                  onbodyclick={() => openRouteSchedule(route)}
+                />
               {/each}
             {/if}
 
-            {#if stopResults && stopResults.length > 0}
+            {#if !isTyping && favoriteStations.length > 0}
               <Typography variant="caption" class="block px-2 pt-2 text-[color:var(--color-fg-muted)]">
-                {isTyping ? 'Stations' : 'Nearby'}
+                Your favorite stations
+              </Typography>
+              {#each favoriteStations as stop (stop.id)}
+                <FavoriteStationRow
+                  {stop}
+                  isFav={favoritesStore.hasStation(stop.id)}
+                  onToggleFavorite={() => toggleFavoriteStation(stop.id)}
+                  onbodyclick={() => selectStop(stop.id)}
+                />
+              {/each}
+            {/if}
+
+            {#if !isTyping && stopResults && stopResults.length > 0}
+              <Typography variant="caption" class="block px-2 pt-2 text-[color:var(--color-fg-muted)]">
+                Nearby
               </Typography>
               {#each stopResults as stop (stop.id)}
                 <StopSearchCard
@@ -279,6 +379,24 @@
                   routes={stopRoutes[stop.id] ?? []}
                   {hasGps}
                   onselect={selectStop}
+                  isFav={favoritesStore.hasStation(stop.id)}
+                  onToggleFavorite={() => toggleFavoriteStation(stop.id)}
+                />
+              {/each}
+            {/if}
+
+            {#if isTyping && stopResults && stopResults.length > 0}
+              <Typography variant="caption" class="block px-2 pt-2 text-[color:var(--color-fg-muted)]">
+                Stations
+              </Typography>
+              {#each stopResults as stop (stop.id)}
+                <StopSearchCard
+                  {stop}
+                  routes={stopRoutes[stop.id] ?? []}
+                  {hasGps}
+                  onselect={selectStop}
+                  isFav={favoritesStore.hasStation(stop.id)}
+                  onToggleFavorite={() => toggleFavoriteStation(stop.id)}
                 />
               {/each}
             {/if}
@@ -294,71 +412,3 @@
     </Bits.Content>
   </Bits.Portal>
 </Bits.Root>
-
-{#snippet routeCard(route: Route, isFav: boolean, primaryLabel: string, typeLabel: string)}
-  <!-- svelte-ignore a11y_click_events_have_key_events -->
-  <!-- svelte-ignore a11y_no_static_element_interactions -->
-  <div
-    role="button"
-    tabindex={0}
-    onclick={(e) => {
-      // Bail when the click came from an inner anchor/button so the badge (map), calendar (schedule), and heart (favorite) taps don't fire the default open-schedule action.
-      if ((e.target as Element | null)?.closest('a, button')) return;
-      openRouteSchedule(route);
-    }}
-    onkeydown={(e) => {
-      if (e.key === 'Enter' || e.key === ' ') {
-        if ((e.target as Element | null)?.closest('a, button')) return;
-        e.preventDefault();
-        openRouteSchedule(route);
-      }
-    }}
-    class={cn(
-      'flex items-center gap-3 px-3 py-2 border-2 border-solid rounded-md transition-colors',
-      'border-[color:var(--color-border)] cursor-pointer',
-      'hover:bg-[color:var(--color-border)]/30',
-      'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--color-primary)]',
-    )}
-  >
-    <a
-      href={`/map/route/${route.id}_0`}
-      onclick={onclose}
-      aria-label={`Open map for ${typeLabel.toLowerCase()} ${route.shortName}`}
-      title="Open route map"
-      class="shrink-0 rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--color-primary)]"
-    >
-      <RouteBadge {route} size="medium" class="min-w-14" />
-    </a>
-    <div class="min-w-0 flex-1">
-      <div class="text-sm font-medium truncate">{primaryLabel}</div>
-      {#if route.description}
-        <div class="text-xs truncate text-[color:var(--color-fg-muted)]">{route.description}</div>
-      {/if}
-    </div>
-    <div class="flex items-center gap-1 shrink-0">
-      <a
-        href={`/schedule/route/${route.id}_0`}
-        onclick={onclose}
-        aria-label={`Open schedule for ${typeLabel.toLowerCase()} ${route.shortName}`}
-        title="Open route schedule"
-        class={iconButtonClass}
-      >
-        <Calendar size={16} strokeWidth={2.25} />
-      </a>
-      <button
-        type="button"
-        aria-label={`${isFav ? 'Unfavorite' : 'Favorite'} ${typeLabel.toLowerCase()} ${route.shortName}`}
-        aria-pressed={isFav}
-        onclick={(e) => { e.stopPropagation(); toggleFavorite(route); }}
-        class={iconButtonClass}
-      >
-        <Heart
-          size={16}
-          strokeWidth={2.25}
-          fill={isFav ? 'currentColor' : 'none'}
-          class={isFav ? 'text-[color:var(--color-danger)]' : 'text-[color:var(--color-fg-muted)]'}
-        />
-      </button>
-    </div>
-  </div>
-{/snippet}

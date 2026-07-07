@@ -5,10 +5,16 @@
   page in one edit. Same chrome + a11y shape as FavoriteRouteRow but
   heart-only on the right (stations have no per-station "view all
   schedules" URL - that shape is route-shaped).
+
+  When `routes` is supplied, a RouteChipsRow renders below the name
+  showing the routes that serve this station, with the same overflow
+  +N chip behaviour as the search overlay's StopSearchCard.
 -->
 <script lang="ts">
   import { Bus, Heart } from 'lucide-svelte';
+  import type { Route } from '$lib/domain/types';
   import Avatar from './Avatar.svelte';
+  import RouteChipsRow from './RouteChipsRow.svelte';
   import { cn } from './cn';
   import { iconButtonClass } from './iconButtonClass';
 
@@ -20,6 +26,11 @@
     onToggleFavorite: () => void;
     /** Optional body tap. When null/undefined the row is non-interactive. */
     onbodyclick?: (() => void) | null;
+    /** Optional ordered list of routes serving this station. When
+     *  supplied, renders the same overflow chip row the search overlay
+     *  uses so the user sees which routes stop here without leaving the
+     *  favorites surface. */
+    routes?: Route[];
     variant?: 'card' | 'inline';
     class?: string;
   };
@@ -29,11 +40,13 @@
     isFav,
     onToggleFavorite,
     onbodyclick = null,
+    routes,
     variant = 'card',
     class: className,
   }: Props = $props();
 
   const interactive = $derived(typeof onbodyclick === 'function');
+  const showChips = $derived(Array.isArray(routes) && routes.length > 0);
 </script>
 
 <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
@@ -69,8 +82,11 @@
   <Avatar variant="square" class="w-10 h-10 shrink-0">
     <Bus size={20} />
   </Avatar>
-  <div class="min-w-0 flex-1">
+  <div class="min-w-0 flex-1 flex flex-col gap-1">
     <div class="text-sm font-medium truncate">{stop.name}</div>
+    {#if showChips && routes}
+      <RouteChipsRow routes={routes} />
+    {/if}
   </div>
   <div class="flex items-center gap-1 shrink-0">
     <button
