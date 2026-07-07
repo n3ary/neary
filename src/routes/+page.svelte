@@ -13,9 +13,9 @@
 <script lang="ts">
   import { untrack } from 'svelte';
   import { goto } from '$app/navigation';
-  import { AlertTriangle, Calendar, Heart, Locate, MapPin, Search } from 'lucide-svelte';
+  import { AlertTriangle, Calendar, Heart, Locate, MapPin, Search, X } from 'lucide-svelte';
   import {
-    Box, Button, Card, CardContent, InfoCard, NoLocationCard, RouteBadge, SelectFeedCard, Spinner, Stack, StationCard,
+    Box, Button, Card, CardContent, IconButton, InfoCard, NoLocationCard, RouteBadge, SelectFeedCard, Spinner, Stack, StationCard,
     Typography, iconButtonClass,
   } from '$lib/ui';
   import { getGtfsRepo } from '$lib/data/gtfs/repo';
@@ -29,6 +29,7 @@
   import { isPositionInFeedBbox, distanceToFeedBboxKm, findNearestFeed } from '$lib/domain/feedCoverage';
   import { feedsStore } from '$lib/stores/feedsStore.svelte';
   import { locationStore } from '$lib/stores/locationStore.svelte';
+  import { enableLocationPromptDismissedStore } from '$lib/stores/enableLocationPromptDismissedStore.svelte';
   import { favoritesStore } from '$lib/stores/favoritesStore.svelte';
   import { refreshBus } from '$lib/stores/refreshBus.svelte';
   import { searchOverlayStore } from '$lib/stores/searchOverlayStore.svelte';
@@ -340,6 +341,33 @@
          Location goes first so opting in can flip the feed banner
          below into the "Use {coveringFeed}" one-tap state in the same
          render pass. -->
+
+    {#if gpsState === 'not-opted-in' && !enableLocationPromptDismissedStore.dismissed}
+      <!-- First-time Enable prompt. Shows when the user has never
+           enabled location AND hasn't dismissed the prompt. The X
+           button persists the dismissal so we don't nag returning
+           users who already know the option exists. Once the user
+           actually enables location, this branch falls through to
+           'pending' / 'available' and the prompt disappears naturally. -->
+      <InfoCard variant="primary" title="Stops near you">
+        {#snippet icon()}<MapPin size={16} />{/snippet}
+        {#snippet body()}
+          Allow location and we'll surface stops near you automatically. Your
+          position stays on your device. You can also jump straight to a station
+          by name.
+        {/snippet}
+        {#snippet actions()}
+          <Button variant="contained" size="small" onclick={() => locationStore.enable()}>
+            Enable location
+          </Button>
+          {#if userPrefs.feedId != null}
+            <Button variant="text" size="small" onclick={() => searchOverlayStore.open()}>
+              Search
+            </Button>
+          {/if}
+        {/snippet}
+      </InfoCard>
+    {/if}
 
     {#if gpsState === 'not-opted-in' || denied}
       {#snippet searchIcon()}<Search size={16} />{/snippet}
