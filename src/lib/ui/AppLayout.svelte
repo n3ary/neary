@@ -1,4 +1,4 @@
-<!-- Overall page shell: Header + StatusBar + scrollable main + fixed BottomNavigation. Header+StatusBar share a single sticky strip (StatusBar alone would scroll away); BottomNavigation is rendered outside the flex column because position: fixed inside flex is an iOS Safari quirk. Shell uses min-h-100vh: the layout viewport height is correct on the first paint of an iOS PWA standalone launch, where 100dvh resolves before the standalone viewport has stabilized and leaves a strip of background below the fixed BottomNavigation (#227). dvh was tried (#184) but only fixed the post-navigation case. -->
+<!-- Overall page shell: Header + StatusBar + scrollable main + fixed BottomNavigation. Header+StatusBar share a single sticky strip (StatusBar alone would scroll away); BottomNavigation is rendered outside the flex column because position: fixed inside flex is an iOS Safari quirk. Shell uses min-h-dvh (#184): the dynamic viewport height, which on iOS PWA standalone equals the visible area (above the home indicator). The first-paint case (#227) where the nav floats up is tracked separately. -->
 <script lang="ts" generics="T extends string">
   import type { Snippet } from 'svelte';
   import BottomNavigation from './BottomNavigation.svelte';
@@ -39,7 +39,7 @@
   }: Props = $props();
 </script>
 
-<div class="min-h-100vh flex flex-col bg-[color:var(--color-bg)] text-[color:var(--color-fg)]">
+<div class="min-h-dvh flex flex-col bg-[color:var(--color-bg)] text-[color:var(--color-fg)]">
   <!-- Sticky strip: Header (sticky itself) + StatusBar. Wrapping them
        in one sticky element means they move together as a unit while
        the user scrolls, instead of the Header pinning and the StatusBar
@@ -55,7 +55,7 @@
        calc, the last content row on iPhones with a home indicator gets
        covered by the inset (the nav itself pads up by safe-bottom, the
        page must too). -->
-  <main class="flex-1 overflow-x-hidden pb-[calc(3.5rem+env(safe-area-inset-bottom,0px))]">
+  <main class="flex-1 overflow-x-hidden pb-[calc(3.5rem+var(--space-safe-bottom))]">
     {@render children?.()}
   </main>
 </div>
