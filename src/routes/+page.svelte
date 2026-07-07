@@ -279,7 +279,7 @@
     try {
       localStorage.setItem(NO_LOCATION_DISMISS_KEY, '1');
     } catch {
-      // Quota / disabled — silently noop. UI state already reflects dismissal.
+      // Quota / disabled - silently noop. UI state already reflects dismissal.
     }
   }
 

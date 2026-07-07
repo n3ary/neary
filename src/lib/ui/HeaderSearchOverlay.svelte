@@ -159,7 +159,7 @@
           stopResults = stops;
         } else {
           // Empty mode. Nearest 4 stops when GPS is on; favorites only
-          // when GPS is on too — otherwise the home-page Favorites card
+          // when GPS is on too - otherwise the home-page Favorites card
           // (#226) already lists them and we'd double up.
           const nearby = hasGps && a
             ? await repo.searchStops('', a.lat, a.lon, 4, 'distance')
