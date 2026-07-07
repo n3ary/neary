@@ -351,147 +351,120 @@
          below into the "Use {coveringFeed}" one-tap state in the same
          render pass. -->
 
-    {#if gpsState === 'not-opted-in'}
-      <InfoCard variant="primary" title="Stops near you">
-        {#snippet icon()}<MapPin size={16} />{/snippet}
-        {#snippet body()}
-          Allow location and we'll surface stops near you automatically. Your
-          position stays on your device. You can also jump straight to a station
-          by name.
-        {/snippet}
-        {#snippet actions()}
-          <Button variant="contained" size="small" onclick={() => locationStore.enable()}>
-            Enable location
-          </Button>
-          {#if userPrefs.feedId != null}
-            <Button variant="text" size="small" onclick={() => searchOverlayStore.open()}>
-              Search
-            </Button>
-          {/if}
-        {/snippet}
-      </InfoCard>
-    {:else if denied}
-      <!-- Issue #226: three stacked cards replace the single "No
-           location - search instead" InfoCard. Visual hierarchy is
-           enforced by button variant + size + card chrome. Search
-           is the primary affordance so a user without GPS reaches a
-           usable experience in one tap. Favorites offers a faster
-           path for returning users. No-location is demoted and
-           dismissable so it stops nagging users who intentionally
-           chose search. -->
-
-      <!-- Card 1 - Search (primary). startIcon distinguishes this
-           from the Enable-location button users just tapped; it
-           opens the existing HeaderSearchOverlay. -->
+    {#if gpsState === 'not-opted-in' || denied}
       {#snippet searchIcon()}<Search size={16} />{/snippet}
-      <InfoCard variant="primary" title="Find a station">
-        {#snippet icon()}<MapPin size={16} />{/snippet}
-        {#snippet body()}
-          Tap to search any station or route by name or number.
-        {/snippet}
-        {#snippet actions()}
-          {#if userPrefs.feedId != null}
-            <Button variant="contained" startIcon={searchIcon} onclick={() => searchOverlayStore.open()}>
-              Search
-            </Button>
-          {/if}
-        {/snippet}
-      </InfoCard>
-
-      <!-- Card 2 - Favorites (secondary). Renders the user's favorited
-           routes inline so a no-GPS user can jump straight to a
-           schedule. Capped at MAX_INLINE_FAVORITES rows; the overflow
-           link goes to /favorites for the full list. Hidden entirely
-           when the user has no favorites. Routes only for now since
-           station favorites don't exist yet. -->
-      {#if favoritesStore.routeIds.size > 0}
-        <Card>
-          <CardContent>
-            <Stack direction="row" spacing={1} align="center">
-              <Heart size={16} class="shrink-0 text-[color:var(--color-fg-muted)]" />
-              <Typography variant="h6">Your favorites</Typography>
-            </Stack>
-            {#if routesError}
-              <Typography variant="caption" class="block pt-1">
-                Couldn't load your favorites.
-              </Typography>
-            {:else if !allRoutesForFavorites}
-              <Stack direction="row" spacing={1} align="center" class="pt-3">
-                <Spinner size={14} />
-                <Typography variant="caption">Loading...</Typography>
+      {#snippet searchCard()}
+        <InfoCard variant="primary" title="Find a station">
+          {#snippet icon()}<MapPin size={16} />{/snippet}
+          {#snippet body()}
+            Tap to search any station or route by name or number.
+          {/snippet}
+          {#snippet actions()}
+            {#if userPrefs.feedId != null}
+              <Button variant="contained" startIcon={searchIcon} onclick={() => searchOverlayStore.open()}>
+                Search
+              </Button>
+            {/if}
+          {/snippet}
+        </InfoCard>
+      {/snippet}
+      {#snippet favoritesCard()}
+        {#if favoritesStore.routeIds.size > 0}
+          <Card>
+            <CardContent>
+              <Stack direction="row" spacing={1} align="center">
+                <Heart size={16} class="shrink-0 text-[color:var(--color-fg-muted)]" />
+                <Typography variant="h6">Your favorites</Typography>
               </Stack>
-            {:else if favoriteRoutes.length === 0}
-              <Typography variant="caption" class="block pt-1">
-                Your saved routes aren't in this feed.
-              </Typography>
-            {:else}
-              {#each favoriteRoutes.slice(0, MAX_INLINE_FAVORITES) as route (route.id)}
-                {@const isFav = favoritesStore.has(route.id)}
-                {@const typeLabel = vehicleTypeLabel(route.type ?? 'unknown')}
-                {@const primaryLabel = route.longName ?? typeLabel}
-                {@const hasSchedule = route.hasSchedule !== false}
-                {@const scheduleHref = hasSchedule ? `/schedule/route/${route.id}_0` : null}
-                {@const mapHref = `/map/route/${route.id}_0`}
-                <div class="mt-1 flex items-center gap-3 px-1 py-1.5 -mx-1 rounded-md hover:bg-[color:var(--color-border)]/20 transition-colors">
-                  <a
-                    href={mapHref}
-                    aria-label={`Open map for ${typeLabel.toLowerCase()} ${route.shortName}`}
-                    title="Open route map"
-                    class="shrink-0 rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--color-primary)]"
-                  >
-                    <RouteBadge {route} size="medium" class="min-w-14" />
-                  </a>
-                  <div class="min-w-0 flex-1">
-                    <div class="text-sm font-medium truncate">{primaryLabel}</div>
-                    {#if route.description}
-                      <div class="text-xs truncate text-[color:var(--color-fg-muted)]">{route.description}</div>
-                    {/if}
-                  </div>
-                  <div class="flex items-center gap-1 shrink-0">
-                    {#if scheduleHref}
-                      <a
-                        href={scheduleHref}
-                        aria-label={`Open schedule for ${typeLabel.toLowerCase()} ${route.shortName}`}
-                        title="Open route schedule"
+              {#if routesError}
+                <Typography variant="caption" class="block pt-1">
+                  Couldn't load your favorites.
+                </Typography>
+              {:else if !allRoutesForFavorites}
+                <Stack direction="row" spacing={1} align="center" class="pt-3">
+                  <Spinner size={14} />
+                  <Typography variant="caption">Loading...</Typography>
+                </Stack>
+              {:else if favoriteRoutes.length === 0}
+                <Typography variant="caption" class="block pt-1">
+                  Your saved routes aren't in this feed.
+                </Typography>
+              {:else}
+                {#each favoriteRoutes.slice(0, MAX_INLINE_FAVORITES) as route (route.id)}
+                  {@const isFav = favoritesStore.has(route.id)}
+                  {@const typeLabel = vehicleTypeLabel(route.type ?? 'unknown')}
+                  {@const primaryLabel = route.longName ?? typeLabel}
+                  {@const hasSchedule = route.hasSchedule !== false}
+                  {@const scheduleHref = hasSchedule ? `/schedule/route/${route.id}_0` : null}
+                  {@const mapHref = `/map/route/${route.id}_0`}
+                  <div class="mt-1 flex items-center gap-3 px-1 py-1.5 -mx-1 rounded-md hover:bg-[color:var(--color-border)]/20 transition-colors">
+                    <a
+                      href={mapHref}
+                      aria-label={`Open map for ${typeLabel.toLowerCase()} ${route.shortName}`}
+                      title="Open route map"
+                      class="shrink-0 rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--color-primary)]"
+                    >
+                      <RouteBadge {route} size="medium" class="min-w-14" />
+                    </a>
+                    <div class="min-w-0 flex-1">
+                      <div class="text-sm font-medium truncate">{primaryLabel}</div>
+                      {#if route.description}
+                        <div class="text-xs truncate text-[color:var(--color-fg-muted)]">{route.description}</div>
+                      {/if}
+                    </div>
+                    <div class="flex items-center gap-1 shrink-0">
+                      {#if scheduleHref}
+                        <a
+                          href={scheduleHref}
+                          aria-label={`Open schedule for ${typeLabel.toLowerCase()} ${route.shortName}`}
+                          title="Open route schedule"
+                          class={iconButtonClass}
+                        >
+                          <Calendar size={16} strokeWidth={2.25} />
+                        </a>
+                      {/if}
+                      <button
+                        type="button"
+                        aria-label={`${isFav ? 'Unfavorite' : 'Favorite'} ${typeLabel.toLowerCase()} ${route.shortName}`}
+                        aria-pressed={isFav}
+                        onclick={(e) => { e.stopPropagation(); favoritesStore.toggle(route.id); }}
                         class={iconButtonClass}
                       >
-                        <Calendar size={16} strokeWidth={2.25} />
-                      </a>
-                    {/if}
-                    <button
-                      type="button"
-                      aria-label={`${isFav ? 'Unfavorite' : 'Favorite'} ${typeLabel.toLowerCase()} ${route.shortName}`}
-                      aria-pressed={isFav}
-                      onclick={(e) => { e.stopPropagation(); favoritesStore.toggle(route.id); }}
-                      class={iconButtonClass}
-                    >
-                      <Heart
-                        size={16}
-                        strokeWidth={2.25}
-                        fill={isFav ? 'currentColor' : 'none'}
-                        class={isFav ? 'text-[color:var(--color-danger)]' : 'text-[color:var(--color-fg-muted)]'}
-                      />
-                    </button>
+                        <Heart
+                          size={16}
+                          strokeWidth={2.25}
+                          fill={isFav ? 'currentColor' : 'none'}
+                          class={isFav ? 'text-[color:var(--color-danger)]' : 'text-[color:var(--color-fg-muted)]'}
+                        />
+                      </button>
+                    </div>
                   </div>
-                </div>
-              {/each}
-              {#if favoritesStore.routeIds.size > MAX_INLINE_FAVORITES}
-                <Stack direction="row" spacing={1} align="center" class="pt-2 border-t border-[color:var(--color-border)] mt-1">
-                  <Button variant="text" size="small" onclick={() => goto('/favorites')}>
-                    View all {favoritesStore.routeIds.size} in Favorites
-                  </Button>
-                </Stack>
+                {/each}
+                {#if favoritesStore.routeIds.size > MAX_INLINE_FAVORITES}
+                  <Stack direction="row" spacing={1} align="center" class="pt-2 border-t border-[color:var(--color-border)] mt-1">
+                    <Button variant="text" size="small" onclick={() => goto('/favorites')}>
+                      View all {favoritesStore.routeIds.size} in Favorites
+                    </Button>
+                  </Stack>
+                {/if}
               {/if}
-            {/if}
-          </CardContent>
-        </Card>
-      {/if}
+            </CardContent>
+          </Card>
+        {/if}
+      {/snippet}
+      {@render searchCard()}
+      {@render favoritesCard()}
+    {/if}
 
-      <!-- Card 3 - No location (dismissable, demoted). Shared with
-           the settings page via NoLocationCard; dismissal state is
-           global so dismissing in one place persists in the other. -->
+    {#if denied}
       <NoLocationCard dismissible />
-    {:else if gpsState === 'unavailable'}
+    {/if}
+
+    {#if gpsState === 'unavailable' && !denied}
+      <!-- Genuine no-API-support case only. The denied state covers
+           the more common permission-denied case via the Search +
+           Favorites + NoLocation stack above; this card is for when
+           the browser simply can't expose geolocation at all. -->
       <InfoCard title="Location not supported">
         {#snippet icon()}<MapPin size={16} />{/snippet}
         {#snippet body()}
