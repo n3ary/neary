@@ -551,37 +551,37 @@
     </Stack>
 
     <Stack spacing={1}>
-      <Typography variant="body2">RouteChipsRow — soft cap + measured fit</Typography>
+      <Typography variant="body2">RouteChipsRow — measured fit drives the count</Typography>
       <Typography variant="caption" class="text-[color:var(--color-fg-muted)]">
-        Same chip row StopSearchCard and FavoriteStationRow use. Renders
-        min(fit, maxVisible) badges + a +N chip for the rest. Soft cap, not hard:
-        a narrow card collapses via +N regardless of how many badges the catalogue
-        has; a wide card still falls back to +N at the cap (8 by default) so a
-        20-route stop renders a scannable summary. Resize the browser to watch
-        the visible count move between the cap and the actual fit.
+        Same chip row StopSearchCard and FavoriteStationRow use. The visible
+        count is the largest N such that N badges + a "+M" chip fits the
+        measured rowWidth; the row fills its available space before resorting
+        to +N. No static cap - the catalogue paints in full when the card is
+        wide enough. Pass maxVisible to force a hard upper bound. Resize the
+        browser to watch the count move between "all fit" and "+N collapsed".
       </Typography>
       <Stack spacing={1}>
         <Stack spacing={0.5}>
           <Typography variant="caption" class="text-[color:var(--color-fg-muted)]">
-            3 routes (no overflow expected)
+            3 routes (always fits; no +N)
           </Typography>
           <RouteChipsRow routes={demoSearchRoutes.slice(0, 3)} />
         </Stack>
         <Stack spacing={0.5}>
           <Typography variant="caption" class="text-[color:var(--color-fg-muted)]">
-            8 routes (soft cap; may overflow on narrow widths)
+            8 routes (fits on wide, collapses via +N on narrow)
           </Typography>
           <RouteChipsRow routes={demoSearchRoutes} />
         </Stack>
         <Stack spacing={0.5}>
           <Typography variant="caption" class="text-[color:var(--color-fg-muted)]">
-            20 routes (always overflows; +N chip visible)
+            20 routes (overflows on most widths; +N chip)
           </Typography>
           <RouteChipsRow routes={demoManyRoutes} />
         </Stack>
         <Stack spacing={0.5}>
           <Typography variant="caption" class="text-[color:var(--color-fg-muted)]">
-            20 routes, cap=12 (custom maxVisible)
+            20 routes, maxVisible=12 (hard cap demo)
           </Typography>
           <RouteChipsRow routes={demoManyRoutes} maxVisible={12} />
         </Stack>
