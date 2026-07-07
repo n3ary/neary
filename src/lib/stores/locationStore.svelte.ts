@@ -108,6 +108,12 @@ class LocationStore {
    */
   enable(): boolean {
     userPrefs.gpsOptedIn = true;
+    // Record that the user has engaged with GPS at least once. Stays
+    // true even if they later disable from Settings or the browser
+    // prompt denied - in either case they've shown they know about
+    // location, so the first-time "Enable location" home-page prompt
+    // shouldn't reappear.
+    userPrefs.hasEverEnabledGPS = true;
     return this.start();
   }
 

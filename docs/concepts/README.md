@@ -10,3 +10,4 @@ Shared vocabulary used across the codebase and other docs.
 | [confidence.md](confidence.md) | Confidence tiers and how the UI renders them |
 | [feeds.md](feeds.md) | Multi-feed model, freshness lifecycle, per-feed scoping |
 | [prediction.md](prediction.md) | Schedule-spine vs GPS-spine; current state of ETAs |
+| [gps-states.md](gps-states.md) | GPS state sources, gpsState machine, per-surface visibility matrix |

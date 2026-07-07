@@ -49,6 +49,13 @@ class UserPrefs {
    *  The +layout effect auto-starts the GPS watch on mount when this is true,
    *  so the user only sees the browser permission prompt once. */
   gpsOptedIn = $state(false);
+  /** True once the user has ever called locationStore.enable() - even if
+   *  the browser prompt was denied or they later disabled from Settings.
+   *  Used by the home page to hide the first-time "Enable location"
+   *  prompt once the user has engaged with GPS, so a returning user
+   *  who toggled off in Settings isn't nagged with an Enable CTA they
+   *  already know about. */
+  hasEverEnabledGPS = $state(false);
 
   constructor() {
     if (typeof localStorage === 'undefined') return;
@@ -64,6 +71,7 @@ class UserPrefs {
         showDebugIds: boolean;
         stationBoardMaxRows: number;
         gpsOptedIn: boolean;
+        hasEverEnabledGPS: boolean;
       }>;
       if (o.theme === 'auto' || o.theme === 'light' || o.theme === 'dark') this.theme = o.theme;
       if (typeof o.feedId === 'string' || o.feedId === null) this.feedId = o.feedId;
@@ -73,6 +81,7 @@ class UserPrefs {
       if (typeof o.showDebugIds === 'boolean') this.showDebugIds = o.showDebugIds;
       if (typeof o.stationBoardMaxRows === 'number' && o.stationBoardMaxRows > 0) this.stationBoardMaxRows = o.stationBoardMaxRows;
       if (typeof o.gpsOptedIn === 'boolean') this.gpsOptedIn = o.gpsOptedIn;
+      if (typeof o.hasEverEnabledGPS === 'boolean') this.hasEverEnabledGPS = o.hasEverEnabledGPS;
     } catch {
       // Corrupt or unreadable storage — fall back to defaults silently.
     }
@@ -89,6 +98,7 @@ class UserPrefs {
       showDebugIds: this.showDebugIds,
       stationBoardMaxRows: this.stationBoardMaxRows,
       gpsOptedIn: this.gpsOptedIn,
+      hasEverEnabledGPS: this.hasEverEnabledGPS,
     };
   }
 }

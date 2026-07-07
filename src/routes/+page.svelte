@@ -270,6 +270,21 @@
     !locationStore.isSupported && gpsState === 'unavailable' && !denied,
   );
 
+  // Banner-stack gates. Named derived flags so the markup below reads
+  // as "show X when Y" instead of inlining conditionals. See
+  // docs/concepts/gps-states.md for the full state machine + per-surface
+  // visibility matrix.
+  const showEnablePrompt = $derived(
+    gpsState === 'not-opted-in'
+    && !userPrefs.hasEverEnabledGPS
+    && !enableLocationPromptDismissedStore.dismissed,
+  );
+  const showSearchAndFavorites = $derived(
+    gpsState === 'not-opted-in' || denied,
+  );
+  const showNoLocationCard = $derived(denied);
+  const showLocationUnsupported = $derived(gpsUnsupported);
+
   // Issue #226: render the user's favorited routes inline on the
   // Favorites card instead of a "go to /favorites" CTA. The fetch is
   // gated on `favoritesStore.routeIds.size` so users on the GPS-allowed
@@ -342,13 +357,15 @@
          below into the "Use {coveringFeed}" one-tap state in the same
          render pass. -->
 
-    {#if gpsState === 'not-opted-in' && !enableLocationPromptDismissedStore.dismissed}
+    {#if showEnablePrompt}
       <!-- First-time Enable prompt. Shows when the user has never
-           enabled location AND hasn't dismissed the prompt. The X
-           button persists the dismissal so we don't nag returning
-           users who already know the option exists. Once the user
-           actually enables location, this branch falls through to
-           'pending' / 'available' and the prompt disappears naturally. -->
+           enabled location AND hasn't dismissed the prompt AND hasn't
+           engaged with GPS at any point (hasEverEnabledGPS captures
+           the "user enabled then disabled from Settings" case so we
+           don't re-nag them). The X button persists the dismissal;
+           once the user actually enables location, this branch
+           falls through to 'pending' / 'available' and the prompt
+           disappears naturally. -->
       <InfoCard variant="primary" title="Stops near you">
         {#snippet icon()}<MapPin size={16} />{/snippet}
         {#snippet body()}
@@ -369,7 +386,7 @@
       </InfoCard>
     {/if}
 
-    {#if gpsState === 'not-opted-in' || denied}
+    {#if showSearchAndFavorites}
       {#snippet searchIcon()}<Search size={16} />{/snippet}
       {#snippet searchCard()}
         {#if userPrefs.feedId != null}
@@ -474,7 +491,7 @@
       {@render favoritesCard()}
     {/if}
 
-    {#if denied}
+    {#if showNoLocationCard}
       <NoLocationCard dismissible />
     {/if}
 
