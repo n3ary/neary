@@ -194,7 +194,7 @@
           // expected). Nearby is GPS-gated and deduped against the
           // favorite-stations set so a station never appears twice.
           const favs = scheduledRoutes
-            .filter((r) => favoritesStore.has(r.id))
+            .filter((r) => favoritesStore.hasRoute(r.id))
             .sort((x, y) => compareRouteShortName(x.shortName, y.shortName));
           const nearby = hasGps && a
             ? (await repo.searchStops('', a.lat, a.lon, 8, 'distance'))
@@ -275,7 +275,7 @@
     goto(`/schedule/route/${route.id}_0`);
   }
   function toggleFavorite(route: Route) {
-    favoritesStore.toggle(route.id);
+    favoritesStore.toggleRoute(route.id);
   }
   function toggleFavoriteStation(stopId: string) {
     favoritesStore.toggleStation(stopId);
@@ -356,7 +356,7 @@
               {#each routeResults as route (route.id)}
                 <FavoriteRouteRow
                   {route}
-                  isFav={favoritesStore.has(route.id)}
+                  isFav={favoritesStore.hasRoute(route.id)}
                   onToggleFavorite={() => toggleFavorite(route)}
                   onbodyclick={() => openRouteSchedule(route)}
                 />
