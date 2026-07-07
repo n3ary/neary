@@ -26,6 +26,28 @@
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
 
+    <!--
+      Set --app-height from window.innerHeight BEFORE the CSS parses. The
+      CSS engine's 100dvh resolves before the iOS PWA standalone viewport
+      has stabilized on the first paint, so the AppLayout shell ends up
+      shorter than the visible viewport and the fixed BottomNavigation
+      floats up with a strip of background below it (#227). Sourcing the
+      shell height from window.innerHeight via this custom property gives
+      the first paint the same value the post-navigation state uses.
+      Svelte-side code in AppLayout keeps it updated on resize.
+    -->
+    <script>
+      (function () {
+        function setH() {
+          var h = (window.visualViewport && window.visualViewport.height) || window.innerHeight;
+          document.documentElement.style.setProperty('--app-height', h + 'px');
+        }
+        setH();
+        window.addEventListener('resize', setH);
+        if (window.visualViewport) window.visualViewport.addEventListener('resize', setH);
+      })();
+    </script>
+
     <!-- Open Graph / Twitter card — served from the brand CDN -->
     <meta property="og:image" content="https://branding.n3ary.com/social/social-preview.png" />
     <meta property="og:image:width" content="1280" />

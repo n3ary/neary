@@ -63,6 +63,26 @@ silently breaks.
 navigation don't get cut by the notch / home indicator when launched
 from the home screen.
 
+## Standalone viewport height
+
+The shell's `min-height` is sourced from a `--app-height` CSS custom
+property rather than `100dvh` directly. On the first paint of an iOS
+PWA standalone launch, the CSS engine resolves `100dvh` before the
+viewport has stabilized, so the flex container is shorter than the
+visible viewport and the fixed `BottomNavigation` floats up with a
+strip of background below it (#184, #227).
+
+`--app-height` is set from `window.innerHeight` in two places:
+
+- an inline `<head>` script in [src/app.html](../../src/app.html) that
+  runs before the CSS parses, so the very first paint uses the correct
+  value;
+- an `onMount` subscription in [src/lib/ui/AppLayout.svelte](../../src/lib/ui/AppLayout.svelte)
+  that updates it on `window.resize` and `visualViewport.resize`.
+
+The shared helper lives in [src/lib/ui/appHeight.ts](../../src/lib/ui/appHeight.ts).
+`100dvh` is kept as the SSR / pre-hydration fallback.
+
 ## What we deliberately don't do
 
 - No custom install prompt UI — rely on the browser's native install affordance.
