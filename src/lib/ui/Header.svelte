@@ -18,7 +18,7 @@
 -->
 <script lang="ts">
   import { RefreshCw, Search } from 'lucide-svelte';
-  import { locationStore } from '$lib/stores/locationStore.svelte';
+  import { locationStore } from '$lib/stores/gps/locationStore.svelte';
   import { searchOverlayStore } from '$lib/stores/searchOverlayStore.svelte';
   import HeaderSearchOverlay from './HeaderSearchOverlay.svelte';
   import IconButton from './IconButton.svelte';

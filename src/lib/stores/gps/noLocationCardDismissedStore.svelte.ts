@@ -9,8 +9,8 @@
  * SSR-safety logic so this file is just a data declaration.
  */
 
-import { userPrefs } from './userPrefs.svelte';
-import { createDismissedFlag } from './dismissedFlag.svelte';
+import { userPrefs } from '../userPrefs.svelte';
+import { createDismissedFlag } from '../dismissedFlag.svelte';
 
 export const noLocationCardDismissedStore = createDismissedFlag({
   storageKey: 'neary:noLocationCardDismissed',

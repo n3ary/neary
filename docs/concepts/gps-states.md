@@ -19,7 +19,10 @@ derived flags so the three surfaces stay consistent.
 
 Both dismissed-flag stores are instances of `createDismissedFlag()` from
 `src/lib/stores/dismissedFlag.svelte.ts` — the factory centralises the
-SSR-safe load / persist / auto-reset logic.
+SSR-safe load / persist / auto-reset logic. The GPS-cluster stores
+(`locationStore`, `noLocationCardDismissedStore`, `enableLocationPromptDismissedStore`)
+live under `src/lib/stores/gps/`; the factory stays at the top level
+because it's a generic pattern reusable for non-GPS dismissed flags.
 
 ## Derived flags (script-level)
 

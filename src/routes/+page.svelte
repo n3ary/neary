@@ -28,8 +28,8 @@
   import { DEFAULT_CONFIG } from '$lib/domain/config';
   import { isPositionInFeedBbox, distanceToFeedBboxKm, findNearestFeed } from '$lib/domain/feedCoverage';
   import { feedsStore } from '$lib/stores/feedsStore.svelte';
-  import { locationStore } from '$lib/stores/locationStore.svelte';
-  import { enableLocationPromptDismissedStore } from '$lib/stores/enableLocationPromptDismissedStore.svelte';
+  import { locationStore } from '$lib/stores/gps/locationStore.svelte';
+  import { enableLocationPromptDismissedStore } from '$lib/stores/gps/enableLocationPromptDismissedStore.svelte';
   import { favoritesStore } from '$lib/stores/favoritesStore.svelte';
   import { refreshBus } from '$lib/stores/refreshBus.svelte';
   import { searchOverlayStore } from '$lib/stores/searchOverlayStore.svelte';

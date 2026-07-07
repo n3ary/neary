@@ -9,7 +9,7 @@
  * userPrefs.hasEverEnabledGPS), they don't need to see it again.
  */
 
-import { createDismissedFlag } from './dismissedFlag.svelte';
+import { createDismissedFlag } from '../dismissedFlag.svelte';
 
 export const enableLocationPromptDismissedStore = createDismissedFlag({
   storageKey: 'neary:enableLocationPromptDismissed',

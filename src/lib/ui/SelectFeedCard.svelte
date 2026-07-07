@@ -24,7 +24,7 @@
   import { Bus } from 'lucide-svelte';
   import { findNearestFeed } from '$lib/domain/feedCoverage';
   import { feedsStore } from '$lib/stores/feedsStore.svelte';
-  import { locationStore } from '$lib/stores/locationStore.svelte';
+  import { locationStore } from '$lib/stores/gps/locationStore.svelte';
   import { userPrefs } from '$lib/stores/userPrefs.svelte';
   import Button from './Button.svelte';
   import InfoCard from './InfoCard.svelte';

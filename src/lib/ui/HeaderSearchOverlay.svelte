@@ -29,7 +29,7 @@
   import { compareRouteShortName, vehicleTypeLabel } from '$lib/domain/types';
   import { favoritesStore } from '$lib/stores/favoritesStore.svelte';
   import { feedsStore } from '$lib/stores/feedsStore.svelte';
-  import { locationStore } from '$lib/stores/locationStore.svelte';
+  import { locationStore } from '$lib/stores/gps/locationStore.svelte';
   import { cn } from './cn';
   import { iconButtonClass } from './iconButtonClass';
   import RouteBadge from './RouteBadge.svelte';

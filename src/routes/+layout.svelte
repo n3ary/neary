@@ -16,7 +16,7 @@
   import { feedsStore } from '$lib/stores/feedsStore.svelte';
   import { favoritesStore } from '$lib/stores/favoritesStore.svelte';
   import { reconciledVehiclesStore } from '$lib/stores/reconciledVehiclesStore.svelte';
-  import { locationStore } from '$lib/stores/locationStore.svelte';
+  import { locationStore } from '$lib/stores/gps/locationStore.svelte';
   import { nowTicker } from '$lib/stores/nowTicker.svelte';
   import { refreshBus } from '$lib/stores/refreshBus.svelte';
   import { stationsViewStore } from '$lib/stores/stationsViewStore.svelte';

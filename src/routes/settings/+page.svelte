@@ -17,7 +17,7 @@
   import { getGtfsRepo } from '$lib/data/gtfs/repo';
   import type { Feed } from '$lib/data/feeds';
   import { feedsStore } from '$lib/stores/feedsStore.svelte';
-  import { locationStore } from '$lib/stores/locationStore.svelte';
+  import { locationStore } from '$lib/stores/gps/locationStore.svelte';
   import { statusBus } from '$lib/stores/statusBus.svelte';
   import { userPrefs, type Theme } from '$lib/stores/userPrefs.svelte';
 

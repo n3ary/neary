@@ -14,8 +14,8 @@
 <script lang="ts">
   import { MapPin, X } from 'lucide-svelte';
   import { Button, Card, CardContent, IconButton, Stack, Typography } from '$lib/ui';
-  import { locationStore } from '$lib/stores/locationStore.svelte';
-  import { noLocationCardDismissedStore } from '$lib/stores/noLocationCardDismissedStore.svelte';
+  import { locationStore } from '$lib/stores/gps/locationStore.svelte';
+  import { noLocationCardDismissedStore } from '$lib/stores/gps/noLocationCardDismissedStore.svelte';
 
   type Props = {
     /** Show a dismiss X in the top-right. Dismissal persists across

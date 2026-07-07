@@ -15,7 +15,7 @@
  *     re-render.
  */
 
-import { userPrefs } from './userPrefs.svelte';
+import { userPrefs } from '../userPrefs.svelte';
 import { DEFAULT_CONFIG } from '$lib/domain/config';
 
 export type FreshState = 'off' | 'idle' | 'ok' | 'stale' | 'error';
