@@ -390,7 +390,7 @@
           </Button>
           {#if userPrefs.feedId != null}
             <Button variant="text" size="small" onclick={() => searchOverlayStore.open()}>
-              Search a station
+              Search
             </Button>
           {/if}
         {/snippet}
@@ -417,7 +417,7 @@
         {#snippet actions()}
           {#if userPrefs.feedId != null}
             <Button variant="contained" startIcon={searchIcon} onclick={() => searchOverlayStore.open()}>
-              Search a station
+              Search
             </Button>
           {/if}
         {/snippet}
@@ -554,7 +554,7 @@
         {#snippet actions()}
           {#if userPrefs.feedId != null}
             <Button variant="contained" size="small" onclick={() => searchOverlayStore.open()}>
-              Search a station
+              Search
             </Button>
           {/if}
         {/snippet}

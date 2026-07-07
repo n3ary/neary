@@ -554,7 +554,7 @@
               Enable location
             </Button>
             <Button variant="text" size="small" onclick={() => demo('info')}>
-              Search a station
+              Search
             </Button>
           {/snippet}
         </InfoCard>
