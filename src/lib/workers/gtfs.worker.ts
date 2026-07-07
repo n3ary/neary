@@ -42,7 +42,7 @@ import { getRouteById, getRoutes, getRoutesForStop, getRoutesForStops } from './
 import { getNetworks } from './gtfs/queries/networks';
 import { getFeedConfig } from './gtfs/queries/feedConfig';
 import { getStationBoard, getStationBoardsNear } from './gtfs/queries/stationBoards';
-import { getDeparturesFromStop, getOriginRoutesAtStop, getStopsNear, searchStops } from './gtfs/queries/stops';
+import { getDeparturesFromStop, getOriginRoutesAtStop, getStopsByIds, getStopsNear, searchStops } from './gtfs/queries/stops';
 import { getWeeklySchedule } from './gtfs/queries/weeklySchedule';
 
 const api: GtfsRepo = {
@@ -132,6 +132,9 @@ const api: GtfsRepo = {
   },
   async getOriginRoutesAtStop(stopId: string) {
     return getOriginRoutesAtStop(await ensureDb(), stopId);
+  },
+  async getStopsByIds(stopIds: readonly string[]) {
+    return getStopsByIds(await ensureDb(), stopIds);
   },
 
   // ── Station boards ──────────────────────────────────────────────────

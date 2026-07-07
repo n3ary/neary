@@ -3,14 +3,20 @@
   will fit, then collapses the rest into a "+N" chip. Because the
   overlay's card width varies with viewport, this yields more badges
   on desktop than on mobile without a hardcoded cap.
+
+  When `isFav` + `onToggleFavorite` are supplied the row grows a heart
+  toggle on the right edge, mirroring the FavoriteStationRow shape so
+  the search overlay's station result reads as a first-class favorite
+  surface alongside routes.
 -->
 <script lang="ts">
-  import { Bus } from 'lucide-svelte';
+  import { Bus, Heart } from 'lucide-svelte';
   import type { StopWithDistance } from '$lib/data/gtfs/types';
   import type { Route } from '$lib/domain/types';
   import Avatar from './Avatar.svelte';
   import RouteBadge from './RouteBadge.svelte';
   import { cn } from './cn';
+  import { iconButtonClass } from './iconButtonClass';
 
   type Props = {
     stop: StopWithDistance;
@@ -19,10 +25,18 @@
     /** Show a distance chip on the right when true. */
     hasGps: boolean;
     onselect: (stopId: string) => void;
+    /** Favorited state. When supplied alongside `onToggleFavorite` the
+     *  card renders a heart icon; otherwise the row stays minimal. */
+    isFav?: boolean;
+    onToggleFavorite?: () => void;
     class?: string;
   };
 
-  let { stop, routes, hasGps, onselect, class: className }: Props = $props();
+  let {
+    stop, routes, hasGps, onselect,
+    isFav = false, onToggleFavorite,
+    class: className,
+  }: Props = $props();
 
   // Measured badge-row width. `bind:clientWidth` gives us layout size
   // that reflects the actual viewport + overlay bounds, so we don't
@@ -77,9 +91,26 @@
   }
 </script>
 
-<button
-  type="button"
-  onclick={() => onselect(stop.id)}
+<!-- svelte-ignore a11y_click_events_have_key_events -->
+<!-- svelte-ignore a11y_no_static_element_interactions -->
+<div
+  role="button"
+  tabindex={0}
+  onclick={(e) => {
+    // Heart toggle short-circuits the card's own navigation. The
+    // closest('a, button') guard mirrors FavoriteRouteRow /
+    // FavoriteStationRow so the same call-site pattern works whether
+    // the row is here or in those shared components.
+    if ((e.target as Element | null)?.closest('a, button')) return;
+    onselect(stop.id);
+  }}
+  onkeydown={(e) => {
+    if (e.key === 'Enter' || e.key === ' ') {
+      if ((e.target as Element | null)?.closest('a, button')) return;
+      e.preventDefault();
+      onselect(stop.id);
+    }
+  }}
   class={cn(
     'w-full flex items-center gap-3 px-3 py-2 border-2 border-solid rounded-md transition-colors',
     'border-[color:var(--color-border)] cursor-pointer text-left',
@@ -122,4 +153,20 @@
       </div>
     {/if}
   </div>
-</button>
+  {#if onToggleFavorite}
+    <button
+      type="button"
+      aria-label={`${isFav ? 'Unfavorite' : 'Favorite'} station ${stop.name}`}
+      aria-pressed={isFav}
+      onclick={(e) => { e.stopPropagation(); onToggleFavorite(); }}
+      class={iconButtonClass}
+    >
+      <Heart
+        size={16}
+        strokeWidth={2.25}
+        fill={isFav ? 'currentColor' : 'none'}
+        class={isFav ? 'text-[color:var(--color-danger)]' : 'text-[color:var(--color-fg-muted)]'}
+      />
+    </button>
+  {/if}
+</div>

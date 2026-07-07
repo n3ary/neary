@@ -1,12 +1,13 @@
 <!-- Single picker view listing every route in the bound feed with a heart toggle per row. Favorited rows float to the top, otherwise sorted by short-name (numeric-first, alpha after). No separate "add" surface — this IS the picker. Stations view also shows hearts on favorited badges as visual reinforcement. -->
 <script lang="ts">
-  import { Calendar, Heart } from 'lucide-svelte';
+  import { goto } from '$app/navigation';
   import {
-    Card, CardContent, Chip, Collapsible, RouteBadge, SelectFeedCard, Spinner, Stack,
-    TripStopList, Typography, TypeBadge, cn, iconButtonClass, networkIcon, networkTextColor,
+    Card, CardContent, Chip, Collapsible, FavoriteRouteRow, FavoriteStationRow,
+    SelectFeedCard, Spinner, Stack,
+    TripStopList, Typography, TypeBadge, networkIcon, networkTextColor,
   } from '$lib/ui';
   import { getGtfsRepo } from '$lib/data/gtfs/repo';
-  import type { ScheduleTripStop } from '$lib/data/gtfs/types';
+  import type { ScheduleTripStop, StopWithDistance } from '$lib/data/gtfs/types';
   import type { Network, Route, VehicleType } from '$lib/domain/types';
   import { compareRouteShortName, vehicleTypeLabel } from '$lib/domain/types';
   import { scheduleWindowFor } from '$lib/domain/pipeline/timeUtils';
@@ -17,6 +18,10 @@
 
   let allRoutes = $state<Route[] | null>(null);
   let allNetworks = $state<Network[]>([]);
+  // Resolved favorited stations (id + name + lat/lon). Fetched lazily so
+  // users who never favorite a station never pay the worker round-trip.
+  let favoriteStations = $state<StopWithDistance[]>([]);
+  let stationsError = $state<string | null>(null);
   let error = $state<string | null>(null);
   // Single-select type filter. null = no filter (show all).
   // Clicking the active type deselects; clicking another selects only that one.
@@ -39,6 +44,9 @@
   }
   function toggleNetwork(id: string) {
     networkFilter = networkFilter === id ? null : id;
+  }
+  function selectStation(id: string) {
+    goto(`/station/${id}`);
   }
 
   // Pick a representative trip for the route+direction and fetch its
@@ -107,6 +115,29 @@
     })();
   });
 
+  // Resolve favorited station ids to their canonical Station rows
+  // whenever the bound feed or the station-id set changes. Sorted
+  // alphabetically so the order is stable across remounts.
+  $effect(() => {
+    const fid = feedsStore.boundFeedId;
+    if (!fid) return;
+    const ids = favoritesStore.stationIds;
+    if (ids.size === 0) {
+      favoriteStations = [];
+      return;
+    }
+    (async () => {
+      try {
+        const repo = getGtfsRepo();
+        const resolved = await repo.getStopsByIds(Array.from(ids));
+        favoriteStations = resolved.sort((a, b) => a.name.localeCompare(b.name));
+        stationsError = null;
+      } catch (e) {
+        stationsError = e instanceof Error ? e.message : String(e);
+      }
+    })();
+  });
+
   // Set of types actually present in the feed — we don't render filter
   // bubbles for modes that have zero routes (would just be noise).
   // Ordered by vehicleTypeLabel so the row reads alphabetically.
@@ -161,17 +192,19 @@
 
 </script>
 
-<!-- One row-renderer shared by all three sections so the layout stays
-     identical between favorited and other routes (KISS / DRY).
+<!-- One row-renderer shared by all three route sections + the route
+     row in the home-page favorites card + the search overlay's route
+     results, so the layout stays identical across every surface
+     (#231). Card chrome mirrors `VehicleCard` so the favorites view
+     reads as "rows of route cards" - bordered, padded, distinct -
+     instead of a tight list.
 
-     Card chrome mirrors `VehicleCard` so the favorites view reads as
-     "rows of route cards" — bordered, padded, distinct — instead of
-     a tight list. Tap targets:
+     Tap targets live on `FavoriteRouteRow`:
 
-       - badge anchor (the largest target on the row) -> map
-       - card body                                    -> toggle stops
+       - badge anchor (largest target on the row) -> map
+       - row body (when expanded)                  -> toggle stops
        - Calendar icon (only when route has schedule) -> schedule view
-       - Heart icon                                   -> favorite toggle
+       - Heart icon                                 -> favorite toggle
 
      The stops list under the card uses `TripStopList` — same per-stop
      row component the station card renders below a vehicle. Stops are
@@ -179,94 +212,18 @@
      direction 0; see `toggleRouteStops`). Routes shipping no schedule
      have no representative trip, so the card is non-expandable. -->
 {#snippet routeRow(route: Route)}
-  {@const isFav = favoritesStore.has(route.id)}
-  {@const type = route.type ?? 'unknown'}
-  {@const typeLabel = vehicleTypeLabel(type)}
-  {@const primaryLabel = route.longName ?? typeLabel}
-  {@const hasSchedule = route.hasSchedule !== false}
-  {@const scheduleHref = hasSchedule ? `/schedule/route/${route.id}_0` : null}
-  {@const mapHref = `/map/route/${route.id}_0`}
-  {@const expandable = hasSchedule}
+  {@const expandable = route.hasSchedule !== false}
   {@const expanded = expandedRouteId === route.id}
   {@const stops = routeStops.get(route.id)}
   {@const loading = loadingRouteId === route.id}
   {@const failed = stopsErrorRouteId === route.id && expanded && !loading}
   <div>
-    <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
-    <!-- svelte-ignore a11y_click_events_have_key_events -->
-    <div
-      role={expandable ? 'button' : undefined}
-      tabindex={expandable ? 0 : undefined}
-      aria-expanded={expandable ? expanded : undefined}
-      onclick={expandable
-        ? (e) => {
-            // Bail when the click came from an inner link/button so
-            // the badge anchor + Calendar link + Heart button don't
-            // also flip the expansion. NB: deliberately no
-            // stopPropagation on inner anchors — SvelteKit's client
-            // router intercepts at document level during bubble, so
-            // stopping it forces a full page reload.
-            if ((e.target as Element | null)?.closest('a, button')) return;
-            toggleRouteStops(route);
-          }
-        : undefined}
-      onkeydown={expandable
-        ? (e) => {
-            if (e.key === 'Enter' || e.key === ' ') {
-              if ((e.target as Element | null)?.closest('a, button')) return;
-              e.preventDefault();
-              toggleRouteStops(route);
-            }
-          }
-        : undefined}
-      class={cn(
-        'flex items-center gap-3 px-3 py-2 border-2 border-solid rounded-md transition-colors',
-        'border-[color:var(--color-border)]',
-        expandable && 'cursor-pointer hover:bg-[color:var(--color-border)]/30',
-        'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--color-primary)]',
-      )}
-    >
-      <a
-        href={mapHref}
-        aria-label={`Open map for ${typeLabel.toLowerCase()} ${route.shortName}`}
-        title="Open route map"
-        class="shrink-0 rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--color-primary)]"
-      >
-        <RouteBadge {route} size="medium" class="min-w-14" />
-      </a>
-      <div class="min-w-0 flex-1">
-        <div class="text-sm font-medium truncate">{primaryLabel}</div>
-        {#if route.description}
-          <div class="text-xs truncate text-[color:var(--color-fg-muted)]">{route.description}</div>
-        {/if}
-      </div>
-      <div class="flex items-center gap-1 shrink-0">
-        {#if scheduleHref}
-          <a
-            href={scheduleHref}
-            aria-label={`Open schedule for ${typeLabel.toLowerCase()} ${route.shortName}`}
-            title="Open route schedule"
-            class={iconButtonClass}
-          >
-            <Calendar size={16} strokeWidth={2.25} />
-          </a>
-        {/if}
-        <button
-          type="button"
-          aria-label={`${isFav ? 'Unfavorite' : 'Favorite'} ${typeLabel.toLowerCase()} ${route.shortName}`}
-          aria-pressed={isFav}
-          onclick={(e) => { e.stopPropagation(); favoritesStore.toggle(route.id); }}
-          class={iconButtonClass}
-        >
-          <Heart
-            size={16}
-            strokeWidth={2.25}
-            fill={isFav ? 'currentColor' : 'none'}
-            class={isFav ? 'text-[color:var(--color-danger)]' : 'text-[color:var(--color-fg-muted)]'}
-          />
-        </button>
-      </div>
-    </div>
+    <FavoriteRouteRow
+      {route}
+      isFav={favoritesStore.has(route.id)}
+      onToggleFavorite={() => favoritesStore.toggle(route.id)}
+      onbodyclick={() => toggleRouteStops(route)}
+    />
     {#if expandable}
       <Collapsible in={expanded} reduced>
         <div class="px-1 pt-1">
@@ -360,21 +317,48 @@
         </Card>
       {/if}
 
-      {#if favRoutes.length > 0}
+      {#if favRoutes.length > 0 || favoriteStations.length > 0}
         <Card>
           <CardContent>
             <Stack spacing={1}>
               <Stack spacing={0.5}>
                 <Typography variant="h5">Your favorites</Typography>
                 <Typography variant="caption" class="text-[color:var(--color-fg-muted)]">
-                  {favRoutes.length} starred. Tap the heart to remove.
+                  {favRoutes.length + favoriteStations.length} starred. Tap the heart to remove.
                 </Typography>
               </Stack>
-              <Stack spacing={1}>
-                {#each favRoutes as route (route.id)}
-                  {@render routeRow(route)}
-                {/each}
-              </Stack>
+
+              {#if favRoutes.length > 0}
+                <Stack spacing={1}>
+                  {#each favRoutes as route (route.id)}
+                    {@render routeRow(route)}
+                  {/each}
+                </Stack>
+              {/if}
+
+              {#if favoriteStations.length > 0}
+                {#if stationsError}
+                  <Typography variant="caption" class="px-2 py-1 text-[color:var(--color-danger)]">
+                    {stationsError}
+                  </Typography>
+                {:else}
+                  {#if favRoutes.length > 0}
+                    <Typography variant="caption" class="block pt-2 px-1 text-[color:var(--color-fg-muted)]">
+                      Stations
+                    </Typography>
+                  {/if}
+                  <Stack spacing={1}>
+                    {#each favoriteStations as stop (stop.id)}
+                      <FavoriteStationRow
+                        {stop}
+                        isFav={favoritesStore.hasStation(stop.id)}
+                        onToggleFavorite={() => favoritesStore.toggleStation(stop.id)}
+                        onbodyclick={() => selectStation(stop.id)}
+                      />
+                    {/each}
+                  </Stack>
+                {/if}
+              {/if}
             </Stack>
           </CardContent>
         </Card>
@@ -386,12 +370,10 @@
             <Stack spacing={1}>
               <Stack spacing={0.5}>
                 <Typography variant="h5">
-                  {favRoutes.length > 0 ? 'All other routes' : 'All routes'}
+                  {(favRoutes.length > 0 || favoriteStations.length > 0) ? 'All other routes' : 'All routes'}
                 </Typography>
                 <Typography variant="caption" class="text-[color:var(--color-fg-muted)]">
-                  {favRoutes.length > 0
-                    ? `${otherRoutes.length} more to choose from. Tap the heart to favorite.`
-                    : `${otherRoutes.length} routes available. Tap the heart to favorite.`}
+                  {otherRoutes.length} more to choose from. Tap the heart to favorite.
                 </Typography>
               </Stack>
               <Stack spacing={1}>

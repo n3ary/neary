@@ -293,10 +293,66 @@ export function getOriginRoutesAtStop(db: Database, stopId: string): string[] {
        AND st.stop_sequence = (
          SELECT MIN(st2.stop_sequence)
          FROM stop_times st2
-         WHERE st2.trip_id = st.trip_id
+         WHERE st2.trip_id = t.trip_id
        )
      ORDER BY CAST(t.route_id AS INTEGER), t.route_id;`,
     [stopId],
   );
   return rows.map((r) => r.route_id);
+}
+
+/** Resolve a set of stop ids to their canonical Station rows. Rolls
+ *  up to the parent station when the id points at a child, matching
+ *  the convention `getStopsNear` / `searchStops` use, so a favorited
+ *  child-platform still surfaces the parent's name to the user. ids
+ *  missing from the feed are silently dropped. */
+export function getStopsByIds(
+  db: Database,
+  stopIds: readonly string[],
+): StopWithDistance[] {
+  if (stopIds.length === 0) return [];
+  const placeholders = stopIds.map(() => '?').join(',');
+  type Row = {
+    stop_id: string;
+    stop_name: string;
+    stop_lat: number;
+    stop_lon: number;
+    parent_station: string | null;
+    parent_name: string | null;
+    parent_lat: number | null;
+    parent_lon: number | null;
+  };
+  const rows = selectAll<Row>(
+    db,
+    `SELECT s.stop_id, s.stop_name, s.stop_lat, s.stop_lon, s.parent_station,
+            p.stop_name AS parent_name, p.stop_lat AS parent_lat, p.stop_lon AS parent_lon
+     FROM stops s
+     LEFT JOIN stops p ON p.stop_id = s.parent_station
+     WHERE s.stop_id IN (${placeholders});`,
+    stopIds as string[],
+  );
+  // Rollup to parent when applicable. A parent_id seen for the first
+  // time wins; children without a parent pass through with their own
+  // id. Same convention as getStopsNear / searchStops so a favorited
+  // child platform surfaces the parent's name.
+  const out = new Map<string, { id: string; name: string; lat: number; lon: number }>();
+  for (const r of rows) {
+    if (r.parent_station && r.parent_name != null) {
+      if (out.has(r.parent_station)) continue;
+      out.set(r.parent_station, {
+        id: r.stop_id,
+        name: r.parent_name,
+        lat: r.parent_lat ?? r.stop_lat,
+        lon: r.parent_lon ?? r.stop_lon,
+      });
+    } else {
+      out.set(r.stop_id, {
+        id: r.stop_id,
+        name: r.stop_name,
+        lat: r.stop_lat,
+        lon: r.stop_lon,
+      });
+    }
+  }
+  return Array.from(out.values());
 }

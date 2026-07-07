@@ -158,6 +158,16 @@ export interface GtfsRepo {
     windowMinutes: number,
   ): Promise<{ stop: StopWithDistance; vehicles: Vehicle[] } | null>;
 
+  /**
+   * Resolve a set of stop ids to their canonical Station records
+   * (id + name + coordinates; distance is undefined - no GPS context).
+   * Used by the favorites feature to render user-pinned stops without
+   * pulling a schedule. Missing ids are silently dropped from the
+   * result (a station may have been removed from a newer feed build
+   * after the user favorited it).
+   */
+  getStopsByIds(stopIds: readonly string[]): Promise<StopWithDistance[]>;
+
   /** Single route by id, or null when the id isn't in the feed. */
   getRouteById(routeId: string): Promise<Route | null>;
 

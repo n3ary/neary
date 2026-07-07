@@ -2,16 +2,18 @@
 <script lang="ts">
   import { untrack } from 'svelte';
   import { goto } from '$app/navigation';
-  import { AlertTriangle, Calendar, Heart, Locate, MapPin, Search, X } from 'lucide-svelte';
+  import { AlertTriangle, Heart, Locate, MapPin, Search, X } from 'lucide-svelte';
   import {
-    Box, Button, Card, CardContent, IconButton, InfoCard, NoLocationCard, RouteBadge, SelectFeedCard, Spinner, Stack, StationCard,
-    Typography, iconButtonClass,
+    Box, Button, Card, CardContent, FavoriteRouteRow, FavoriteStationRow, IconButton,
+    InfoCard, NoLocationCard, SelectFeedCard, Spinner, Stack, StationCard,
+    Typography,
   } from '$lib/ui';
   import { getGtfsRepo } from '$lib/data/gtfs/repo';
   import { getUpcomingStops } from '$lib/data/gtfs/upcomingStops';
   import { createStationBoardsController } from '$lib/data/stationBoardsController.svelte';
   import type { StationBoardInput } from '$lib/data/stationBoardsController.svelte';
-  import { compareRouteShortName, vehicleTypeLabel } from '$lib/domain/types';
+  import type { StopWithDistance } from '$lib/data/gtfs/types';
+  import { compareRouteShortName } from '$lib/domain/types';
   import type { Route } from '$lib/domain/types';
   import { selectBoardsForView } from '$lib/domain/stationSelection';
   import { DEFAULT_CONFIG } from '$lib/domain/config';
@@ -278,9 +280,15 @@
   // Favorites card instead of a "go to /favorites" CTA. The fetch is
   // gated on `favoritesStore.routeIds.size` so users on the GPS-allowed
   // path don't pay for a route catalog they never look at.
+  // Issue #231: extend the same inline list to favorited stations so
+  // the home card mirrors the /favorites view surface. Stations and
+  // routes fetch independently - if a user only has stations favorited,
+  // we still avoid the route catalog round-trip (and vice versa).
   const MAX_INLINE_FAVORITES = 5;
   let allRoutesForFavorites = $state<Route[] | null>(null);
   let routesError = $state<string | null>(null);
+  let favoriteStations = $state<StopWithDistance[]>([]);
+  let stationsError = $state<string | null>(null);
   $effect(() => {
     const fid = feedsStore.boundFeedId;
     if (!fid) return;
@@ -294,12 +302,33 @@
       }
     })();
   });
+  $effect(() => {
+    const fid = feedsStore.boundFeedId;
+    if (!fid) return;
+    if (favoritesStore.stationIds.size === 0) {
+      favoriteStations = [];
+      return;
+    }
+    (async () => {
+      try {
+        const repo = getGtfsRepo();
+        const resolved = await repo.getStopsByIds(Array.from(favoritesStore.stationIds));
+        favoriteStations = resolved.sort((a, b) => a.name.localeCompare(b.name));
+        stationsError = null;
+      } catch (e) {
+        stationsError = e instanceof Error ? e.message : String(e);
+      }
+    })();
+  });
   const favoriteRoutes = $derived.by<Route[]>(() => {
     if (!allRoutesForFavorites) return [];
     return allRoutesForFavorites
       .filter((r) => favoritesStore.has(r.id))
       .sort((a, b) => compareRouteShortName(a.shortName, b.shortName));
   });
+  const totalFavorites = $derived(
+    favoritesStore.routeIds.size + favoritesStore.stationIds.size,
+  );
 
   // For the "wrong feed" empty state: find the closest published feed
   // to the user's position so we can offer to switch. Only meaningful
@@ -393,7 +422,7 @@
         {/if}
       {/snippet}
       {#snippet favoritesCard()}
-        {#if userPrefs.feedId != null && favoritesStore.routeIds.size > 0}
+        {#if userPrefs.feedId != null && totalFavorites > 0}
           <Card>
             <CardContent>
               <Stack direction="row" spacing={1} align="center">
@@ -404,73 +433,52 @@
                 <Typography variant="caption" class="block pt-1">
                   Couldn't load your favorites.
                 </Typography>
-              {:else if !allRoutesForFavorites}
-                <Stack direction="row" spacing={1} align="center" class="pt-3">
-                  <Spinner size={14} />
-                  <Typography variant="caption">Loading...</Typography>
-                </Stack>
-              {:else if favoriteRoutes.length === 0}
-                <Typography variant="caption" class="block pt-1">
-                  Your saved routes aren't in this feed.
+              {:else if stationsError}
+                <Typography variant="caption" class="block pt-1 text-[color:var(--color-danger)]">
+                  {stationsError}
                 </Typography>
-              {:else}
-                {#each favoriteRoutes.slice(0, MAX_INLINE_FAVORITES) as route (route.id)}
-                  {@const isFav = favoritesStore.has(route.id)}
-                  {@const typeLabel = vehicleTypeLabel(route.type ?? 'unknown')}
-                  {@const primaryLabel = route.longName ?? typeLabel}
-                  {@const hasSchedule = route.hasSchedule !== false}
-                  {@const scheduleHref = hasSchedule ? `/schedule/route/${route.id}_0` : null}
-                  {@const mapHref = `/map/route/${route.id}_0`}
-                  <div class="mt-1 flex items-center gap-3 px-1 py-1.5 -mx-1 rounded-md hover:bg-[color:var(--color-border)]/20 transition-colors">
-                    <a
-                      href={mapHref}
-                      aria-label={`Open map for ${typeLabel.toLowerCase()} ${route.shortName}`}
-                      title="Open route map"
-                      class="shrink-0 rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--color-primary)]"
-                    >
-                      <RouteBadge {route} size="medium" class="min-w-14" />
-                    </a>
-                    <div class="min-w-0 flex-1">
-                      <div class="text-sm font-medium truncate">{primaryLabel}</div>
-                      {#if route.description}
-                        <div class="text-xs truncate text-[color:var(--color-fg-muted)]">{route.description}</div>
-                      {/if}
-                    </div>
-                    <div class="flex items-center gap-1 shrink-0">
-                      {#if scheduleHref}
-                        <a
-                          href={scheduleHref}
-                          aria-label={`Open schedule for ${typeLabel.toLowerCase()} ${route.shortName}`}
-                          title="Open route schedule"
-                          class={iconButtonClass}
-                        >
-                          <Calendar size={16} strokeWidth={2.25} />
-                        </a>
-                      {/if}
-                      <button
-                        type="button"
-                        aria-label={`${isFav ? 'Unfavorite' : 'Favorite'} ${typeLabel.toLowerCase()} ${route.shortName}`}
-                        aria-pressed={isFav}
-                        onclick={(e) => { e.stopPropagation(); favoritesStore.toggle(route.id); }}
-                        class={iconButtonClass}
-                      >
-                        <Heart
-                          size={16}
-                          strokeWidth={2.25}
-                          fill={isFav ? 'currentColor' : 'none'}
-                          class={isFav ? 'text-[color:var(--color-danger)]' : 'text-[color:var(--color-fg-muted)]'}
-                        />
-                      </button>
-                    </div>
-                  </div>
-                {/each}
-                {#if favoritesStore.routeIds.size > MAX_INLINE_FAVORITES}
-                  <Stack direction="row" spacing={1} align="center" class="pt-2 border-t border-[color:var(--color-border)] mt-1">
-                    <Button variant="text" size="small" onclick={() => goto('/favorites')}>
-                      View all {favoritesStore.routeIds.size} in Favorites
-                    </Button>
+              {/if}
+              {#if favoriteRoutes.length > 0}
+                {#if !allRoutesForFavorites}
+                  <Stack direction="row" spacing={1} align="center" class="pt-3">
+                    <Spinner size={14} />
+                    <Typography variant="caption">Loading...</Typography>
                   </Stack>
+                {:else}
+                  {#each favoriteRoutes.slice(0, MAX_INLINE_FAVORITES) as route (route.id)}
+                    <FavoriteRouteRow
+                      {route}
+                      isFav={favoritesStore.has(route.id)}
+                      onToggleFavorite={() => favoritesStore.toggle(route.id)}
+                      variant="inline"
+                      class="mt-1"
+                    />
+                  {/each}
                 {/if}
+              {/if}
+              {#if favoriteStations.length > 0}
+                {#if favoriteRoutes.length > 0}
+                  <Typography variant="caption" class="block pt-2 px-1 text-[color:var(--color-fg-muted)]">
+                    Stations
+                  </Typography>
+                {/if}
+                {#each favoriteStations.slice(0, MAX_INLINE_FAVORITES) as stop (stop.id)}
+                  <FavoriteStationRow
+                    {stop}
+                    isFav={favoritesStore.hasStation(stop.id)}
+                    onToggleFavorite={() => favoritesStore.toggleStation(stop.id)}
+                    onbodyclick={() => goto(`/station/${stop.id}`)}
+                    variant="inline"
+                    class="mt-1"
+                  />
+                {/each}
+              {/if}
+              {#if totalFavorites > MAX_INLINE_FAVORITES}
+                <Stack direction="row" spacing={1} align="center" class="pt-2 border-t border-[color:var(--color-border)] mt-1">
+                  <Button variant="text" size="small" onclick={() => goto('/favorites')}>
+                    View all {totalFavorites} in Favorites
+                  </Button>
+                </Stack>
               {/if}
             </CardContent>
           </Card>
