@@ -222,28 +222,36 @@
       routeResults.length === 0,
   );
 
-  // After each search settles, fetch the route chips for every result
-  // stop in one batched worker round-trip. Cleared between searches so
-  // stale chips don't paint while the next fetch is in flight.
+  // Fetch the route chips for every stop the overlay surfaces: nearby
+  // results in empty mode, typed search results, and the user's
+  // favorited stations. Batched into one worker round-trip and
+  // cleared when no stop is visible so stale chips don't paint.
   $effect(() => {
     if (!open) return;
-    const stops = stopResults;
-    if (stops == null) return;
-    if (stops.length === 0) {
+    const a = stopResults ?? [];
+    const b = favoriteStations;
+    const idsSet = new Set<string>();
+    for (const s of a) idsSet.add(s.id);
+    for (const s of b) idsSet.add(s.id);
+    if (idsSet.size === 0) {
       stopRoutes = {};
       return;
     }
-    const ids = stops.map((s) => s.id);
+    const ids = Array.from(idsSet);
+    const snapshotA = a.map((s) => s.id);
+    const snapshotB = b.map((s) => s.id);
     (async () => {
       try {
         const repo = getGtfsRepo();
         const routes = await repo.getRoutesForStops(ids);
         // Guard against out-of-order resolution: only apply if the
-        // current stopResults still contains these ids. Also drop
-        // routes without a schedule -- consistent with the top-level
-        // route-search filter, and keeps the chip row honest (a badge
-        // that opens a dead-end schedule is worse than no badge).
-        const currentIds = new Set((stopResults ?? []).map((s) => s.id));
+        // currently-visible stop set still contains these ids. Drop
+        // routes without a schedule -- a badge that opens a dead-end
+        // schedule is worse than no badge.
+        const currentIds = new Set([
+          ...snapshotA,
+          ...snapshotB,
+        ]);
         const filtered: Record<string, Route[]> = {};
         for (const id of Object.keys(routes)) {
           if (!currentIds.has(id)) continue;
@@ -365,6 +373,7 @@
                   isFav={favoritesStore.hasStation(stop.id)}
                   onToggleFavorite={() => toggleFavoriteStation(stop.id)}
                   onbodyclick={() => selectStop(stop.id)}
+                  routes={stopRoutes[stop.id]}
                 />
               {/each}
             {/if}

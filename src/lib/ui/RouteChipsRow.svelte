@@ -2,10 +2,14 @@
   RouteChipsRow - horizontal strip of RouteBadges with overflow +N.
 
   `bind:clientWidth` measures the actual layout width at the call
-  site, so the overflow calculation adapts to whatever container
-  the chip row is rendered in (overlay card, picker row, summary
-  card, etc.) without hardcoded caps. Routes that don't fit collapse
-  into a single "+N" chip so the row never overflows its container.
+  site, so the fit calculation adapts to whatever container the
+  chip row is rendered in (overlay card, picker row, summary card)
+  without hardcoded caps. A `maxVisible` cap kicks in for wide
+  cards where the full route list would otherwise stretch across
+  the entire row and crowd the next stop: at that point the row
+  collapses to `maxVisible - 1` badges + a "+N" chip so the user
+  sees a stable, scannable summary regardless of how many routes
+  serve the stop.
 
   The visible-badge + +N pattern means the row's width is bounded
   even when the underlying catalogue has dozens of routes for a stop.
@@ -16,10 +20,17 @@
 
   type Props = {
     routes: Route[];
+    /** Hard cap on the number of visible badges. When the catalogue
+     *  exceeds this, the row renders `maxVisible - 1` badges + a
+     *  "+N" chip instead of every route. The full list is still
+     *  available on the stop's detail page. Default 7 — enough
+     *  variety to be scannable, low enough that the +N is
+     *  visible on a typical card width. */
+    maxVisible?: number;
     class?: string;
   };
 
-  let { routes, class: className }: Props = $props();
+  let { routes, maxVisible = 7, class: className }: Props = $props();
 
   // Measured badge-row width. `bind:clientWidth` gives us layout size
   // that reflects the actual container bounds, so we don't need to
@@ -65,7 +76,22 @@
     return { visible: 0, hidden: routes.length };
   });
 
-  const visibleRoutes = $derived(routes.slice(0, fit.visible));
+  // Hard cap path: when the catalogue has more routes than the cap
+  // AND the cap-driven slice would actually fit in the row, prefer
+  // the cap so the chip row stays scannable on wide cards where the
+  // fit-only path would happily dump 18+ badges across the row.
+  // min(2) keeps the +N chip meaningful even at very small caps.
+  const cappedVisible = $derived(Math.max(2, maxVisible) - 1);
+  const visibleRoutes = $derived(
+    routes.length > cappedVisible + 1
+      ? routes.slice(0, cappedVisible)
+      : routes.slice(0, fit.visible),
+  );
+  const hiddenCount = $derived(
+    routes.length > cappedVisible + 1
+      ? routes.length - cappedVisible
+      : fit.hidden,
+  );
 </script>
 
 {#if routes.length > 0}
@@ -78,12 +104,12 @@
     {#each visibleRoutes as route (route.id)}
       <RouteBadge {route} size="small" class="shrink-0" />
     {/each}
-    {#if fit.hidden > 0}
+    {#if hiddenCount > 0}
       <span
         class="shrink-0 inline-flex items-center justify-center h-6 min-w-6 px-1.5 text-xs font-medium rounded-md border border-[color:var(--color-border)] text-[color:var(--color-fg-muted)]"
-        aria-label={`${fit.hidden} more route${fit.hidden === 1 ? '' : 's'}`}
+        aria-label={`${hiddenCount} more route${hiddenCount === 1 ? '' : 's'}`}
       >
-        +{fit.hidden}
+        +{hiddenCount}
       </span>
     {/if}
   </div>
