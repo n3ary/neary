@@ -54,11 +54,27 @@ class StationsViewStore {
     this.lastQueryPosition = { lat, lon };
   }
 
-  /** Clear expansion + filters + the choice flag. Doesn't touch `lastQueryPosition` or `lastBoards`. */
-  resetUserChoices(): void {
-    this.expandedStopId = null;
-    this.userHasExpandedChoice = false;
-    this.routeFilterByStop = {};
+  /** Drop expansion + per-stop filters for stops no longer in the rendered
+   *  list. Pass `keepStopIds` to preserve state for stops that survive
+   *  a refetch; omit for the full wipe (feed swap). Doesn't touch
+   *  `lastQueryPosition` or `lastBoards`. */
+  resetUserChoices(keepStopIds?: Iterable<string>): void {
+    if (!keepStopIds) {
+      this.expandedStopId = null;
+      this.userHasExpandedChoice = false;
+      this.routeFilterByStop = {};
+      return;
+    }
+    const keep = new Set(keepStopIds);
+    const next: Record<string, string | null> = {};
+    for (const [stopId, routeId] of Object.entries(this.routeFilterByStop)) {
+      if (keep.has(stopId)) next[stopId] = routeId;
+    }
+    this.routeFilterByStop = next;
+    if (this.expandedStopId && !keep.has(this.expandedStopId)) {
+      this.expandedStopId = null;
+      this.userHasExpandedChoice = false;
+    }
   }
 
   /** Hard reset on feed-change. Tab swaps to /favorites or /settings are NOT a reset trigger — the rider's expansion + filter survive nav. */

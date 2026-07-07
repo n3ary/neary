@@ -99,6 +99,48 @@ describe('stationsViewStore selection persistence (issue #203)', () => {
     expect(stationsViewStore.lastBoards).not.toBeNull();
   });
 
+  it('resetUserChoices(stopIds) preserves state for stops still in the list (issue #235)', () => {
+    // User expanded stop-1 and picked route-24 on stop-1 + route-35 on stop-2.
+    // A GPS-driven refetch returns the same stops (just reordered by distance);
+    // both pieces of state must survive.
+    stationsViewStore.pickExpand('stop-1');
+    stationsViewStore.toggleRouteFilter('stop-1', 'route-24');
+    stationsViewStore.toggleRouteFilter('stop-2', 'route-35');
+    stationsViewStore.resetUserChoices(['stop-1', 'stop-2']);
+    expect(stationsViewStore.expandedStopId).toBe('stop-1');
+    expect(stationsViewStore.userHasExpandedChoice).toBe(true);
+    expect(stationsViewStore.routeFilterByStop).toEqual({
+      'stop-1': 'route-24',
+      'stop-2': 'route-35',
+    });
+  });
+
+  it('resetUserChoices(stopIds) prunes filter entries for stops that left the list', () => {
+    // stop-2 left the rendered list (out of nearbyRadiusM). Its filter
+    // entry must drop; stop-1's survives.
+    stationsViewStore.toggleRouteFilter('stop-1', 'route-24');
+    stationsViewStore.toggleRouteFilter('stop-2', 'route-35');
+    stationsViewStore.resetUserChoices(['stop-1']);
+    expect(stationsViewStore.routeFilterByStop).toEqual({
+      'stop-1': 'route-24',
+    });
+  });
+
+  it('resetUserChoices(stopIds) clears expansion when the expanded stop left the list', () => {
+    // The expanded stop is no longer in the new boards list, so the
+    // expansion has to drop - otherwise effectiveExpandedStopId would
+    // resolve to null against the empty intersection (lying about a
+    // phantom pick). userHasExpandedChoice also drops so the selector
+    // auto-pick takes over on the next render.
+    stationsViewStore.pickExpand('stop-1');
+    stationsViewStore.toggleRouteFilter('stop-1', 'route-24');
+    stationsViewStore.resetUserChoices(['stop-2']);
+    expect(stationsViewStore.expandedStopId).toBeNull();
+    expect(stationsViewStore.userHasExpandedChoice).toBe(false);
+    // And the orphaned filter entry is pruned in the same pass.
+    expect(stationsViewStore.routeFilterByStop).toEqual({});
+  });
+
   it('reset() wipes everything including GPS cache and boards', () => {
     stationsViewStore.pickExpand('stop-1');
     stationsViewStore.toggleRouteFilter('stop-1', 'route-24');

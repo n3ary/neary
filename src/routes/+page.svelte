@@ -220,7 +220,13 @@
           stationsViewStore.lastQueryPosition === null ||
           stationsViewStore.shouldRefetchByPosition(lat, lon, false);
         if (moved) {
-          stationsViewStore.resetUserChoices();
+          // Prune per-stop state only for stops that left the rendered
+          // list. A GPS-driven refetch often keeps the same stations
+          // (still within nearbyRadiusM, just reordered); their expansion
+          // + route filter must survive. Issue #235.
+          stationsViewStore.resetUserChoices(
+            selection.boards.map((b) => b.stop.id),
+          );
         }
         boards = selection.boards;
         // Cache the same boards on the store so a remount (e.g. tapping
