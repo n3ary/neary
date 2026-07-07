@@ -1,9 +1,4 @@
-<!--
-  Tabs — wraps bits-ui's Tabs with a simpler API: pass a `value` and an
-  `items` array; the consumer renders the active panel below via the active
-  value (single source of truth). Headless lib handles keyboard navigation
-  (arrow keys, Home/End), roving tabindex, and a11y roles.
--->
+<!-- Wraps bits-ui's Tabs with a simpler API: pass a `value` and an `items` array; consumer renders the active panel below via the active value (single source of truth). Headless lib handles keyboard navigation (arrow keys, Home/End), roving tabindex, a11y roles. -->
 <script lang="ts" generics="T extends string">
   import { Tabs as Bits } from 'bits-ui';
   import { cn } from './cn';

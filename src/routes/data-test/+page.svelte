@@ -1,18 +1,4 @@
-<!--
-  /data-test — proves the GTFS pipeline works end-to-end. Browser page
-  rather than a Node script so iOS Safari / OPFS coverage is exercised
-  at the same time.
-
-  Workflow:
-    1. Load manifest (row counts, generated-at, file size).
-    2. Call repo.getRoutes() — exercises a real SQL select.
-    3. Pick the hardcoded "Piața Mihai Viteazul" stop (id 4012) and the user
-       location nearby; render stops within 500 m sorted by Haversine.
-    4. Render next 60 minutes of departures from the closest stop.
-
-  Status flows through the global StatusBar (loading kind) so we visually
-  exercise the bus while the SQL warms up.
--->
+<!-- End-to-end GTFS pipeline proof. Browser page (not Node script) so iOS Safari / OPFS coverage is exercised too. Workflow: load manifest (row counts, generated_at, file size); call repo.getRoutes() (real SQL select); pick the hardcoded Cluj test stop; render stops within 500 m sorted by Haversine; render next 60 min of departures. Status flows through the global StatusBar (loading kind) while SQL warms up. -->
 <script lang="ts">
   import { onMount } from 'svelte';
   import type { Feed } from '$lib/data/feeds';

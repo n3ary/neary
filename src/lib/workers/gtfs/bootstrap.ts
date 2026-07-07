@@ -108,7 +108,7 @@ export async function getPool() {
   })().catch((e) => {
     // Drop the cached rejection so a later setFeed() can try again
     // (e.g. after the user has closed the conflicting tab and tapped
-    // the agency picker to retry).
+    // the feed picker to retry).
     poolPromise = null;
     throw e;
   });
@@ -260,7 +260,7 @@ export async function bootstrap(
     //
     // The controller is also stored on `state.currentDownloadAbort`
     // so `closeCurrent()` can cancel an in-flight download when the
-    // user switches feeds mid-stream (issue #148). Different abort
+    // user switches feeds mid-stream. Different abort
     // reasons let the catch block produce accurate error prefixes.
     const controller = new AbortController();
     state.currentDownloadAbort = controller;
@@ -421,7 +421,7 @@ export async function deleteFeedCache(feed: Feed): Promise<number> {
  *  to the main-side store which survives feed switches. */
 export function closeCurrent(): void {
   // Cancel any seed download that's still in flight for the outgoing
-  // feed (issue #148). The bootstrap() catch handles cleanup of the
+  // feed. The bootstrap() catch handles cleanup of the
   // partial OPFS file; here we only trip the signal.
   if (state.currentDownloadAbort) {
     try {

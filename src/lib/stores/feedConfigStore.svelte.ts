@@ -1,12 +1,4 @@
-/*
- * feedConfigStore — reads per-feed timing/speed config from the SQLite blob
- * (written by the gtfs pipeline) and exposes it as Svelte 5 reactive
- * state. Falls back to app-side defaults for feeds or blobs that pre-date
- * the _neary_config table.
- *
- * Consumers: map page (prediction), station board, any future component that
- * needs peak/night windows or speed estimates.
- */
+// Reads per-feed timing/speed config from the SQLite blob (written by the gtfs pipeline) and exposes it as Svelte 5 reactive state. Falls back to app-side defaults for feeds/blobs pre-dating the _neary_config table.
 
 import { getGtfsRepo } from '$lib/data/gtfs/repo';
 import { DEFAULT_FEED_SPEED_CONFIG, type FeedSpeedConfig } from '$lib/domain/speedCascade';

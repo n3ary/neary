@@ -45,7 +45,7 @@ export function getActiveTrips(
     route_type: number | null;
   };
   // Trip-level scan (no stop_times join in the select list): one
-  // row per active trip with origin/terminus times via the same
+  // row per active trip with origin/end-stop times via the same
   // correlated subqueries getRouteMapView uses. Cheap thanks to
   // stop_times_trip_seq_idx.
   const rows = selectAll<TripRow>(

@@ -1,7 +1,4 @@
-<!--
-  ListItem — a row inside a List. `button` makes it interactive (becomes a
-  real <button> child so keyboard / focus / hover all behave correctly).
--->
+<!-- Row inside a List. `button` makes it interactive (becomes a real <button> child so keyboard / focus / hover all behave correctly). -->
 <script lang="ts">
   import type { Snippet } from 'svelte';
   import type { HTMLAttributes, HTMLButtonAttributes } from 'svelte/elements';

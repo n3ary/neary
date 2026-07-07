@@ -14,7 +14,6 @@
  *
  * The global `subscribeReconciled` broadcast stays — the map view
  * filters that for its markers and doesn't need per-stop assembly.
- * See GitHub issue #122 for the design rationale.
  */
 
 import * as Comlink from 'comlink';

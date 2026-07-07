@@ -1,9 +1,4 @@
-/*
- * searchOverlayStore — open/close singleton for the station search
- * overlay rendered inside Header. Lets any view trigger the overlay
- * (e.g. the Stations empty state's "Search stations" button) without
- * threading callbacks through AppLayout + Header.
- */
+// Open/close singleton for the station search overlay inside Header. Lets any view trigger the overlay without threading callbacks through AppLayout + Header.
 
 class SearchOverlayStore {
   isOpen = $state(false);

@@ -1,7 +1,4 @@
-<!--
-  TripStopList — compact ordered stop list for a single trip.
-  Shared by the schedule view's expanded trip row and the station
-  view's vehicle stop-expansion panel.
+<!-- Compact ordered stop list for a single trip. Shared by the schedule view's expanded trip row and the station view's vehicle stop-expansion panel.
 
   The caller is responsible for slicing stops to the right starting
   point (e.g. slice from the stop after the current station).

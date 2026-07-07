@@ -1,7 +1,4 @@
-<!--
-  Stack — flex container with axis + gap + alignment knobs. The minimal
-  primitive every other layout composes from.
--->
+<!-- Flex container with axis + gap + alignment knobs. The minimal primitive every other layout composes from. -->
 <script lang="ts">
   import type { Snippet } from 'svelte';
   import { cn } from './cn';
@@ -31,8 +28,7 @@
     children,
   }: Props = $props();
 
-  // Tailwind `gap-*` step (0.5 -> 1, 1 -> 2, etc.) matching MUI's 8px-grid scale
-  // so converted call sites read the same as their original sx={ spacing: N }.
+  // Tailwind `gap-*` step (0.5 -> 1, 1 -> 2, etc.) matches MUI's 8px-grid scale so converted call sites read the same as their original sx={ spacing: N }.
   const GAP: Record<Spacing, string> = {
     0: 'gap-0',
     0.5: 'gap-1',

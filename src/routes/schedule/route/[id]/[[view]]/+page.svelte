@@ -1,29 +1,4 @@
-<!--
-  Schedule view — by-route, by-direction.
-
-  URL shape (path segments only — no query string):
-    /schedule/route/[id]                       multi-direction view
-    /schedule/route/[id]_0|[id]_1              single-direction view, today
-    /schedule/route/[id]_0|[id]_1/[view]       single-direction, explicit tab
-
-  Where [view] is one of: tomorrow | week. 'today' is the default and
-  never appears in the URL.
-
-  Path-based instead of ?dir=&view= because query strings tripped the
-  dev WebSocket suspension on iOS Safari and because deep links read
-  cleanly without the extra punctuation. The trailing _0/_1 suffix on
-  the id segment is a pragmatic compromise: GTFS allows any text in
-  route_id, but most agencies don't use underscores
-  in ids. If a feed ever does, we'll switch the separator.
-
-  Tabs:
-    - 'today':    today's remaining departures + last departed row (default).
-    - 'tomorrow': tomorrow's morning departures (00:00 → noon).
-    - 'week':     recurring weekly pattern (Mon-Fri / Sat / Sun).
-
-  Multi-direction mode (no dir suffix) keeps a two-column side-by-side
-  layout. Used by /favorites.
--->
+<!-- By-route, by-direction schedule. URL (path only): /schedule/route/[id] (multi), /schedule/route/[id]_0|[id]_1 (single), /schedule/route/[id]_0|[id]_1/[view] (tomorrow|week tab). Path-based instead of ?dir=&view= because query strings trip the dev WebSocket suspension on iOS Safari. The trailing _0/_1 on id is pragmatic — GTFS allows any text in route_id but most agencies don't use underscores. Tabs: today (default, no URL), tomorrow, week (recurring Mon-Fri / Sat / Sun). Multi-direction mode (no dir suffix) keeps a two-column side-by-side layout used by /favorites. -->
 <script lang="ts">
   import { goto } from '$app/navigation';
   import { page } from '$app/state';

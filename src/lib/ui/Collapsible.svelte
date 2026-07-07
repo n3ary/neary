@@ -1,14 +1,4 @@
-<!--
-  Collapsible — expand/collapse animation. Pure CSS via the
-  grid-template-rows: 1fr / 0fr trick, which is the only modern way to
-  animate from 0 to "intrinsic content height" without measuring in JS.
-  No headless lib needed; semantics here are display-only.
-
-  Consumers control visibility via the `in` (or `open`) prop. When true,
-  the outer grid row expands to 1fr and the inner overflow:hidden wrapper
-  reveals its content. The transition is interruptible and respects
-  prefers-reduced-motion (caller can pass `reduced=true`).
--->
+<!-- Expand/collapse animation. Pure CSS via the grid-template-rows: 1fr / 0fr trick — the only modern way to animate from 0 to intrinsic content height without JS measuring. Semantics are display-only (no headless lib). Interruptible transition respects prefers-reduced-motion when caller passes `reduced=true`. -->
 <script lang="ts">
   import type { Snippet } from 'svelte';
   import { cn } from './cn';

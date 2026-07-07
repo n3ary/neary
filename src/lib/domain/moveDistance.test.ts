@@ -1,10 +1,4 @@
-/*
- * Tests for moveDistance helpers. Pure TS, no DOM.
- *
- * Pins the "first load = always moved" semantic and the >= threshold
- * comparison so the Stations view's re-query gate doesn't drift into
- * "every GPS jitter triggers a SQLite round-trip" territory.
- */
+// Pins the "first load = always moved" semantic and the >= threshold comparison so the Stations view's re-query gate doesn't drift into "every GPS jitter triggers a SQLite round-trip" territory.
 
 import { describe, expect, it } from 'vitest';
 import { hasMovedSignificantly } from './moveDistance';

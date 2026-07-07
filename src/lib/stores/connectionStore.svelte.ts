@@ -1,9 +1,4 @@
-/*
- * connectionStore — `navigator.onLine` mirror. Cheap; reflects what the OS
- * tells us about network availability. Not authoritative (the OS sometimes
- * lies, especially on captive portals), but good enough for the header dot
- * and for skipping live-data refresh attempts when clearly offline.
- */
+// `navigator.onLine` mirror. Not authoritative (the OS lies on captive portals) but good enough for the header dot and for skipping live-data refresh attempts when clearly offline.
 
 class ConnectionStore {
   online = $state(typeof navigator !== 'undefined' ? navigator.onLine : true);

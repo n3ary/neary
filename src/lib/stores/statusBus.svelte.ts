@@ -1,16 +1,4 @@
-/*
- * statusBus — global reactive store backing the StatusBar primitive.
- *
- * Any module (worker boundary, view, service) can `statusBus.push(...)` an
- * entry; the StatusBar renders the highest-priority one. Loading and
- * progress entries are kept until explicitly removed; the rest auto-expire.
- *
- * Built on Svelte 5 runes — no library needed. Exported as a singleton via
- * a module-level `$state` rune, accessed by name (`statusBus`) elsewhere.
- *
- * Severity hierarchy (read by StatusBar):
- *   error > loading/progress > warning > info > success
- */
+// Global reactive store backing the StatusBar. Any module pushes entries; StatusBar renders the highest-priority one. Severity: error > loading/progress > warning > info > success.
 
 export type StatusKind = 'error' | 'loading' | 'progress' | 'warning' | 'info' | 'success';
 
@@ -25,20 +13,15 @@ export interface StatusEntry {
   ttlMs?: number;
 }
 
+// Errors auto-dismiss by default. Callers needing a sticky error (e.g. GTFS-bind failure where the rider must act before it disappears) opt out with ttlMs: 0 — otherwise the schedule-timer branch in scheduleDismiss skips zero/undefined TTLs and the entry sticks forever.
 const DEFAULT_TTL: Partial<Record<StatusKind, number>> = {
   success: 2500,
   info: 4000,
   warning: 6000,
-  // Error entries auto-dismiss by default. Callers that need a sticky
-  // error (e.g. the GTFS-bind failure where the rider MUST act before
-  // the message disappears) opt out with `ttlMs: 0`. Without this the
-  // StatusBar holds the entry forever on a single dot tap, because the
-  // schedule-timer branch in `scheduleDismiss` skips zero/undefined TTLs.
   error: 8000,
 };
 
 function createStatusBus() {
-  // Reactive array of active entries. The StatusBar reads this directly.
   let entries = $state<StatusEntry[]>([]);
   const timers = new Map<string, ReturnType<typeof setTimeout>>();
 

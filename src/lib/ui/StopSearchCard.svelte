@@ -1,8 +1,4 @@
-<!--
-  StopSearchCard — station result row for the header search overlay.
-
-  Renders a fixed-height card with the station badge, name, distance,
-  and a horizontal row of route chips. Chip row uses `bind:clientWidth`
+<!-- Station result row for the header search overlay. Fixed-height card with the station badge, name, distance, and a horizontal row of route chips. Chip row uses `bind:clientWidth`
   to measure the actual space it has and fits as many RouteBadges as
   will fit, then collapses the rest into a "+N" chip. Because the
   overlay's card width varies with viewport, this yields more badges

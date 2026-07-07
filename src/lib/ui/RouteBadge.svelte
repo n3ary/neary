@@ -1,7 +1,4 @@
-<!--
-  RouteBadge — colored pill showing a route's short name. Encodes the
-  start / end / turnaround marker pattern from v1 once, so consumers never
-  reach into route data to decide stripe orientation.
+<!-- Colored pill showing a route's short name. Encodes the start/end/turnaround marker pattern from v1 once so consumers never reach into route data to decide stripe orientation.
 
   Marker semantics:
     - isStart  : a "▶" wedge on the left edge (route departs here).

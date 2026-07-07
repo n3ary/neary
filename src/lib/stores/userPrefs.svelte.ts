@@ -1,13 +1,4 @@
-/*
- * userPrefs — the user's persistent preferences. Loaded once from localStorage
- * on construction, written by the +layout effect on every change.
- *
- * Class instance (not a function) so consumers can do `userPrefs.theme = 'dark'`
- * directly with full reactivity — the $state-annotated fields are tracked.
- *
- * SSR-safe: the constructor checks for localStorage before reading, so
- * prerender just uses DEFAULTS.
- */
+// Persistent user preferences. Loaded once from localStorage on construction, written by the +layout effect on every change. Class instance so `userPrefs.theme = 'dark'` is reactive end-to-end. SSR-safe (constructor bails on localStorage undefined).
 
 const STORAGE_KEY = 'neary-user-prefs';
 
@@ -15,46 +6,24 @@ export type Theme = 'auto' | 'light' | 'dark';
 
 class UserPrefs {
   theme = $state<Theme>('auto');
-  /** Selected transit feed id, or null when the user hasn't chosen yet. */
+  /** Selected transit feed id, null when the user hasn't chosen yet. */
   feedId = $state<string | null>(null);
   /** Show "Drop off only" indicators on station / vehicle cards. */
   showDropOffOnly = $state(true);
-  /** Show vehicles that have already departed (within the 5 min recency
-   *  window) on station boards. Map view always shows them. Defaults off:
-   *  most users only care about what's still coming. */
+  /** Show vehicles that have already departed (within the 5 min recency window) on station boards. Map view always shows them. Default off. */
   showDepartedVehicles = $state(false);
-  /** Diagnostic master switch. When on:
-   *   - `tripId · kind · dir` rendered on every vehicle card +
-   *     map marker (so cross-view screenshots can be correlated).
-   *   - `showOffRouteVehicles` reads true (off-route bucket surfaces
-   *     on station boards — vehicles too far from the route shape to
-   *     match a trip). Same toggle drives both because they're both
-   *     "give me everything to debug a divergence". Default off;
-   *     persisted. */
+  /** Diagnostic master switch — surfaces tripId on cards + the off-route bucket on station boards (both "show me everything to debug a divergence"). Default off. */
   showDebugIds = $state(false);
 
-  /** Back-compat alias for the previous `showOffRouteVehicles` toggle.
-   *  Now folded into `showDebugIds` — callers passing `userPrefs` as
-   *  `BoardPrefs` (structurally typed) keep working without churn. */
+  /** Back-compat alias for the previous `showOffRouteVehicles` toggle — folded into `showDebugIds`. */
   get showOffRouteVehicles(): boolean {
     return this.showDebugIds;
   }
-  /** Per-context-bucket cap on the station board. Applies to the
-   *  `incoming` / `drop-off` / `departed` sections; the now-group
-   *  (`departing` / `at-station` / `arriving`) and `off-route`
-   *  diagnostic are always uncapped. See `capStationBoard`. */
+  /** Per-context-bucket cap; now-group + `off-route` are uncapped. See `capStationBoard`. */
   stationBoardMaxRows = $state(3);
-  /** Whether the user has explicitly opted in to location access. Drives the
-   *  Stations-view "location needed" card + the header GPS dot's `off` state.
-   *  The +layout effect auto-starts the GPS watch on mount when this is true,
-   *  so the user only sees the browser permission prompt once. */
+  /** Has the user explicitly turned GPS on? Drives the Stations "location needed" card + the header GPS dot's `off` state. */
   gpsOptedIn = $state(false);
-  /** True once the user has ever called locationStore.enable() - even if
-   *  the browser prompt was denied or they later disabled from Settings.
-   *  Used by the home page to hide the first-time "Enable location"
-   *  prompt once the user has engaged with GPS, so a returning user
-   *  who toggled off in Settings isn't nagged with an Enable CTA they
-   *  already know about. */
+  /** True once the user has ever called `locationStore.enable()` — even if denied or later disabled. Used by home to suppress the first-time Enable CTA once the user has engaged. */
   hasEverEnabledGPS = $state(false);
 
   constructor() {
@@ -83,7 +52,7 @@ class UserPrefs {
       if (typeof o.gpsOptedIn === 'boolean') this.gpsOptedIn = o.gpsOptedIn;
       if (typeof o.hasEverEnabledGPS === 'boolean') this.hasEverEnabledGPS = o.hasEverEnabledGPS;
     } catch {
-      // Corrupt or unreadable storage — fall back to defaults silently.
+      // Corrupt/unreadable — defaults
     }
   }
 

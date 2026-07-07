@@ -1,18 +1,4 @@
-<!--
-  StatusBar — single-line strip pinned below the header. Replaces toasts AND
-  per-view loading spinners. Driven by a small reactive store (statusBus) so
-  any module can post an entry and have it surfaced consistently.
-  Concurrent loading entries collapse into one line.
-
-  Visual rules:
-    error          : red,    no dismiss timer
-    loading        : primary + animated stripe, no dismiss
-    progress       : primary + determinate bar, no dismiss
-    warning        : amber,  ~6s dismiss
-    info           : neutral, ~4s dismiss
-    success        : green,  ~2.5s dismiss
-  Idle             : 0 height (no empty bar).
--->
+<!-- Single-line strip pinned below the header. Replaces toasts and per-view loading spinners. Driven by statusBus so any module can post an entry. Concurrent loading entries collapse into one line. Severity: error (red, no dismiss) > loading/progress (primary, no dismiss) > warning (amber ~6s) > info (~4s) > success (~2.5s). Idle = 0 height. -->
 <script lang="ts">
   import { statusBus, type StatusEntry } from '$lib/stores/statusBus.svelte';
   import { cn } from './cn';

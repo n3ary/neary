@@ -1,8 +1,4 @@
-<!--
-  Avatar — square or circular content holder. Size is either a fixed pixel
-  number (rendered as inline style) or driven by class utilities (omit the
-  prop). Default stays at 40px to match MUI muscle memory at call sites.
--->
+<!-- Square or circular content holder. Size is either a fixed pixel number (rendered as inline style) or class-driven (omit the prop). Default 40px to match MUI muscle memory at call sites. -->
 <script lang="ts">
   import type { Snippet } from 'svelte';
   import { cn } from './cn';
@@ -11,8 +7,7 @@
 
   type Props = {
     variant?: Variant;
-    /** Pixel size. Omit and use `class` utilities (e.g. "w-10 h-10") for
-     *  responsive sizing. */
+    /** Pixel size. Omit and use `class` utilities (e.g. "w-10 h-10") for responsive sizing. */
     size?: number;
     class?: string;
     children?: Snippet;

@@ -1,19 +1,4 @@
-/*
- * reconciledVehiclesStore — main-thread mirror of the GTFS worker's
- * reconciliation broadcast. ONE source of truth for "current vehicles"
- * across every view (station card, map page, schedule view).
- *
- * The worker owns the whole live pipeline: it polls GTFS-RT every 15 s,
- * computes the active-trip set in SQL, runs `reconcileWithLive`, and
- * pushes a `ReconciledSnapshot` back to every subscriber. This store
- * is just the main-thread end of that subscription.
- *
- * Replaces the old `liveVehiclesStore` which polled + parsed on main
- * and forced every view to run its own `reconcileWithLive` (driving
- * the route-24B duplicate-marker bug because string-equality tripId
- * lookups in the map page didn't match the reconciler's (route, dir,
- * tripStartMin) tolerance).
- */
+// Main-thread mirror of the GTFS worker's reconciliation broadcast — one source of truth for "current vehicles" across station card, map page, schedule view. The worker owns the whole live pipeline; this is just the main-thread subscription end.
 
 import * as Comlink from 'comlink';
 
@@ -31,8 +16,7 @@ class ReconciledVehiclesStore {
   private subscribePromise: Promise<void> | null = null;
   private unsubFn: (() => void) | null = null;
 
-  /** Subscribe to the worker's broadcast. Idempotent; safe to call
-   *  from any place that needs reconciled data. */
+  /** Idempotent — safe to call from multiple effects. */
   bind(): void {
     if (this.subscribePromise) return;
     this.subscribePromise = (async () => {
@@ -64,8 +48,7 @@ class ReconciledVehiclesStore {
     this.subscribePromise = null;
   }
 
-  /** Trigger an immediate worker-side poll + reconcile cycle. Used by
-   *  the manual refresh button in the header. */
+  /** Trigger an immediate worker-side poll + reconcile cycle. Used by the header's manual refresh. */
   refresh(): void {
     void getGtfsRepo().refreshLive();
   }

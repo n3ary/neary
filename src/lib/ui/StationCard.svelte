@@ -1,8 +1,4 @@
-<!--
-  StationCard — full unified card for a station. Composes:
-    - Avatar (Bus icon)
-    - Station name (truncated)
-    - Distance chip + drop-off-only chip (optional)
+<!-- Full unified card for a station: avatar (bus icon), name (truncated), distance + drop-off-only chips (optional), route badges row, expand toggle -> VehicleCard list.
     - Route badges row
     - Expand toggle → VehicleCard list
   Replaces the legacy MUI StationList row.

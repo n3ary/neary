@@ -1,7 +1,4 @@
-<!--
-  DialogContent — padded scroll region inside a Dialog. Separate from
-  DialogTitle so dialogs can pin a header / footer while the body scrolls.
--->
+<!-- Padded scroll region inside a Dialog. Separate from DialogTitle so dialogs can pin a header / footer while the body scrolls. -->
 <script lang="ts">
   import type { Snippet } from 'svelte';
   import { cn } from './cn';

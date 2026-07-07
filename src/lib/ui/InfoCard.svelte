@@ -1,15 +1,4 @@
-<!--
-  InfoCard — reusable empty/info state card. Compact banner used when
-  the card stacks with others (or as a standalone empty state).
-
-  Layout:
-    [Icon] Title
-    Body paragraph (caption-muted)
-    [Primary action] [Secondary action]
-
-  Consumers pass the icon at whatever size fits (Lucide's `size` prop
-  on the snippet body); the container tints the icon via `variant`.
--->
+<!-- Reusable empty/info state card. Compact banner used when stacked with other cards or as a standalone empty state. Layout: [Icon] Title / Body paragraph (caption-muted) / [Primary action] [Secondary action]. The icon snippet receives whatever size the caller picked; the container tints it via `variant`. -->
 <script lang="ts">
   import type { Snippet } from 'svelte';
   import Card from './Card.svelte';

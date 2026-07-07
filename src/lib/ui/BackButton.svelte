@@ -1,27 +1,6 @@
-<!--
-  BackButton — single source of truth for "go one level up" navigation
-  on detail views (schedule, map, station). Sole purpose is to avoid
-  re-implementing the "history.back with sensible fallback" recipe in
-  every header.
+<!-- Single source for "go one level up" on detail views. Try history.back() when previous was added in this tab (history.length > 1); otherwise navigate to `fallback` (default `/`) so a deep-link or page-refresh doesn't strand the user on the browser's blank "no history" stub. Escape fires the same handler. -->
 
-  Behaviour:
-    - Try history.back() when the previous entry was added in this tab
-      (history.length > 1).
-    - Otherwise, navigate to `fallback` (default `/`) so a deep-link or
-      page-refresh landing doesn't strand the user on the browser's
-      blank "no history" stub.
-    - Pressing Escape anywhere on the page fires the same handler, so
-      keyboard users get the platform "close / dismiss" idiom for
-      free. Lives here, not at the page level, so the contract stays
-      in one file.
-
-  Intra-view navigation (tab swaps inside the schedule view, direction
-  swaps, etc.) MUST use `goto(..., { replaceState: true })` so it
-  doesn't push extra history entries — otherwise "back" would walk
-  through every tab the user touched instead of returning to where
-  they actually came from. That's the calling page's responsibility;
-  this component just owns the up-one-level click.
--->
+<!-- Intra-view navigation (tab swaps, direction swaps) MUST use `goto(..., { replaceState: true })` so "back" returns to where the user came from instead of walking every tab they touched. -->
 <script lang="ts">
   import { ArrowLeft } from 'lucide-svelte';
   import { goto } from '$app/navigation';

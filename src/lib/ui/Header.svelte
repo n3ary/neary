@@ -1,21 +1,4 @@
-<!--
-  Header — fixed top bar. Carries the view title (left) and the four health
-  dots + search + refresh button (right).
-
-  The dots are wired to a `health` prop, an object the parent fills with
-  each source's current state: GPS reflects the geolocation listener,
-  Schedule reflects the worker's feed-bind state, Live reflects the
-  worker's reconciliation broadcast.
-
-  Refresh callback is optional — when absent (e.g. on routes that have
-  nothing to refresh) the button is hidden.
-
-  When `health.gps.state === 'off'`, tapping the GPS dot opens the
-  enable flow (locationStore.enable() — persists across reloads).
-
-  Search icon shows only when `showSearch` is true (i.e. a feed is
-  bound). The overlay is rendered here so it's truly global across views.
--->
+<!-- Fixed top bar: view title (left) + health dots + search + refresh (right). Health dot states — GPS / Schedule / Live — come from the `health` prop. Refresh button is hidden when no callback is passed. GPS dot's 'off' state opens the enable flow. Search icon shows only when a feed is bound; the overlay is rendered here so it's truly global across views. -->
 <script lang="ts">
   import { RefreshCw, Search } from 'lucide-svelte';
   import { locationStore } from '$lib/stores/gps/locationStore.svelte';

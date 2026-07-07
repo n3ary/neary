@@ -1,12 +1,4 @@
-<!--
-  Favorites — single picker view listing every route in the bound feed
-  with a heart toggle per row. Tap the heart to favorite; tap again to
-  unfavorite. Favorited rows float to the top, otherwise sorted by
-  short-name (numeric-first, alpha after).
-
-  No separate "add" surface — this IS the picker. Stations view also
-  shows hearts on favorited badges as visual reinforcement.
--->
+<!-- Single picker view listing every route in the bound feed with a heart toggle per row. Favorited rows float to the top, otherwise sorted by short-name (numeric-first, alpha after). No separate "add" surface — this IS the picker. Stations view also shows hearts on favorited badges as visual reinforcement. -->
 <script lang="ts">
   import { Calendar, Heart } from 'lucide-svelte';
   import {

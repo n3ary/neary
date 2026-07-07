@@ -1,10 +1,4 @@
-<!--
-  Settings — user preferences. Theme picker, behavior toggles, the feed
-  selector (sources feeds.json from the gtfs binaries branch on
-  GitHub), and a tiny Advanced section with the app version + when this
-  client first saw it. A dedicated /settings/advanced view will land
-  alongside storage / debug toggles in a later phase.
--->
+<!-- User preferences. Theme picker, behavior toggles, feed selector (sources feeds.json from gtfs binaries branch on GitHub), and a tiny Advanced section with the app version + first-seen date. A dedicated /settings/advanced view will land alongside storage / debug toggles in a later phase. -->
 <script lang="ts">
   import { onMount } from 'svelte';
   import { version } from '$app/environment';
