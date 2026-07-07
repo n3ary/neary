@@ -449,7 +449,7 @@
                       {route}
                       isFav={favoritesStore.has(route.id)}
                       onToggleFavorite={() => favoritesStore.toggle(route.id)}
-                      variant="inline"
+                      variant="card"
                       class="mt-1"
                     />
                   {/each}
@@ -467,7 +467,7 @@
                     isFav={favoritesStore.hasStation(stop.id)}
                     onToggleFavorite={() => favoritesStore.toggleStation(stop.id)}
                     onbodyclick={() => goto(`/station/${stop.id}`)}
-                    variant="inline"
+                    variant="card"
                     class="mt-1"
                   />
                 {/each}
