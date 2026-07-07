@@ -274,12 +274,10 @@
 
   <!-- ===== Privacy ===== -->
   {#if denied}
-    <!-- NoLocationCard is its own card - render the Privacy header
-         inline rather than nesting it inside another card wrapper. -->
-    <Stack spacing={2}>
-      <Typography variant="h6">Privacy</Typography>
-      <NoLocationCard />
-    </Stack>
+    <!-- NoLocationCard is its own card with its own title; no
+         surrounding Privacy header is needed and adding one outside
+         the card makes it look orphaned. -->
+    <NoLocationCard />
   {:else}
     <Card>
       <CardContent>
