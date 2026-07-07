@@ -28,6 +28,19 @@ const GPS_POLL_MS = DEFAULT_CONFIG.gpsPollMs;
 const GPS_TIMEOUT_MS = GPS_POLL_MS;
 const GPS_MAX_AGE_MS = GPS_POLL_MS;
 
+/**
+ * Normalize a GeolocationPosition.timestamp to milliseconds since epoch.
+ * Some iOS Safari WebKit builds report the field in seconds instead of
+ * milliseconds - storing such a value as ms produces a `this.now -
+ * lastUpdated` age of ~31 years, which renders as "GPS last fix
+ * 16305118 min ago" on the header dot. Detect by comparing the raw to
+ * `now` in both unit candidates - whichever lands closer to `now` wins.
+ */
+function normalizePositionTimestamp(raw: number, now: number): number {
+  if (raw <= 0) return raw;
+  return Math.abs(now - raw) <= Math.abs(now - raw * 1000) ? raw : raw * 1000;
+}
+
 class LocationStore {
   position = $state<GeolocationPosition | null>(null);
   error = $state<GeolocationPositionError | null>(null);
@@ -69,7 +82,9 @@ class LocationStore {
         // disagree with the freshness check the moment a fix is older
         // than the callback time (cached / OS-delayed), pinning the dot
         // green while the rest of the UI races a stale position. See #206.
-        this.lastUpdated = pos.timestamp;
+        // Normalized against `Date.now()` because some iOS Safari WebKit
+        // builds report timestamp in seconds, not milliseconds.
+        this.lastUpdated = normalizePositionTimestamp(pos.timestamp, Date.now());
         this.error = null;
         // Reflect the actual browser state. navigator.permissions on
         // Safari iOS doesn't fire change events for geolocation, so
@@ -217,7 +232,8 @@ class LocationStore {
     navigator.geolocation.getCurrentPosition(
       (pos) => {
         this.position = pos;
-        this.lastUpdated = pos.timestamp;
+        // Same iOS-Safari-seconds normalization as the watch callback.
+        this.lastUpdated = normalizePositionTimestamp(pos.timestamp, Date.now());
         this.error = null;
       },
       // Polling failures are non-fatal: the underlying watch is still
