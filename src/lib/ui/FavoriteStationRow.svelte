@@ -1,15 +1,4 @@
-<!--
-  FavoriteStationRow - single source of truth for the favorited-station
-  row layout so a change to the heart, the body tap target, or the
-  layout propagates to /favorites, the search overlay, and the home
-  page in one edit. Same chrome + a11y shape as FavoriteRouteRow but
-  heart-only on the right (stations have no per-station "view all
-  schedules" URL - that shape is route-shaped).
-
-  When `routes` is supplied, a RouteChipsRow renders below the name
-  showing the routes that serve this station, with the same overflow
-  +N chip behaviour as the search overlay's StopSearchCard.
--->
+<!-- FavoriteStationRow: single source of truth for the favorited-station row, so a change to the heart / body tap / route chips propagates to /favorites, the search overlay, and home in one edit. -->
 <script lang="ts">
   import { Bus, Heart } from 'lucide-svelte';
   import type { Route } from '$lib/domain/types';

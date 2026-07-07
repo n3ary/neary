@@ -1,13 +1,7 @@
-<!-- Station result row for the header search overlay. Fixed-height card with the station badge, name, distance, and a horizontal row of route chips. Chip row uses `bind:clientWidth`
-  to measure the actual space it has and fits as many RouteBadges as
-  will fit, then collapses the rest into a "+N" chip. Because the
-  overlay's card width varies with viewport, this yields more badges
-  on desktop than on mobile without a hardcoded cap.
-
-  When `isFav` + `onToggleFavorite` are supplied the row grows a heart
-  toggle on the right edge, mirroring the FavoriteStationRow shape so
-  the search overlay's station result reads as a first-class favorite
-  surface alongside routes.
+<!--
+  StopSearchCard: search-overlay station row with optional heart toggle
+  (mirrors FavoriteStationRow so the search hit reads as a first-class
+  favorite surface).
 -->
 <script lang="ts">
   import { Bus, Heart } from 'lucide-svelte';
@@ -25,8 +19,7 @@
     /** Show a distance chip on the right when true. */
     hasGps: boolean;
     onselect: (stopId: string) => void;
-    /** Favorited state. When supplied alongside `onToggleFavorite` the
-     *  card renders a heart icon; otherwise the row stays minimal. */
+    /** When paired with `onToggleFavorite`, the row renders a heart. */
     isFav?: boolean;
     onToggleFavorite?: () => void;
     class?: string;
@@ -51,10 +44,8 @@
   role="button"
   tabindex={0}
   onclick={(e) => {
-    // Heart toggle short-circuits the card's own navigation. The
-    // closest('a, button') guard mirrors FavoriteRouteRow /
-    // FavoriteStationRow so the same call-site pattern works whether
-    // the row is here or in those shared components.
+    // Inner controls (heart) bail here so the row's body action
+    // doesn't double-fire. Same guard as Favorite{Route,Station}Row.
     if ((e.target as Element | null)?.closest('a, button')) return;
     onselect(stop.id);
   }}
@@ -73,7 +64,6 @@
     className,
   )}
 >
-  <!-- Same station badge as StationCard header: square Avatar + Bus. -->
   <Avatar variant="square" class="w-10 h-10 shrink-0">
     <Bus size={20} />
   </Avatar>

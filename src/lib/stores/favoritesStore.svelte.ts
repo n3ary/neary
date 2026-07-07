@@ -1,18 +1,7 @@
-/*
- * favoritesStore - persistent set of favorited route + station ids.
- * Routes and stations are independent sets; both live behind the
- * same single-source API so a "is this favorited?" check at any call
- * site reads from the same store.
- *
- * Persistence: localStorage keys `neary:favoriteRoutes` and
- * `neary:favoriteStations`, each a JSON array of strings
- * (Route.id / Stop.id). Loaded once on construction (browser only),
- * saved on every mutation. SSR-safe (no-ops on the server).
- *
- * `loadInitial` is lenient about legacy numeric entries (older builds
- * wrote Route.id as a number) and normalises them to strings on read
- * so a migrating user doesn't lose their favorites.
- */
+// favoritesStore: persistent set of favorited route + station ids.
+// `loadInitial` is lenient about legacy numeric entries (older builds
+// wrote Route.id as a number) and normalises them to strings on read
+// so a migrating user doesn't lose their favorites.
 
 import { SvelteSet } from 'svelte/reactivity';
 

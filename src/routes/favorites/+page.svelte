@@ -18,20 +18,16 @@
 
   let allRoutes = $state<Route[] | null>(null);
   let allNetworks = $state<Network[]>([]);
-  // Resolved favorited stations (id + name + lat/lon). Fetched lazily so
-  // users who never favorite a station never pay the worker round-trip.
+  // Lazy: users with no station favorites skip the worker round-trip.
   let favoriteStations = $state<StopWithDistance[]>([]);
   let stationsError = $state<string | null>(null);
   let error = $state<string | null>(null);
-  // Single-select type filter. null = no filter (show all).
-  // Clicking the active type deselects; clicking another selects only that one.
+  // null = no filter; clicking the active entry deselects.
   let typeFilter = $state<VehicleType | null>(null);
-  // Single-select network filter. null = no filter.
   let networkFilter = $state<string | null>(null);
 
-  // Expand-stops state. One row open at a time, keyed by route_id.
-  // Stops are fetched lazily on first expand and cached per route so
-  // collapse + re-expand is instant.
+  // One row open at a time; stops fetched lazily on first expand and
+  // cached so collapse + re-expand is instant.
   let expandedRouteId = $state<string | null>(null);
   let routeStops = $state<Map<string, ScheduleTripStop[]>>(new Map());
   let loadingRouteId = $state<string | null>(null);
@@ -49,12 +45,10 @@
     goto(`/station/${id}`);
   }
 
-  // Pick a representative trip for the route+direction and fetch its
-  // ordered stop list. GTFS allows different trips on the same route
-  // to serve different stop sequences (rare but spec-valid), so this
-  // shows the sequence of *some* trip running today rather than a
-  // canonical route shape. Same heuristic the schedule view uses to
-  // warm its first-trip stops panel.
+  // GTFS allows different trips on the same route to serve different
+  // stop sequences (rare but spec-valid), so we show the sequence of
+  // *some* trip running today, not a canonical shape. Same heuristic
+  // the schedule view uses for its first-trip stops panel.
   async function toggleRouteStops(route: Route) {
     if (route.hasSchedule === false) return;
     if (expandedRouteId === route.id) {
@@ -115,9 +109,7 @@
     })();
   });
 
-  // Resolve favorited station ids to their canonical Station rows
-  // whenever the bound feed or the station-id set changes. Sorted
-  // alphabetically so the order is stable across remounts.
+  // Sorted alphabetically so the order is stable across remounts.
   $effect(() => {
     const fid = feedsStore.boundFeedId;
     if (!fid) return;
@@ -138,9 +130,8 @@
     })();
   });
 
-  // Set of types actually present in the feed — we don't render filter
-  // bubbles for modes that have zero routes (would just be noise).
-  // Ordered by vehicleTypeLabel so the row reads alphabetically.
+  // Don't render filter bubbles for modes with zero routes (would
+  // just be noise). Ordered by label so the row reads alphabetically.
   const presentTypes = $derived.by<VehicleType[]>(() => {
     if (!allRoutes) return [];
     const set = new Set<VehicleType>();
@@ -150,12 +141,10 @@
     );
   });
 
-  // Per-type accent for the mode filter chips: just the color of the
-  // first route of that type, straight from GTFS. No selection logic,
-  // no fallback overrides — whatever the feed shipped is what the
-  // chip shows. The data layer substitutes a single neutral fallback
-  // (#F3513C, the anchor gtfs uses for feeds with no usable
-  // colors) when route_color is missing; that flows through here.
+  // Per-type accent: the first route's color straight from GTFS. No
+  // overrides -- whatever the feed shipped is what the chip shows.
+  // Missing route_color is substituted to a neutral fallback by the
+  // data layer; that flows through here.
   const colorByType = $derived.by<Map<VehicleType, string>>(() => {
     const m = new Map<VehicleType, string>();
     if (!allRoutes) return m;
@@ -166,8 +155,6 @@
     return m;
   });
 
-  // Apply both filters, then split into the two cards. Within
-  // each section, sort numeric-first then alpha.
   function sortRoutes(list: Route[]): Route[] {
     return [...list].sort((a, b) => compareRouteShortName(a.shortName, b.shortName));
   }
@@ -192,11 +179,9 @@
 
 </script>
 
-<!-- Per-row wrapper around FavoriteRouteRow that adds the stops-list
-     expansion below the row. The stops list uses TripStopList and is
-     fetched lazily on first expand (representative trip of the day in
-     direction 0; see toggleRouteStops). Routes shipping no schedule
-     have no representative trip, so the card is non-expandable. -->
+<!-- expandableRouteRow: route row + stops-list Collapsible. Routes
+     with no schedule have no representative trip, so the card is
+     non-expandable. -->
 {#snippet expandableRouteRow({ route }: { route: Route })}
   {@const expandable = route.hasSchedule !== false}
   {@const expanded = expandedRouteId === route.id}

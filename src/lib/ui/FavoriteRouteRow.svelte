@@ -1,11 +1,4 @@
-<!--
-  FavoriteRouteRow - single source of truth for the favorited-route
-  row layout so a change to the heart, the Calendar icon, or the body
-  tap target propagates to /favorites, the search overlay, and the
-  home page in one edit. Two chrome variants: 'card' (bordered) for
-  standalone use, 'inline' (flat) for embedding inside an existing
-  Card on the home page.
--->
+<!-- FavoriteRouteRow: single source of truth for the favorited-route row, so a change to the heart / Calendar / tap action propagates to /favorites, the search overlay, and home in one edit. -->
 <script lang="ts">
   import { Calendar, Heart } from 'lucide-svelte';
   import type { Route } from '$lib/domain/types';
@@ -53,12 +46,11 @@
   role={interactive ? 'button' : undefined}
   tabindex={interactive ? 0 : undefined}
   aria-expanded={undefined}
-  onclick={interactive
+    onclick={interactive
     ? (e) => {
-        // Bail when the click came from an inner anchor/button so the
-        // badge (map), calendar (schedule), and heart (favorite) taps
-        // don't also fire the row's body action. Single source for
-        // this guard across all four call sites.
+        // The badge (map), calendar (schedule), and heart are inner
+        // controls; bail when the click came from one so the row's
+        // body action doesn't double-fire.
         if ((e.target as Element | null)?.closest('a, button')) return;
         onbodyclick?.();
       }

@@ -1,20 +1,7 @@
 <!--
-  FavoritesCard - shared "Your favorites" surface used by the home
-  page (compact, loading + error states, View-all footer) and the
-  /favorites view (standalone, no limit, per-row stops-expansion
-  Collapsible). One component so a change to the header, the
-  Routes/Stations subheaders, or the View-all CTA propagates to
-  every screen that surfaces a user's favorites.
-
-  Station rows show the routes serving each station via the same
-  overflow chip row the search overlay uses (RouteChipsRow with
-  +N collapse), so the user can tell at a glance which lines stop
-  where without leaving the favorites surface.
-
-  Caller can override the row markup via the `routeRow` / `stationRow`
-  snippets (e.g. /favorites wraps routes in a stops-list
-  Collapsible). When not provided, rows render as plain
-  variant="card" Favorite{Route,Station}Row entries.
+  FavoritesCard: shared "Your favorites" surface. Snippet overrides
+  (`routeRow` / `stationRow`) let /favorites wrap routes in a stops-list
+  Collapsible without forcing the same on home.
 -->
 <script lang="ts">
   import type { Snippet } from 'svelte';
@@ -32,27 +19,22 @@
   type Props = {
     routes: Route[];
     stations: StopWithDistance[];
-    /** Max rows per section before truncating with the View-all
-     *  footer. Undefined = show everything. */
+    /** Undefined = show everything. When set, truncates with the
+     *  View-all footer (only if `viewAllHref` is also set). */
     limit?: number;
-    /** Where the View-all button links. Footer only renders when
-     *  both `viewAllHref` is set and the sections were truncated. */
+    /** Footer only renders when truncated AND `viewAllHref` is set. */
     viewAllHref?: string;
-    /** Show a spinner above the routes section while the route
-     *  catalogue is loading. */
     routesLoading?: boolean;
-    /** Surface this string above the routes section. Wins over
-     *  loading + content. */
+    /** Wins over loading + content. */
     routesError?: string | null;
-    /** Surface this string above the stations section. */
+    /** Wins over content. */
     stationsError?: string | null;
-    /** Override the per-route-row markup (e.g. to wrap with a
-     *  Collapsible stops list). */
+    /** e.g. wrap with a stops-list Collapsible on /favorites. */
     routeRow?: Snippet<[{ route: Route }]>;
-    /** Override the per-station-row markup. */
+    /** e.g. wrap with a custom row on a different surface. */
     stationRow?: Snippet<[{ stop: StopWithDistance }]>;
-    /** 'compact' shows Heart icon + h6 (home page card-in-card);
-     *  'standalone' shows plain h5 (/favorites picker view). */
+    /** 'compact' = Heart icon + h6 (home card-in-card);
+     *  'standalone' = plain h5 (/favorites picker). */
     headerStyle?: 'compact' | 'standalone';
   };
 
@@ -73,10 +55,8 @@
   const total = $derived(routes.length + stations.length);
   const shown = $derived(visibleRoutes.length + visibleStations.length);
   const truncated = $derived(!!limit && shown < total);
-  // Routes serving each visible station, fetched in one batched worker
-  // round-trip so the row's chip row renders against the current set
-  // (and so the home-page limit and the /favorites picker view share
-  // the same lookup).
+  // One batched worker round-trip so the home limit and /favorites
+  // picker view share the same routes-per-station lookup.
   let stopRoutes = $state<Record<string, Route[]>>({});
   $effect(() => {
     if (visibleStations.length === 0) {
@@ -90,13 +70,11 @@
       try {
         const repo = getGtfsRepo();
         const routes = await repo.getRoutesForStops(ids);
-        // Skip if the visible set changed while we were in flight —
-        // applying a stale map would render chips for stops the user
-        // has just unfavorited.
+        // Out-of-order guard: skip if the visible set changed mid-flight
+        // (e.g. the user just unfavorited a station).
         if (cancelled) return;
         if (visibleStations.some((s) => !currentIds.has(s.id))) return;
-        // Drop routes without a schedule: a chip that opens a dead-end
-        // schedule is worse than no chip. Mirrors HeaderSearchOverlay.
+        // A chip that opens a dead-end schedule is worse than no chip.
         const filtered: Record<string, Route[]> = {};
         for (const id of Object.keys(routes)) {
           if (!currentIds.has(id)) continue;
@@ -105,16 +83,13 @@
         }
         stopRoutes = filtered;
       } catch {
-        // Silent: chips are supplementary. Falling back to an empty map
-        // keeps the row renderable.
+        // Chips are supplementary; an empty map keeps the row renderable.
       }
     })();
     return () => { cancelled = true; };
   });
-  // Show "Routes" / "Stations" subheaders only when both sections
-  // exist - a single section already labels itself by being the only
-  // thing on screen, and two stacked "Routes" labels would just repeat
-  // themselves.
+  // Subheaders only when both sections exist -- a single section
+  // self-labels, two stacked "Routes" would just repeat.
   const showRoutesHeader = $derived(
     visibleRoutes.length > 0 && visibleStations.length > 0,
   );
