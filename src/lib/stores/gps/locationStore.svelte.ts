@@ -130,12 +130,6 @@ class LocationStore {
     }
   }
 
-  /** One-shot high-accuracy fix bypassing the OS cache. Powers the "Position me" FAB on Stations. */
-  forceFreshFix(): void {
-    if (typeof navigator === 'undefined' || !('geolocation' in navigator)) return;
-    this.pollOnce({ enableHighAccuracy: true, maximumAge: 0, timeout: GPS_TIMEOUT_MS });
-  }
-
   private pollOnce(opts: PositionOptions): void {
     if (typeof navigator === 'undefined' || !('geolocation' in navigator)) return;
     navigator.geolocation.getCurrentPosition(
