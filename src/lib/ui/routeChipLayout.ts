@@ -11,14 +11,17 @@ const GAP_PX = 4;
 
 /**
  * Heuristic width of a RouteBadge for a given short_name. The
- * constants (24 min, 7 per char, 12 padding) come from the badge's
- * `h-6 min-w-6 px-1.5 text-xs` CSS -- verified against multi-feed
- * catalogues with short_names up to 5 chars. Used by naturalFit to
- * size each badge individually rather than averaging; the same
- * function sizes the "+N" overflow chip via `badgeWidth('+N')`.
+ * badge's actual CSS is `h-6 min-w-6 px-1.5 text-xs font-bold
+ * rounded-md` (RouteBadge.svelte, size='small'). At 12px / 700
+ * weight each character is ~9px wide -- a 3-char badge like
+ * "54N" measures ~39px (12px padding + 27px text), not the
+ * 33px a 7px/char estimate would give. The natural fit under-
+ * estimates 3-char badges by enough that the last visible badge
+ * gets clipped on tight cards. 9px/char + 12px padding fixes it.
+ * Min wins at 24px for 1-char badges.
  */
 export function badgeWidth(text: string): number {
-  return Math.max(24, text.length * 7 + 12);
+  return Math.max(24, text.length * 9 + 12);
 }
 
 /**
