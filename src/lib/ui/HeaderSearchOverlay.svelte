@@ -158,13 +158,17 @@
           routeResults = matchingRoutes;
           stopResults = stops;
         } else {
-          // Empty mode. Nearest 4 stops (GPS only) + favorites.
+          // Empty mode. Nearest 4 stops when GPS is on; favorites only
+          // when GPS is on too — otherwise the home-page Favorites card
+          // (#226) already lists them and we'd double up.
           const nearby = hasGps && a
             ? await repo.searchStops('', a.lat, a.lon, 4, 'distance')
             : [];
-          const favs = scheduledRoutes
-            .filter((r) => favoritesStore.has(r.id))
-            .sort((x, y) => compareRouteShortName(x.shortName, y.shortName));
+          const favs = hasGps
+            ? scheduledRoutes
+                .filter((r) => favoritesStore.has(r.id))
+                .sort((x, y) => compareRouteShortName(x.shortName, y.shortName))
+            : [];
           stopResults = nearby;
           routeResults = favs;
         }
@@ -297,8 +301,9 @@
             </Typography>
           {:else if noResults}
             <Typography variant="caption" class="block px-2 py-2 text-[color:var(--color-fg-muted)]">
-              No favorite routes yet and no nearby stops available. Type a station name or a route
-              number above to find something.
+              {hasGps
+                ? 'No nearby stops. Type a station name or a route number above to find something.'
+                : 'Type a station name or a route number above to find something.'}
             </Typography>
           {:else}
             {#if routeResults && routeResults.length > 0}
