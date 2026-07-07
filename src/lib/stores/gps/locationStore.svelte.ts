@@ -48,6 +48,29 @@ function normalizePositionTimestamp(raw: number, now: number): number {
   return distanceIfAlreadyMs <= distanceIfWasSeconds ? raw : raw * 1000;
 }
 
+/**
+ * Pick a sensible lastUpdated for the freshness calculation.
+ *
+ * Prefers the position's own timestamp (the #206 contract: a cached
+ * fix shows as stale, not fresh) but falls back to `now` when the
+ * timestamp is implausibly far off. The fallback covers a Safari
+ * desktop quirk where WiFi-derived positions arrive with a
+ * timestamp from year 1995 (in seconds, after unit-normalization
+ * still 1995 in ms). Without the fallback that produces a 31-year
+ * age display ("GPS last fix 16305120 min ago") with a red error
+ * dot even though GPS is functionally working.
+ *
+ * The 1-day plausibility window is wide enough that genuine
+ * maximumAge cache misses (~15s) still use the position's timestamp,
+ * so the #206 fix's accuracy is preserved for the cases it was
+ * written for.
+ */
+function plausibleLastUpdated(raw: number, now: number): number {
+  const normalized = normalizePositionTimestamp(raw, now);
+  const ageMs = Math.abs(now - normalized);
+  return ageMs <= 86_400_000 ? normalized : now;
+}
+
 class LocationStore {
   position = $state<GeolocationPosition | null>(null);
   error = $state<GeolocationPositionError | null>(null);
@@ -89,9 +112,12 @@ class LocationStore {
         // disagree with the freshness check the moment a fix is older
         // than the callback time (cached / OS-delayed), pinning the dot
         // green while the rest of the UI races a stale position. See #206.
-        // Normalized against `Date.now()` because some iOS Safari WebKit
-        // builds report timestamp in seconds, not milliseconds.
-        this.lastUpdated = normalizePositionTimestamp(pos.timestamp, Date.now());
+        // See plausibleLastUpdated: Safari desktop with WiFi-only
+        // geolocation has been seen returning a position with a
+        // timestamp from year 1995; the plausibility check falls back
+        // to Date.now() in that case so the freshness dot doesn't
+        // render "31 years ago".
+        this.lastUpdated = plausibleLastUpdated(pos.timestamp, Date.now());
         this.error = null;
         // Reflect the actual browser state. navigator.permissions on
         // Safari iOS doesn't fire change events for geolocation, so
@@ -239,8 +265,8 @@ class LocationStore {
     navigator.geolocation.getCurrentPosition(
       (pos) => {
         this.position = pos;
-        // Same iOS-Safari-seconds normalization as the watch callback.
-        this.lastUpdated = normalizePositionTimestamp(pos.timestamp, Date.now());
+        // Same plausibility check as the watch callback.
+        this.lastUpdated = plausibleLastUpdated(pos.timestamp, Date.now());
         this.error = null;
       },
       // Polling failures are non-fatal: the underlying watch is still
