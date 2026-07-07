@@ -71,6 +71,15 @@ class LocationStore {
         // green while the rest of the UI races a stale position. See #206.
         this.lastUpdated = pos.timestamp;
         this.error = null;
+        // Reflect the actual browser state. navigator.permissions on
+        // Safari iOS doesn't fire change events for geolocation, so
+        // `permission` can be stuck at 'denied' from a previous denial
+        // even after the user grants via the prompt. A successful fix
+        // is the only reliable signal that permission is now 'granted'
+        // - update it here so Settings' denied gate (which reads
+        // permission directly) doesn't keep showing the NoLocationCard
+        // while Stations already sees nearby stops.
+        this.permission = 'granted';
       },
       (err) => {
         this.error = err;
