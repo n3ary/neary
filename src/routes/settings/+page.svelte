@@ -11,13 +11,14 @@
   import { Circle, CircleDot, Locate, Moon, Sun, Trash2 } from 'lucide-svelte';
   import {
     Box, Button, Card, CardContent, Chip, Dialog, DialogContent, DialogTitle,
-    IconButton, Spinner, Stack, Switch, ToggleGroup, Tooltip, Typography,
+    IconButton, NoLocationCard, Spinner, Stack, Switch, ToggleGroup, Tooltip, Typography,
     formatBytes, formatWhen,
   } from '$lib/ui';
   import { getGtfsRepo } from '$lib/data/gtfs/repo';
   import type { Feed } from '$lib/data/feeds';
   import { feedsStore } from '$lib/stores/feedsStore.svelte';
   import { locationStore } from '$lib/stores/locationStore.svelte';
+  import { noLocationCardDismissedStore } from '$lib/stores/noLocationCardDismissedStore.svelte';
   import { statusBus } from '$lib/stores/statusBus.svelte';
   import { userPrefs, type Theme } from '$lib/stores/userPrefs.svelte';
 
@@ -53,6 +54,25 @@
     medium: 'text-yellow-600 dark:text-yellow-400',
     default: '',
   };
+
+  // Issue #226: when the browser is denying geolocation, the privacy
+  // Switch would lie - it reflects gpsOptedIn but cannot actually turn
+  // GPS on when permission is denied. Replace the Switch with the
+  // shared NoLocationCard in that state. Same card as the home page;
+  // non-dismissible here because the user came to settings to fix it.
+  const denied = $derived(
+    locationStore.permission === 'denied',
+  );
+  // Reset the NoLocationCard dismissal flag on a fresh opt-in so the
+  // user gets the card again on next denial (mirrors the home page).
+  let prevGpsOptedIn = userPrefs.gpsOptedIn;
+  $effect(() => {
+    const isOptedIn = userPrefs.gpsOptedIn;
+    if (isOptedIn && !prevGpsOptedIn) {
+      noLocationCardDismissedStore.reset();
+    }
+    prevGpsOptedIn = isOptedIn;
+  });
 
   let versionFirstSeenAt = $state<number | null>(null);
 
@@ -258,22 +278,29 @@
       <Stack spacing={2}>
         <Typography variant="h6">Privacy</Typography>
 
-        <Stack direction="row" align="center" justify="between">
-          <Box class="flex-1 min-w-0">
-            <Typography variant="body2">Use location</Typography>
-            <Typography variant="caption">
-              Sort nearby stations and put real-time arrivals closer to you first.
-              Your position stays on your device — never sent, stored, or used to
-              track you. Turn off any time; declining the browser prompt also
-              turns this off.
-            </Typography>
-          </Box>
-          <Switch
-            checked={userPrefs.gpsOptedIn}
-            onchange={(v) => (v ? locationStore.enable() : locationStore.disable())}
-            aria-label="Use location"
-          />
-        </Stack>
+        {#if denied}
+          <!-- Same card as the home page's denied-GPS stack. Non-
+               dismissible here because the user came to settings
+               specifically to fix the location state. -->
+          <NoLocationCard />
+        {:else}
+          <Stack direction="row" align="center" justify="between">
+            <Box class="flex-1 min-w-0">
+              <Typography variant="body2">Use location</Typography>
+              <Typography variant="caption">
+                Sort nearby stations and put real-time arrivals closer to you first.
+                Your position stays on your device — never sent, stored, or used to
+                track you. Turn off any time; declining the browser prompt also
+                turns this off.
+              </Typography>
+            </Box>
+            <Switch
+              checked={userPrefs.gpsOptedIn}
+              onchange={(v) => (v ? locationStore.enable() : locationStore.disable())}
+              aria-label="Use location"
+            />
+          </Stack>
+        {/if}
       </Stack>
     </CardContent>
   </Card>
