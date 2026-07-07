@@ -6,6 +6,11 @@
   Routes/Stations subheaders, or the View-all CTA propagates to
   every screen that surfaces a user's favorites.
 
+  Station rows show the routes serving each station via the same
+  overflow chip row the search overlay uses (RouteChipsRow with
+  +N collapse), so the user can tell at a glance which lines stop
+  where without leaving the favorites surface.
+
   Caller can override the row markup via the `routeRow` / `stationRow`
   snippets (e.g. /favorites wraps routes in a stops-list
   Collapsible). When not provided, rows render as plain
@@ -17,6 +22,7 @@
   import { Heart } from 'lucide-svelte';
   import type { Route } from '$lib/domain/types';
   import type { StopWithDistance } from '$lib/data/gtfs/types';
+  import { getGtfsRepo } from '$lib/data/gtfs/repo';
   import {
     Button, Card, CardContent, FavoriteRouteRow, FavoriteStationRow,
     Spinner, Stack, Typography,
@@ -67,6 +73,44 @@
   const total = $derived(routes.length + stations.length);
   const shown = $derived(visibleRoutes.length + visibleStations.length);
   const truncated = $derived(!!limit && shown < total);
+  // Routes serving each visible station, fetched in one batched worker
+  // round-trip so the row's chip row renders against the current set
+  // (and so the home-page limit and the /favorites picker view share
+  // the same lookup).
+  let stopRoutes = $state<Record<string, Route[]>>({});
+  $effect(() => {
+    if (visibleStations.length === 0) {
+      stopRoutes = {};
+      return;
+    }
+    const ids = visibleStations.map((s) => s.id);
+    const currentIds = new Set(ids);
+    let cancelled = false;
+    (async () => {
+      try {
+        const repo = getGtfsRepo();
+        const routes = await repo.getRoutesForStops(ids);
+        // Skip if the visible set changed while we were in flight —
+        // applying a stale map would render chips for stops the user
+        // has just unfavorited.
+        if (cancelled) return;
+        if (visibleStations.some((s) => !currentIds.has(s.id))) return;
+        // Drop routes without a schedule: a chip that opens a dead-end
+        // schedule is worse than no chip. Mirrors HeaderSearchOverlay.
+        const filtered: Record<string, Route[]> = {};
+        for (const id of Object.keys(routes)) {
+          if (!currentIds.has(id)) continue;
+          const scheduled = routes[id].filter((r) => r.hasSchedule !== false);
+          if (scheduled.length > 0) filtered[id] = scheduled;
+        }
+        stopRoutes = filtered;
+      } catch {
+        // Silent: chips are supplementary. Falling back to an empty map
+        // keeps the row renderable.
+      }
+    })();
+    return () => { cancelled = true; };
+  });
   // Show "Routes" / "Stations" subheaders only when both sections
   // exist - a single section already labels itself by being the only
   // thing on screen, and two stacked "Routes" labels would just repeat
@@ -146,6 +190,7 @@
                 isFav={favoritesStore.hasStation(stop.id)}
                 onToggleFavorite={() => favoritesStore.toggleStation(stop.id)}
                 onbodyclick={() => goto(`/station/${stop.id}`)}
+                routes={stopRoutes[stop.id]}
                 variant="card"
                 class="mt-1"
               />
