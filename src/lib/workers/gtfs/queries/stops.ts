@@ -301,11 +301,25 @@ export function getOriginRoutesAtStop(db: Database, stopId: string): string[] {
   return rows.map((r) => r.route_id);
 }
 
-/** Resolve a set of stop ids to their canonical Station rows. Rolls
- *  up to the parent station when the id points at a child, matching
- *  the convention `getStopsNear` / `searchStops` use, so a favorited
- *  child-platform still surfaces the parent's name to the user. ids
- *  missing from the feed are silently dropped. */
+/** Resolve a set of stop ids to their canonical Station rows.
+ *
+ *  This is the batched counterpart to the (intentionally absent)
+ *  single-id helper. The caller is the favorites surface: it stores
+ *  favorited stop ids in localStorage and needs to render them as
+ *  rows with name + (optional) distance, regardless of GPS state.
+ *
+ *  Why a dedicated batched method and not just `searchStops('', ...)`:
+ *  - `searchStops('', lat, lon, n, 'distance')` is GPS-gated and
+ *    radius-limited — a favorited stop 5 km away is invisible. The
+ *    favorites surface must always show every favorited stop.
+ *  - Per-id `getStopById` round-trips one query per id; ten
+ *    favorites is ten worker round-trips. One batched query is the
+ *    same shape as `getRoutesForStops` and pays one round-trip.
+ *
+ *  Rolls up to the parent station when the id points at a child,
+ *  matching the convention `getStopsNear` / `searchStops` use, so a
+ *  favorited child-platform still surfaces the parent's name to the
+ *  user. ids missing from the feed are silently dropped. */
 export function getStopsByIds(
   db: Database,
   stopIds: readonly string[],

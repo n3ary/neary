@@ -159,8 +159,8 @@
             {:else}
               <FavoriteRouteRow
                 {route}
-                isFav={favoritesStore.has(route.id)}
-                onToggleFavorite={() => favoritesStore.toggle(route.id)}
+                isFav={favoritesStore.hasRoute(route.id)}
+                onToggleFavorite={() => favoritesStore.toggleRoute(route.id)}
                 variant="card"
                 class="mt-1"
               />

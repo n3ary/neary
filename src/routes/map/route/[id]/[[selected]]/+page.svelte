@@ -1283,7 +1283,7 @@
               title={isFavorite ? 'Remove from favorites' : 'Add to favorites'}
               aria-pressed={isFavorite}
               class="bg-[color:var(--color-surface)] text-[color:var(--color-fg)] border border-[color:var(--color-border)] shadow-lg hover:bg-[color:var(--color-border)]/60"
-              onclick={() => favoritesStore.toggle(routeId)}
+              onclick={() => favoritesStore.toggleRoute(routeId)}
             >
               {@render heartIcon(isFavorite)}
             </IconButton>

@@ -180,13 +180,13 @@
     });
   });
   const favRoutes = $derived(
-    sortRoutes(filteredRoutes.filter((r) => favoritesStore.has(r.id))),
+    sortRoutes(filteredRoutes.filter((r) => favoritesStore.hasRoute(r.id))),
   );
   const otherRoutes = $derived(
-    sortRoutes(filteredRoutes.filter((r) => !favoritesStore.has(r.id) && r.hasSchedule !== false)),
+    sortRoutes(filteredRoutes.filter((r) => !favoritesStore.hasRoute(r.id) && r.hasSchedule !== false)),
   );
   const noScheduleRoutes = $derived(
-    sortRoutes(filteredRoutes.filter((r) => !favoritesStore.has(r.id) && r.hasSchedule === false)),
+    sortRoutes(filteredRoutes.filter((r) => !favoritesStore.hasRoute(r.id) && r.hasSchedule === false)),
   );
 
 
@@ -206,8 +206,8 @@
   <div>
     <FavoriteRouteRow
       {route}
-      isFav={favoritesStore.has(route.id)}
-      onToggleFavorite={() => favoritesStore.toggle(route.id)}
+      isFav={favoritesStore.hasRoute(route.id)}
+      onToggleFavorite={() => favoritesStore.toggleRoute(route.id)}
       onbodyclick={() => toggleRouteStops(route)}
     />
     {#if expandable}

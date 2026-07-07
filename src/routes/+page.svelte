@@ -322,7 +322,7 @@
   const favoriteRoutes = $derived.by<Route[]>(() => {
     if (!allRoutesForFavorites) return [];
     return allRoutesForFavorites
-      .filter((r) => favoritesStore.has(r.id))
+      .filter((r) => favoritesStore.hasRoute(r.id))
       .sort((a, b) => compareRouteShortName(a.shortName, b.shortName));
   });
   const totalFavorites = $derived(

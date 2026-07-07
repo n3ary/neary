@@ -55,7 +55,7 @@ class FavoritesStore {
     return this.#stations;
   }
 
-  has(routeId: string): boolean {
+  hasRoute(routeId: string): boolean {
     return this.#routes.has(routeId);
   }
 
@@ -63,7 +63,7 @@ class FavoritesStore {
     return this.#stations.has(stopId);
   }
 
-  add(routeId: string): void {
+  addRoute(routeId: string): void {
     if (this.#routes.has(routeId)) return;
     this.#routes.add(routeId);
     this.#persist(STORAGE_KEY_ROUTES, this.#routes);
@@ -75,7 +75,7 @@ class FavoritesStore {
     this.#persist(STORAGE_KEY_STATIONS, this.#stations);
   }
 
-  remove(routeId: string): void {
+  removeRoute(routeId: string): void {
     if (!this.#routes.has(routeId)) return;
     this.#routes.delete(routeId);
     this.#persist(STORAGE_KEY_ROUTES, this.#routes);
@@ -87,9 +87,9 @@ class FavoritesStore {
     this.#persist(STORAGE_KEY_STATIONS, this.#stations);
   }
 
-  toggle(routeId: string): void {
-    if (this.has(routeId)) this.remove(routeId);
-    else this.add(routeId);
+  toggleRoute(routeId: string): void {
+    if (this.hasRoute(routeId)) this.removeRoute(routeId);
+    else this.addRoute(routeId);
   }
 
   toggleStation(stopId: string): void {
@@ -97,7 +97,7 @@ class FavoritesStore {
     else this.addStation(stopId);
   }
 
-  clear(): void {
+  clearRoutes(): void {
     this.#routes.clear();
     this.#persist(STORAGE_KEY_ROUTES, this.#routes);
   }
