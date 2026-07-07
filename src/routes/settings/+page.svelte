@@ -288,9 +288,8 @@
               <Typography variant="body2">Use location</Typography>
               <Typography variant="caption">
                 Sort nearby stations and put real-time arrivals closer to you first.
-                Your position stays on your device — never sent, stored, or used to
-                track you. Turn off any time; declining the browser prompt also
-                turns this off.
+                Your position stays on this device - never sent, stored, or used to
+                track you.
               </Typography>
             </Box>
             <Switch

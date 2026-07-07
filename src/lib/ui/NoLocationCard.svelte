@@ -34,8 +34,8 @@
         <Typography variant="h6">No location</Typography>
       </Stack>
       <Typography variant="caption" class="block pt-1">
-        Want stops near you automatically? Allow location in your browser's
-        site settings, then tap try again.
+        Allow location in your browser's site settings to sort nearby stops,
+        then tap Try again.
       </Typography>
       <Stack direction="row" spacing={1} align="center" class="pt-2">
         <Button variant="text" size="small" onclick={() => locationStore.enable()}>
