@@ -1,14 +1,14 @@
-<!-- Primary action element. variant x color x size covers the cases used across the app (the MUI inventory had no more knobs). All visual properties resolve to theme tokens via CSS vars. -->
+<!-- Primary action element. variant x color x size covers the cases used across the app (the MUI inventory had no more knobs). All visual properties resolve to theme tokens via CSS vars. When `href` is set, renders an anchor instead of a `<button>` so a single component covers both in-page actions and external links (e.g. the "Open issues" CTA in /settings). -->
 <script lang="ts">
   import type { Snippet } from 'svelte';
-  import type { HTMLButtonAttributes } from 'svelte/elements';
+  import type { HTMLButtonAttributes, HTMLAnchorAttributes } from 'svelte/elements';
   import { cn } from './cn';
 
   type Variant = 'contained' | 'outlined' | 'text';
   type Color = 'primary' | 'danger' | 'inherit';
   type Size = 'small' | 'medium' | 'large';
 
-  type Props = Omit<HTMLButtonAttributes, 'class'> & {
+  type Props = Omit<HTMLButtonAttributes & HTMLAnchorAttributes, 'class' | 'children' | 'color'> & {
     variant?: Variant;
     color?: Color;
     size?: Size;
@@ -27,6 +27,7 @@
     startIcon,
     endIcon,
     type = 'button',
+    href,
     class: className,
     children,
     ...rest
@@ -60,14 +61,22 @@
       c === 'inherit' ? 'currentColor' : 'var(--color-primary)';
     return `text-[color:${fg}] hover:bg-[color:${fg}]/10`;
   }
+
+  const classes = $derived(
+    cn(BASE, SIZE[size], variantClasses(variant, color), className),
+  );
 </script>
 
-<button
-  {type}
-  class={cn(BASE, SIZE[size], variantClasses(variant, color), className)}
-  {...rest}
->
-  {#if startIcon}{@render startIcon()}{/if}
-  {@render children?.()}
-  {#if endIcon}{@render endIcon()}{/if}
-</button>
+{#if href}
+  <a {href} class={classes} {...rest}>
+    {#if startIcon}{@render startIcon()}{/if}
+    {@render children?.()}
+    {#if endIcon}{@render endIcon()}{/if}
+  </a>
+{:else}
+  <button {type} class={classes} {...rest}>
+    {#if startIcon}{@render startIcon()}{/if}
+    {@render children?.()}
+    {#if endIcon}{@render endIcon()}{/if}
+  </button>
+{/if}

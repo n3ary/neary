@@ -3,10 +3,10 @@
   import { onMount } from 'svelte';
   import {
     Avatar, BackButton, Box, Button, Card, CardContent, Chip,
-    Collapsible, Dialog, DialogContent, DialogTitle,
+    Collapsible, Dialog, DialogContent, DialogTitle, FavoriteStationRow,
     IconButton, InfoCard, List, ListItem, ListItemText, SelectFeedCard,
     ProgressBar, RouteBadge, RouteChipsRow, Spinner, Stack,
-    StationCard, StatusDot, StopSearchCard, Switch, Tabs, TextField,
+    StationCard, StatusDot, Switch, Tabs, TextField,
     ToggleGroup, Tooltip, TripStopList, Typography, TypeBadge, VehicleCard,
   } from '$lib/ui';
   import type { Route, Station, Vehicle, VehicleType } from '$lib/domain/types';
@@ -108,9 +108,9 @@
       arrivalTime: '08:26:00', arrivalMin: 8 * 60 + 26, stopSequence: 5 },
   ];
 
-  // StopSearchCard demo — a plausible station with several routes so
-  // the fit calculator has something to overflow into a +N chip on
-  // narrow viewports.
+  // Search-overlay station row demo — a plausible station with several
+  // routes so the fit calculator has something to overflow into a +N
+  // chip on narrow viewports.
   const demoSearchStop: StopWithDistance = {
     id: '4012', name: 'Piața Mihai Viteazul',
     distance: 180, lat: 46.7712, lon: 23.6236,
@@ -537,25 +537,30 @@
     </Stack>
 
     <Stack spacing={1}>
-      <Typography variant="body2">StopSearchCard — measured-fit route chips</Typography>
+      <Typography variant="body2">FavoriteStationRow — search-overlay row with route chips</Typography>
       <Typography variant="caption" class="text-[color:var(--color-fg-muted)]">
-        Chip row uses bind:clientWidth to fit as many badges as the card width allows,
-        then collapses the rest into a +N chip. Resize the browser to see the count change.
+        Same row the favorites surfaces use. With hasGps=true the
+        distance chip renders next to the station name. Chip row
+        uses bind:clientWidth to fit as many badges as the card
+        width allows, then collapses the rest into a +N chip.
+        Resize the browser to see the count change.
       </Typography>
-      <StopSearchCard
+      <FavoriteStationRow
         stop={demoSearchStop}
         routes={demoSearchRoutes}
         hasGps
-        onselect={(id: string) => statusBus.push({ id: 'sc-click', kind: 'info', message: `Would open /station/${id}` })}
+        isFav={false}
+        onToggleFavorite={() => statusBus.push({ id: 'fsr-fav', kind: 'info', message: 'Toggled favorite (demo)' })}
+        onbodyclick={() => statusBus.push({ id: 'fsr-click', kind: 'info', message: 'Would open /station/<id>' })}
       />
     </Stack>
 
     <Stack spacing={1}>
       <Typography variant="body2">RouteChipsRow — fit-driven, fills the available space</Typography>
       <Typography variant="caption" class="text-[color:var(--color-fg-muted)]">
-        Same chip row StopSearchCard and FavoriteStationRow use. The visible
-        count is the natural fit: the largest N such that N badges + a "+M"
-        chip fits the measured rowWidth, with `+N` appearing only when the
+        Same chip row FavoriteStationRow uses. The visible count is the
+        natural fit: the largest N such that N badges + a "+M" chip fits
+        the measured rowWidth, with `+N` appearing only when the
         catalogue genuinely overflows. The row fills the available space
         before collapsing via +N. Pass maxVisible to force a hard upper
         bound. Resize the browser to watch the count and the +N move.

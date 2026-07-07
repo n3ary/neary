@@ -1,8 +1,4 @@
-/*
- * Stop queries — nearby stops, departures from a stop, "stop is origin
- * of which routes". Per-stop trip-active filtering lives elsewhere
- * (stationArrivals); this module just shapes raw stop_times rows.
- */
+/* stop queries. Per-stop trip-active filtering lives in stationArrivals; this module just shapes raw stop_times rows. */
 
 import type { Database } from '@sqlite.org/sqlite-wasm';
 import { haversineMeters } from '@n3ary/gtfs-spec/shape';

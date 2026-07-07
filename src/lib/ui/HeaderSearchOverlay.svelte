@@ -19,7 +19,6 @@
   import FavoriteStationRow from './FavoriteStationRow.svelte';
   import Spinner from './Spinner.svelte';
   import Stack from './Stack.svelte';
-  import StopSearchCard from './StopSearchCard.svelte';
   import Typography from './Typography.svelte';
 
   type Props = {
@@ -338,11 +337,11 @@
                 Nearby
               </Typography>
               {#each stopResults as stop (stop.id)}
-                <StopSearchCard
+                <FavoriteStationRow
                   {stop}
                   routes={stopRoutes[stop.id] ?? []}
                   {hasGps}
-                  onselect={selectStop}
+                  onbodyclick={() => selectStop(stop.id)}
                   isFav={favoritesStore.hasStation(stop.id)}
                   onToggleFavorite={() => toggleFavoriteStation(stop.id)}
                 />
@@ -354,11 +353,11 @@
                 Stations
               </Typography>
               {#each stopResults as stop (stop.id)}
-                <StopSearchCard
+                <FavoriteStationRow
                   {stop}
                   routes={stopRoutes[stop.id] ?? []}
                   {hasGps}
-                  onselect={selectStop}
+                  onbodyclick={() => selectStop(stop.id)}
                   isFav={favoritesStore.hasStation(stop.id)}
                   onToggleFavorite={() => toggleFavoriteStation(stop.id)}
                 />

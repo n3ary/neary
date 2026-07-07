@@ -444,26 +444,27 @@
           </Typography>
         </Stack>
 
-        <!-- Bug-report CTA. Anchor instead of Button because Button is
-             button-only with no href support; styling mirrors the
-             Button outlined-small variant so it reads as a secondary
-             action. Opens issues in a new tab. -->
+        <!-- Bug-report CTA. Button renders as an anchor when href is set,
+             so this drops the duplicated outlined-small styling that the
+             earlier anchor-with-Button-classes workaround needed. -->
         <Box class="px-3 py-2 rounded-md border border-[color:var(--color-border)]/60 bg-[color:var(--color-surface-raised,var(--color-surface))]">
           <Stack direction="row" spacing={2} align="center" wrap>
             <Bug size={16} class="shrink-0 text-[color:var(--color-fg-muted)]" />
             <Typography variant="caption" class="flex-1 min-w-0">
               Found a bug? Search existing reports on GitHub or open a new one.
             </Typography>
-            <a
+            <Button
+              variant="outlined"
+              size="small"
+              color="primary"
               href="https://github.com/n3ary/app/issues"
               target="_blank"
               rel="noopener noreferrer"
               aria-label="Open GitHub issues in a new tab"
-              class="inline-flex items-center justify-center gap-1 font-medium rounded-md transition-colors select-none text-xs px-2.5 h-7 border border-[color:var(--color-primary)] text-[color:var(--color-primary)] hover:bg-[color:var(--color-primary)]/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--color-primary)]"
             >
+              {#snippet startIcon()}<ExternalLink size={12} strokeWidth={2.25} />{/snippet}
               Open issues
-              <ExternalLink size={12} strokeWidth={2.25} />
-            </a>
+            </Button>
           </Stack>
         </Box>
       </Stack>

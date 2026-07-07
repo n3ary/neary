@@ -1,25 +1,32 @@
-<!-- FavoriteStationRow: single source of truth for the favorited-station row, so a change to the heart / body tap / route chips propagates to /favorites, the search overlay, and home in one edit. -->
+<!-- FavoriteStationRow: single source of truth for the station row used by the search overlay (with optional distance), /favorites, and home. A change to the heart / body tap / route chips propagates everywhere in one edit. -->
 <script lang="ts">
   import { Bus, Heart } from 'lucide-svelte';
   import type { Route } from '$lib/domain/types';
+  import type { StopWithDistance } from '$lib/data/gtfs/types';
   import Avatar from './Avatar.svelte';
   import RouteChipsRow from './RouteChipsRow.svelte';
   import { cn } from './cn';
   import { iconButtonClass } from './iconButtonClass';
 
   type Props = {
-    /** Station shape compatible with `Station` from $lib/domain/types
-     *  (id + name are the only required fields for the row UI). */
-    stop: { id: string; name: string };
+    /** Accepts the full StopWithDistance from the search overlay OR
+     *  the minimal {id, name} shape from the favorites store. The
+     *  wider shape enables `hasGps`-gated distance display; the
+     *  minimal shape is what the favorites store has on hand. */
+    stop: StopWithDistance | { id: string; name: string };
     isFav: boolean;
     onToggleFavorite: () => void;
-    /** Optional body tap. When null/undefined the row is non-interactive. */
+    /** Optional body tap. When null/undefined the row is non-interactive
+     *  (the search overlay always supplies one; the home favorites
+     *  card uses one for station detail navigation). */
     onbodyclick?: (() => void) | null;
-    /** Optional ordered list of routes serving this station. When
-     *  supplied, renders the same overflow chip row the search overlay
-     *  uses so the user sees which routes stop here without leaving the
-     *  favorites surface. */
+    /** Ordered list of routes serving this station. Renders the
+     *  same overflow chip row the search overlay uses. */
     routes?: Route[];
+    /** Show a "Nm" / "Nkm" distance chip when true and the stop has
+     *  a `distance`. Search overlay passes this from `hasGps`;
+     *  favorites surfaces pass false (no distance to show). */
+    hasGps?: boolean;
     variant?: 'card' | 'inline';
     class?: string;
   };
@@ -30,12 +37,23 @@
     onToggleFavorite,
     onbodyclick = null,
     routes,
+    hasGps = false,
     variant = 'card',
     class: className,
   }: Props = $props();
 
   const interactive = $derived(typeof onbodyclick === 'function');
   const showChips = $derived(Array.isArray(routes) && routes.length > 0);
+  // The wider StopWithDistance shape may or may not carry a `distance`
+  // (the favorites store resolves ids via getStopsByIds, which always
+  // includes it; older callers might not). 'in' is a type-narrowing
+  // operator that needs to run reactively.
+  const distance = $derived('distance' in stop ? stop.distance : undefined);
+
+  function formatDistance(m: number): string {
+    if (m < 1000) return `${Math.round(m)} m`;
+    return `${(m / 1000).toFixed(1)} km`;
+  }
 </script>
 
 <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
@@ -72,7 +90,14 @@
     <Bus size={20} />
   </Avatar>
   <div class="min-w-0 flex-1 flex flex-col gap-1">
-    <div class="text-sm font-medium truncate">{stop.name}</div>
+    <div class="flex items-center gap-2">
+      <span class="min-w-0 flex-1 text-sm font-medium truncate">{stop.name}</span>
+      {#if hasGps && distance != null}
+        <span class="shrink-0 text-xs font-mono text-[color:var(--color-fg-muted)]">
+          {formatDistance(distance)}
+        </span>
+      {/if}
+    </div>
     {#if showChips && routes}
       <RouteChipsRow routes={routes} />
     {/if}

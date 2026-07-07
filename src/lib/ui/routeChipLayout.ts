@@ -68,16 +68,8 @@ export function naturalFit(
   return { visible: 0, hidden: routes.length };
 }
 
-/**
- * Visible cap on badges. By default the natural fit is the cap: a
- * "+N" chip appears only when the catalogue genuinely overflows.
- * This way the chip row fills the available space -- a stop with
- * 18 serving routes on a 580px card shows 13 + "+5" (~97% fill),
- * not 10 + "+8" (~43% fill) under an arbitrary static cap.
- *
- * Callers can still override via the `maxVisible` prop for layouts
- * that need a hard upper bound (e.g. a dense summary view).
- */
-export function comfortableCap(naturalVisible: number): number {
-  return naturalVisible;
-}
+// comfortableCap was an identity wrapper around the natural fit
+// (the visible cap IS the natural fit -- a "+N" chip appears only
+// when the catalogue genuinely overflows). Kept as a comment so
+// the call site in RouteChipsRow.svelte is self-explanatory; the
+// actual cap is `maxVisible ?? naturalFit.visible` there.

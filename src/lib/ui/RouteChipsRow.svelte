@@ -1,13 +1,13 @@
-<!-- RouteChipsRow: badge strip with overflow +N. Visible count = min(naturalFit, comfortableCap), where comfortableCap is derived from the natural fit (which is derived from the measured rowWidth) so wide cards still trigger +N when the catalogue exceeds a comfortable density. -->
+<!-- RouteChipsRow: badge strip with overflow +N. Visible count = min(naturalFit, maxVisible). The natural fit alone is the cap by default -- a "+N" chip appears only when the catalogue genuinely overflows. maxVisible is an opt-in hard override for callers that need a specific upper bound. -->
 <script lang="ts">
   import type { Route } from '$lib/domain/types';
   import RouteBadge from './RouteBadge.svelte';
-  import { naturalFit, comfortableCap } from './routeChipLayout';
+  import { naturalFit } from './routeChipLayout';
 
   type Props = {
     routes: Route[];
     /** Optional hard upper bound on visible badges. Overrides the
-     *  comfortable cap for callers that want a specific count. */
+     *  natural fit for callers that need a specific count. */
     maxVisible?: number;
     class?: string;
   };
@@ -16,13 +16,11 @@
 
   // bind:clientWidth reflects the actual constrained layout (the
   // chip row's container, e.g. the middle column of a flex row),
-  // so the cap scales with whatever container the row renders in.
+  // so the natural fit scales with whatever container the row renders in.
   let rowWidth = $state(0);
 
   const fit = $derived(naturalFit(routes, rowWidth));
-  const dynamicCap = $derived(comfortableCap(fit.visible));
-  const effectiveMax = $derived(maxVisible ?? dynamicCap);
-  const visibleRoutes = $derived(routes.slice(0, Math.min(fit.visible, effectiveMax)));
+  const visibleRoutes = $derived(routes.slice(0, maxVisible ?? fit.visible));
   const hiddenCount = $derived(routes.length - visibleRoutes.length);
 </script>
 

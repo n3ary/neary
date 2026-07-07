@@ -49,7 +49,7 @@ export { default as FavoriteRouteRow } from './FavoriteRouteRow.svelte';
 export { default as FavoriteStationRow } from './FavoriteStationRow.svelte';
 export { default as RouteChipsRow } from './RouteChipsRow.svelte';
 export { default as FavoritesCard } from './FavoritesCard.svelte';
-export { naturalFit, comfortableCap, badgeWidth } from './routeChipLayout';
+export { naturalFit, badgeWidth } from './routeChipLayout';
 
 // Pure helpers (no DOM, no stores).
 export { formatBytes, formatWhen } from './formatters';
@@ -58,7 +58,6 @@ export { formatBytes, formatWhen } from './formatters';
 export { default as Header } from './Header.svelte';
 export type { HeaderHealth, HealthState } from './headerTypes';
 export { default as HeaderSearchOverlay } from './HeaderSearchOverlay.svelte';
-export { default as StopSearchCard } from './StopSearchCard.svelte';
 export { default as StatusDot } from './StatusDot.svelte';
 export { default as AppLayout } from './AppLayout.svelte';
 
