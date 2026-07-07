@@ -4,7 +4,7 @@
   import { goto } from '$app/navigation';
   import { AlertTriangle, Heart, Locate, MapPin, Search, X } from 'lucide-svelte';
   import {
-    Box, Button, Card, CardContent, FavoriteRouteRow, FavoriteStationRow, IconButton,
+    Box, Button, Card, CardContent, FavoritesCard, IconButton,
     InfoCard, NoLocationCard, SelectFeedCard, Spinner, Stack, StationCard,
     Typography,
   } from '$lib/ui';
@@ -422,65 +422,15 @@
       {/snippet}
       {#snippet favoritesCard()}
         {#if userPrefs.feedId != null && totalFavorites > 0}
-          <Card>
-            <CardContent>
-              <Stack direction="row" spacing={1} align="center">
-                <Heart size={16} class="shrink-0 text-[color:var(--color-fg-muted)]" />
-                <Typography variant="h6">Your favorites</Typography>
-              </Stack>
-              {#if routesError}
-                <Typography variant="caption" class="block pt-1">
-                  Couldn't load your favorites.
-                </Typography>
-              {:else if stationsError}
-                <Typography variant="caption" class="block pt-1 text-[color:var(--color-danger)]">
-                  {stationsError}
-                </Typography>
-              {/if}
-              {#if favoriteRoutes.length > 0}
-                {#if !allRoutesForFavorites}
-                  <Stack direction="row" spacing={1} align="center" class="pt-3">
-                    <Spinner size={14} />
-                    <Typography variant="caption">Loading...</Typography>
-                  </Stack>
-                {:else}
-                  {#each favoriteRoutes.slice(0, MAX_INLINE_FAVORITES) as route (route.id)}
-                    <FavoriteRouteRow
-                      {route}
-                      isFav={favoritesStore.has(route.id)}
-                      onToggleFavorite={() => favoritesStore.toggle(route.id)}
-                      variant="card"
-                      class="mt-1"
-                    />
-                  {/each}
-                {/if}
-              {/if}
-              {#if favoriteStations.length > 0}
-                {#if favoriteRoutes.length > 0}
-                  <Typography variant="caption" class="block pt-2 px-1 text-[color:var(--color-fg-muted)]">
-                    Stations
-                  </Typography>
-                {/if}
-                {#each favoriteStations.slice(0, MAX_INLINE_FAVORITES) as stop (stop.id)}
-                  <FavoriteStationRow
-                    {stop}
-                    isFav={favoritesStore.hasStation(stop.id)}
-                    onToggleFavorite={() => favoritesStore.toggleStation(stop.id)}
-                    onbodyclick={() => goto(`/station/${stop.id}`)}
-                    variant="card"
-                    class="mt-1"
-                  />
-                {/each}
-              {/if}
-              {#if totalFavorites > MAX_INLINE_FAVORITES}
-                <Stack direction="row" spacing={1} align="center" class="pt-2 border-t border-[color:var(--color-border)] mt-1">
-                  <Button variant="text" size="small" onclick={() => goto('/favorites')}>
-                    View all {totalFavorites} in Favorites
-                  </Button>
-                </Stack>
-              {/if}
-            </CardContent>
-          </Card>
+          <FavoritesCard
+            routes={favoriteRoutes}
+            stations={favoriteStations}
+            limit={MAX_INLINE_FAVORITES}
+            viewAllHref="/favorites"
+            routesLoading={!allRoutesForFavorites && !routesError}
+            {routesError}
+            {stationsError}
+          />
         {/if}
       {/snippet}
       {@render searchCard()}

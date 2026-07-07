@@ -2,8 +2,8 @@
 <script lang="ts">
   import { goto } from '$app/navigation';
   import {
-    Card, CardContent, Chip, Collapsible, FavoriteRouteRow, FavoriteStationRow,
-    SelectFeedCard, Spinner, Stack,
+    Card, CardContent, Chip, Collapsible, FavoritesCard, FavoriteRouteRow,
+    FavoriteStationRow, SelectFeedCard, Spinner, Stack,
     TripStopList, Typography, TypeBadge, networkIcon, networkTextColor,
   } from '$lib/ui';
   import { getGtfsRepo } from '$lib/data/gtfs/repo';
@@ -197,7 +197,7 @@
      fetched lazily on first expand (representative trip of the day in
      direction 0; see toggleRouteStops). Routes shipping no schedule
      have no representative trip, so the card is non-expandable. -->
-{#snippet routeRow(route: Route)}
+{#snippet expandableRouteRow({ route }: { route: Route })}
   {@const expandable = route.hasSchedule !== false}
   {@const expanded = expandedRouteId === route.id}
   {@const stops = routeStops.get(route.id)}
@@ -304,50 +304,16 @@
       {/if}
 
       {#if favRoutes.length > 0 || favoriteStations.length > 0}
-        <Card>
-          <CardContent>
-            <Stack spacing={1}>
-              <Stack spacing={0.5}>
-                <Typography variant="h5">Your favorites</Typography>
-                <Typography variant="caption" class="text-[color:var(--color-fg-muted)]">
-                  {favRoutes.length + favoriteStations.length} starred. Tap the heart to remove.
-                </Typography>
-              </Stack>
-
-              {#if favRoutes.length > 0}
-                <Stack spacing={1}>
-                  {#each favRoutes as route (route.id)}
-                    {@render routeRow(route)}
-                  {/each}
-                </Stack>
-              {/if}
-
-              {#if favoriteStations.length > 0}
-                {#if stationsError}
-                  <Typography variant="caption" class="px-2 py-1 text-[color:var(--color-danger)]">
-                    {stationsError}
-                  </Typography>
-                {:else}
-                  {#if favRoutes.length > 0}
-                    <Typography variant="caption" class="block pt-2 px-1 text-[color:var(--color-fg-muted)]">
-                      Stations
-                    </Typography>
-                  {/if}
-                  <Stack spacing={1}>
-                    {#each favoriteStations as stop (stop.id)}
-                      <FavoriteStationRow
-                        {stop}
-                        isFav={favoritesStore.hasStation(stop.id)}
-                        onToggleFavorite={() => favoritesStore.toggleStation(stop.id)}
-                        onbodyclick={() => selectStation(stop.id)}
-                      />
-                    {/each}
-                  </Stack>
-                {/if}
-              {/if}
-            </Stack>
-          </CardContent>
-        </Card>
+        <FavoritesCard
+          routes={favRoutes}
+          stations={favoriteStations}
+          headerStyle="standalone"
+          {stationsError}
+        >
+          {#snippet routeRow(args: { route: Route })}
+            {@render expandableRouteRow(args)}
+          {/snippet}
+        </FavoritesCard>
       {/if}
 
       {#if otherRoutes.length > 0}
@@ -364,7 +330,7 @@
               </Stack>
               <Stack spacing={1}>
                 {#each otherRoutes as route (route.id)}
-                  {@render routeRow(route)}
+                  {@render expandableRouteRow({ route })}
                 {/each}
               </Stack>
             </Stack>
@@ -384,7 +350,7 @@
               </Stack>
               <Stack spacing={1}>
                 {#each noScheduleRoutes as route (route.id)}
-                  {@render routeRow(route)}
+                  {@render expandableRouteRow({ route })}
                 {/each}
               </Stack>
             </Stack>
