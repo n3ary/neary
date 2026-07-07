@@ -30,15 +30,22 @@ const GPS_MAX_AGE_MS = GPS_POLL_MS;
 
 /**
  * Normalize a GeolocationPosition.timestamp to milliseconds since epoch.
- * Some iOS Safari WebKit builds report the field in seconds instead of
- * milliseconds - storing such a value as ms produces a `this.now -
- * lastUpdated` age of ~31 years, which renders as "GPS last fix
- * 16305118 min ago" on the header dot. Detect by comparing the raw to
- * `now` in both unit candidates - whichever lands closer to `now` wins.
+ *
+ * Per W3C spec the field is milliseconds. Some iOS Safari WebKit
+ * builds report it in seconds instead. Both candidates below give a
+ * value in ms - "raw" treats it as already-ms; "raw * 1000" treats
+ * it as sec-then-converted. The correctly-unit-converted candidate
+ * will land within seconds of `now`. The wrong one will land ~31
+ * years off in either direction (e.g. a 1.78e9 "seconds" timestamp
+ * interpreted as ms is ~31 years before `now`).
+ *
+ * We pick whichever candidate is closer to `now`.
  */
 function normalizePositionTimestamp(raw: number, now: number): number {
   if (raw <= 0) return raw;
-  return Math.abs(now - raw) <= Math.abs(now - raw * 1000) ? raw : raw * 1000;
+  const distanceIfAlreadyMs = Math.abs(now - raw);
+  const distanceIfWasSeconds = Math.abs(now - raw * 1000);
+  return distanceIfAlreadyMs <= distanceIfWasSeconds ? raw : raw * 1000;
 }
 
 class LocationStore {
