@@ -2,7 +2,7 @@
 <script lang="ts">
   import { untrack } from 'svelte';
   import { goto } from '$app/navigation';
-  import { AlertTriangle, Heart, Locate, MapPin, Search, X } from 'lucide-svelte';
+  import { AlertTriangle, Heart, MapPin, Search, X } from 'lucide-svelte';
   import {
     Box, Button, Card, CardContent, FavoritesCard, IconButton,
     InfoCard, NoLocationCard, SelectFeedCard, Spinner, Stack, StationCard,
@@ -576,30 +576,10 @@
   </Stack>
 </div>
 
-<!-- "Position me" escape hatch (issue #206). Visible only when GPS is
-     on AND we have a position to anchor from — opt-in flow stays
-     exclusive to the Enable banner above. Anchored above the bottom
-     nav (which is z-30 in BottomNavigation.svelte) at z-40 so a
-     transit StatusBar entry — handled by the AppLayout's sticky
-     strip — can never paint over it. Tap triggers a one-shot
-     high-accuracy getCurrentPosition with no cache, bypassing the
-     throttle that leaves the cached fix stale for the rider's
-     whole wait. -->
-{#if gpsState === 'available'}
-  <button
-    type="button"
-    onclick={() => locationStore.forceFreshFix()}
-    aria-label="Position me"
-    title="Position me"
-    class="fixed left-4 z-40 w-12 h-12 rounded-full bg-[color:var(--color-surface)]
-           border border-[color:var(--color-border)] shadow-md
-           flex items-center justify-center text-[color:var(--color-primary)]
-           hover:bg-[color:var(--color-primary)]/10 active:scale-95
-           transition-[transform,background-color]
-           focus-visible:outline-none focus-visible:ring-2
-           focus-visible:ring-[color:var(--color-primary)]"
-    style="bottom: calc(3.5rem + env(safe-area-inset-bottom, 0px))"
-  >
-    <Locate size={20} />
-  </button>
-{/if}
+<!--
+  (Previous "Position me" FAB removed — it required a manual tap to
+  refresh the GPS fix, but in practice the watch position updates on
+  its own and the FAB added visual noise without delivering value
+  in real-world use. The opt-in flow remains exclusive to the
+  Enable banner above.)
+-->
