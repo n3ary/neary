@@ -1,29 +1,4 @@
-/*
- * Predict a vehicle's current position from its trip's stop timeline.
- *
- * Two flavors:
- *
- *   `predictPosition(stops, nowMin)` — straight-line interpolation
- *   between consecutive stops. Falls back well when the feed doesn't
- *   carry shapes.txt.
- *
- *   `predictPositionOnShape(plan, nowMin)` — interpolates along the
- *   route's polyline using cumulative distances, so the marker
- *   follows the road instead of cutting through buildings. Use
- *   whenever a shape is available; build the `TripShapePlan` once
- *   per trip+shape pair with `buildTripShapePlan` and reuse across
- *   every render tick.
- *
- * Status values let the UI hide / dim a vehicle without re-deriving:
- *   - 'before':   nowMin < origin departure — bus hasn't started yet.
- *   - 'at-origin': nowMin in [origin - imminentMin, origin departure]
- *                  — coming up at the start station.
- *   - 'active':   between origin departure and terminus arrival.
- *   - 'after':    past terminus.
- *
- * Live GPS hasn't been wired through this helper yet — when it is,
- * the reconciler will short-circuit prediction with the GPS fix.
- */
+// Predict a vehicle's current position from its trip's stop timeline. Two flavors: straight-line and shape-aware.
 
 import {
   measurePolyline,
@@ -47,13 +22,9 @@ import {
 export interface PredictStop {
   lat: number;
   lon: number;
-  /** Minutes since local midnight (GTFS extended time allowed,
-   *  i.e. 24h+ for past-midnight night routes). */
+  /** Minutes since local midnight. GTFS extended time allowed (24h+ for past-midnight night routes). */
   arrivalMin: number;
-  /** Optional pre-computed distance along the trip's shape from origin
-   *  to this stop, in metres. When present, `buildTripShapePlan` reads
-   *  it directly instead of projecting on the client. Populated by feeds
-   *  whose `stop_times.shape_dist_traveled` is non-null at build time. */
+  /** Pre-computed distance along the trip's shape from origin to this stop, in metres. When present, `buildTripShapePlan` reads it directly instead of projecting on the client. Populated by feeds whose stop_times.shape_dist_traveled is non-null at build time. */
   distAlongM?: number;
 }
 
@@ -65,21 +36,10 @@ export interface PredictedPosition {
   status: TripStatus;
 }
 
-/** Default 'imminent' window — a vehicle inside this many minutes of
- *  its origin departure counts as 'at-origin' rather than 'before'.
- *  Matches the existing UI convention of "imminentEtaThresholdMin". */
+/** A vehicle inside this many minutes of its origin departure counts as 'at-origin' rather than 'before'. Mirrors the UI convention of `imminentEtaThresholdMin`. */
 export const DEFAULT_IMMINENT_MIN = 5;
 
-/**
- * Pick the position to render for a vehicle on a known trip.
- * Returns `null` only when the trip has no stops at all — every
- * other case yields a position + status.
- *
- * Straight-line variant: the position between two stops lies on the
- * direct segment between their coordinates. Acceptable when no shape
- * is available; prefer `predictPositionOnShape` when the feed does
- * have shapes.txt for the route.
- */
+/** Linear interpolation between consecutive stops. Returns null only when stops is empty. */
 export function predictPosition(
   stops: readonly PredictStop[],
   nowMin: number,
@@ -114,32 +74,14 @@ export function predictPosition(
   return { lat: terminus.lat, lon: terminus.lon, status: 'active' };
 }
 
-/** Precomputed per-trip data used by `predictPositionOnShape`.
- *  Build once when the route's shape + stops arrive (mount-time);
- *  the only per-tick work is then a binary search + an interpolation. */
+/** Precomputed per-trip data for `predictPositionOnShape`. Build once at mount; per-tick work is a binary search + interpolation. */
 export interface TripShapePlan {
-  /** Polyline + cumulative distances. */
   measured: MeasuredPolyline;
-  /** One entry per stop in `stops`, same length and order.
-   *  `arrivalMin` carries the schedule; `distAlongM` is the stop's
-   *  position projected onto the shape. */
+  /** Same length + order as stops. arrivalMin = schedule; distAlongM = stop's position projected onto the shape. */
   legs: Array<{ arrivalMin: number; distAlongM: number }>;
 }
 
-/** Build a `TripShapePlan` for a trip.
- *
- *  Fast path (preferred): when every `PredictStop` carries
- *  `distAlongM` (populated at build time from
- *  `stop_times.shape_dist_traveled`), the per-stop polyline projection
- *  is skipped entirely — page load drops from O(stops × shape segments)
- *  to O(stops).
- *
- *  Fallback: when any stop is missing `distAlongM`, project every stop
- *  onto the shape (today's behaviour). Mixed presence falls back to
- *  projection so consumers see consistent data within a single plan.
- *
- *  Returns `null` when no usable shape exists — caller should fall
- *  back to `predictPosition`. */
+/** Build a TripShapePlan. Fast path when every stop carries distAlongM (skips per-stop projection, O(stops)); otherwise project every stop. Returns null when no usable shape exists. */
 export function buildTripShapePlan(
   stops: readonly PredictStop[],
   shape: Polyline,
@@ -153,15 +95,11 @@ export function buildTripShapePlan(
         const proj = projectOnPolyline({ lat: s.lat, lon: s.lon } as LatLon, shape);
         return { arrivalMin: s.arrivalMin, distAlongM: proj.distAlongM };
       });
-  // Stops projected onto a doubled-back shape (rare but possible
-  // when an operator publishes the same trace for both directions)
-  // can land out of order. Ignore that here — the time-based bracket
-  // below uses arrivalMin, not distAlongM, so a non-monotonic legs[]
-  // array still produces sensible interpolation.
+  // Doubled-back shapes (same trace for both directions) project out-of-order; the time-based bracket below uses arrivalMin, so a non-monotonic legs[] still interpolates sensibly.
   return { measured, legs };
 }
 
-/** Shape-aware variant of `predictPosition`. Same status semantics. */
+/** Shape-aware variant of predictPosition. Same status semantics. */
 export function predictPositionOnShape(
   plan: TripShapePlan,
   nowMin: number,
@@ -202,8 +140,7 @@ export function predictPositionOnShape(
 export interface GpsObservation {
   lat: number;
   lon: number;
-  /** Vehicle speed in m/s. `null` skips extrapolation — position falls
-   *  back to the last known GPS fix snapped onto the shape. */
+  /** Vehicle speed in m/s. null skips extrapolation — position falls back to the last GPS fix snapped onto the shape. */
   speedMs: number | null;
   /** Unix ms when the GPS fix was reported by the upstream feed. */
   asOfMs: number;
@@ -212,23 +149,11 @@ export interface GpsObservation {
 export type GpsFreshness = 'fresh' | 'stale' | 'very-stale';
 
 export interface GpsPredictedPosition extends PredictedPosition {
-  /** How stale the GPS fix is at `nowMs`:
-   *   - 'fresh':       < 3 min old; cascade extrapolation, marker UI
-   *                    treats this as high-trust.
-   *   - 'stale':       3–5 min old; same cascade walk, marker UI hints
-   *                    at reduced trust (e.g. yellow border).
-   *   - 'very-stale':  5–15 min old; same cascade walk, marker UI hints
-   *                    at low trust (e.g. red border).
-   *   - older than 15 min: predictor returns null — caller falls back
-   *                    to schedule prediction or drops the marker. */
+  /** 'fresh' < 3 min = high trust; 'stale' 3-5 min = reduced; 'very-stale' 5-15 min = low. Older than 15 min: predictor returns null. */
   freshness: GpsFreshness;
 }
 
-/** Optional cascade context for `predictPositionFromGps`. When omitted,
- *  the predictor uses the generic defaults and assumes UTC for
- *  computing the TOD bucket — fine for tests, but real callers should
- *  pass `{ timezone }` so peak/night windows align with the feed's
- *  local clock. */
+/** Optional context for `predictPositionFromGps`. Real callers should pass `{ timezone }` so peak/night windows align with the feed's local clock. */
 export interface PredictPositionFromGpsContext {
   /** IANA timezone of the feed (e.g. 'Europe/Bucharest'). */
   timezone?: string;
@@ -236,47 +161,26 @@ export interface PredictPositionFromGpsContext {
   todProfile?: TodProfile;
 }
 
-/** Hard cap on how far forward the dead-reckoner walks the bus per
- *  refresh tick. Sized for the worst-case 15-min very-stale window at
- *  the city-edge speed (≈45 km/h) — anything beyond that would risk
- *  the marker skating past the visible part of the route. The poly-
- *  line clamp in `pointAtDistance` still caps at the trip's total
- *  length. */
+// Sized for the worst-case 15-min very-stale window at the city-edge speed (~45 km/h). Beyond this, the marker would skate past the visible route. `pointAtDistance` still clamps at the trip's total length.
 const MAX_DEAD_RECKON_M = 12_000;
 const FRESH_MS = 3 * 60_000;
 const STALE_MS = 5 * 60_000;
 const VERY_STALE_MS = 15 * 60_000;
-/** Reported speeds below this read as "stopped" — mirrors the speed
- *  cascade's STOPPED_KMH so a bus parked at a red light falls back
- *  to the TOD-bucket speed instead of dragging the marker to zero. */
+
+// Mirrors speedCascade.STOPPED_KMH so a parked bus falls back to the TOD-bucket speed instead of dragging the marker to zero.
 const STOPPED_KMH = 5;
 
-/** Result of dead-reckoning a GPS observation forward along a route
- *  shape. Both the map view's bus marker and the station view's ETA
- *  consume this same projection so the two pipelines can never
- *  disagree about where the bus currently is — same `(dtMs, kmh,
- *  forward)` math, same on-shape position, every render tick. */
+/** Result of dead-reckoning a GPS observation forward along the route shape. Same projection for map + station so they can never disagree about where the bus is right now. */
 export interface DeadReckonedAlongShape {
-  /** Dead-reckoned position projected back onto the shape. */
   position: LatLon;
   /** Distance along the polyline from origin, in metres. */
   distAlongM: number;
-  /** Wall-clock delta from the GPS fix to `nowMs`. */
+  /** Wall-clock delta from GPS fix to nowMs. */
   dtMs: number;
   freshness: GpsFreshness;
 }
 
-/** Project a GPS observation onto a measured polyline, then walk
- *  forward along the polyline by `(nowMs − obs.asOfMs) × speed`. Speed
- *  picked by the cascade: the vehicle's own speed when moving, the
- *  TOD-bucket speed when parked (red light, stop dwell).
- *
- *  Returns `null` when the fix is older than `VERY_STALE_MS` — at that
- *  point the prediction is too noisy to trust. The map view hides the
- *  marker; `applyGpsEta` in `stationBoard.ts` falls back to the row's
- *  schedule-only ETA. Without this consistency the station view kept
- *  treating a stale-fix vehicle as "still approaching" while the map
- *  had already extrapolated it past the stop (issue #86). */
+/** Project GPS onto polyline, then walk forward by (nowMs - obs.asOfMs) * cascade speed. Returns null when fix is older than VERY_STALE_MS — at that point prediction is too noisy to trust. */
 export function deadReckonGpsAlongShape(
   obs: GpsObservation,
   measured: MeasuredPolyline,
@@ -303,19 +207,7 @@ export function deadReckonGpsAlongShape(
   return { position: p, distAlongM, dtMs: dt, freshness };
 }
 
-/**
- * Position from live GPS, dead-reckoned forward along the trip's shape.
- *
- * Thin wrapper over `deadReckonGpsAlongShape` — same physics, just the
- * map-marker-shaped output. Returns `null` when the fix is too stale
- * to project (mirrors the helper's contract).
- *
- * Freshness bands let the UI hint at trust:
- *   - 'fresh' (< 3 min):       high trust.
- *   - 'stale' (3–5 min):       reduced trust.
- *   - 'very-stale' (5–15 min): low trust.
- *   - older than 15 min:       returns `null` (caller falls back).
- */
+/** Position from live GPS, dead-reckoned forward. Thin wrapper over `deadReckonGpsAlongShape` with map-marker-shaped output. Returns null when fix is too stale to project. */
 export function predictPositionFromGps(
   plan: TripShapePlan,
   obs: GpsObservation,

@@ -1,77 +1,38 @@
-/*
- * NearyConfig — single source of truth for all tunable thresholds used by
- * the bucketing, prediction, and reconciliation layers.
- * Spec: docs/specs/vehicles-and-views.md.
- *
- * For now everyone reads `DEFAULT_CONFIG`. A future advanced-settings
- * view will be able to override individual fields per session.
- * Keeping all magic numbers behind one type means we never have to
- * grep the codebase to tune the app.
- */
+// Tunable thresholds for bucketing, prediction, reconciliation. Spec: docs/specs/vehicles-and-views.md.
 
 export interface NearyConfig {
   // ── Bucketing (station view) ───────────────────────────────────────
-  /** A vehicle within this many meters of the stop is "physically at" it.
-   *  Only meaningful for live vehicles (we trust GPS, not predictions). */
+  /** Meters within which a live vehicle is "physically at" the stop (GPS only — predictions don't qualify). */
   proximityAtStationM: number;
-  /** Live vehicle that's > this far from the stop AND off the route shape
-   *  is bucketed off-route. */
+  /** Live vehicle > this far AND off the route shape → `off-route` bucket. */
   offRouteDistanceM: number;
-  /** Future ETA threshold separating "arriving" from "incoming". */
+  /** Future ETA threshold separating `arriving` from `incoming`. */
   arrivingThresholdMin: number;
-  /** A future ETA at or below this threshold is rendered with the same
-   *  urgency styling as the `arriving` bucket (bold + accent color). Above
-   *  this, the row stays neutral. Spec §3 calls this "imminent". */
+  /** Future ETA ≤ this → `arriving` urgency styling (bold + accent). Above this, neutral. Spec calls this "imminent". */
   imminentEtaThresholdMin: number;
-  /** A live vehicle at the stop moving faster than this is "departing"
-   *  (otherwise it's "at-station"). */
+  /** Live vehicle at stop moving faster than this → `departing` (else `at-station`). */
   departingSpeedKmh: number;
-  /** A scheduled dwell shorter than this is treated as just-passing and
-   *  surfaces as "arriving" rather than splitting into at-station. */
+  /** Scheduled dwell shorter than this is just passing through, not dwelling. */
   minDwellGapMin: number;
 
   // ── Live data ───────────────────────────────────────────────────────
-  /** Poll cadence for GTFS-RT VehiclePositions, in ms. The upstream feed
-   *  typically updates every ≈10–20 s. */
+  /** GTFS-RT VehiclePositions poll cadence. Upstream feeds typically update every 10–20 s. */
   livePollMs: number;
-  /** Cadence for the per-view device-GPS poll, in ms. Picked to match
-   *  `livePollMs` so the header dot's freshness state advances on the
-   *  same beat as the live-vehicle state. Independent enough to be
-   *  tuned separately if either source needs a different cadence —
-   *  see issue #206. */
+  /** Per-view device-GPS poll cadence. Matches `livePollMs` so header-dot freshness advances on the same beat as live-vehicle state. */
   gpsPollMs: number;
 
   // ── Station selection (Stations view) ───────────────────────────────
-  /** Primary "nearby" search radius from the user's location. Only stops
-   *  within this distance are considered for the closest+2nd-closest
-   *  pair rule. */
+  /** "Nearby" search radius — only stops within this distance are candidates for the closest + 2nd-closest pair rule. */
   nearbyRadiusM: number;
-  /** A second stop joins the closest one ONLY when its distance to the
-   *  user differs from the closest by at most this many meters. Keeps
-   *  the view to the actual pair the user is standing between, never
-   *  surfacing a far-second-best when the closest is unambiguous. */
+  /** A 2nd stop joins the closest one ONLY when its distance to the user is within this much of the closest. Keeps the view to the actual pair, never a far-second-best. */
   pairProximityM: number;
-  /** Fallback search radius used only when nothing is within
-   *  `nearbyRadiusM`. The selector then surfaces the closest stop
-   *  within this radius that carries a favorited route. */
+  /** Used only when nothing matches the primary radius — surfaces the closest stop within this that carries a favorited route. */
   favoriteFallbackRadiusM: number;
-  /** Distance the user must move before the Stations view re-queries
-   *  its boards AND resets view-only user choices (expanded station,
-   *  route filter). Smaller than typical GPS jitter (~25 m on the
-   *  low-accuracy setting) to avoid silent re-queries when the rider
-   *  is stationary; large enough that walking slowly (~1.4 m/s)
-   *  triggers the reset after ~35 s rather than on every fix. Below
-   *  this threshold the boards are considered "same neighborhood"
-   *  and the existing selection + filters are kept verbatim. */
+  /** Distance the user must move before the Stations view re-queries AND resets view-only choices (expanded station, route filter). Tuned between typical GPS jitter (~25 m) and slow walking (~1.4 m/s triggers after ~35 s). */
   significantMoveM: number;
 
   // ── Arrivals window ───────────────────────────────────────────────
-  /** How far into the future the Stations and Station-detail views
-   *  ask the worker for arrivals. 18 h from any wall-clock time
-   *  reaches the typical 04:00 GTFS end-of-service even at 10:00
-   *  AM, so the per-station list never empties out mid-day for
-   *  arbitrary horizon reasons. StationCard caps display to a few
-   *  rows so a generous window is cheap. */
+  /** How far ahead views ask the worker for arrivals. 18 h from any wall-clock reaches a typical 04:00 GTFS end-of-service; StationCard caps display so the window is cheap. */
   arrivalsWindowMin: number;
 }
 

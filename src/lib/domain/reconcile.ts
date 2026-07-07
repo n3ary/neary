@@ -1,41 +1,4 @@
-/*
- * reconcile — merge live GPS observations into a scheduled vehicle list.
- *
- * Match key (spec: docs/specs/live-data-pipeline.md):
- *
- *   (routeId, directionId, tripStartMin) with adaptive tolerance.
- *
- * trip_id equality is NOT used as a fast-path. Some operators publish
- * static GTFS and GTFS-RT from independent build pipelines that happen
- * to share the same `route_dir_service_run_HHMM` schema but populate
- * `<run>_<HHMM>` from independent dispatch databases. Sampling has
- * shown a meaningful fraction of live trip_ids drift from their static
- * counterparts by ±1 run number and/or ±a few minutes in HHMM. Strict
- * trip_id matching would silently lose those buses.
- *
- * Adaptive tolerance: median gap between consecutive scheduled trip
- * starts on the same (routeId, directionId) within the local ±1h window
- * around `now`, divided by 2. Clamped to [TOLERANCE_FLOOR_MIN,
- * TOLERANCE_CEILING_MIN]. When <3 samples exist in the local hour we
- * widen progressively (±4h → full day) until we have enough.
- *
- * Output is a uniform Vehicle[]: matched scheduled rows are upgraded
- * to `kind: 'tracked'`; unmatched scheduled rows stay `kind:
- * 'scheduled'`; AND unmatched live observations are emitted as
- * `kind: 'gps-only'` rows when their (routeId, directionId) has a
- * representative scheduled sibling on the input (so we know the
- * route+direction is relevant to whatever view called us, and we
- * have a sibling headsign to copy onto the orphan). True orphans
- * — live observations on a (route, direction) that doesn't appear
- * in the input scheduled list at all — are dropped.
- *
- * Re-attribution: this function is stateless and runs every poll cycle.
- * Each cycle picks the best (closest tripStartMin) match independently.
- * If GPS movement causes a different scheduled run to become a better
- * fit on the next cycle, binding self-heals.
- *
- * Pure. No DOM, no stores, no I/O.
- */
+// Merge live GPS observations into a scheduled vehicle list. Match key: (routeId, directionId, tripStartMin) with adaptive tolerance — not trip_id, because some operators publish static + RT from independent dispatch pipelines and trip_ids drift by ±1 run / ±a few minutes HHMM. Spec: docs/specs/live-data-pipeline.md. Pure. No DOM, no stores, no I/O.
 
 import type { LiveVehicleObservation } from '$lib/data/live/gtfsRtClient';
 import type { Vehicle } from './types';
@@ -48,10 +11,7 @@ const LOCAL_WINDOW_MIN = 60;
 const LOCAL_WINDOW_FALLBACK_MIN = 240;
 const MIN_HEADWAY_SAMPLES = 2;
 
-/** When route-order pair lands a (sched, live) match whose projected
- *  positions disagree by more than this, treat the no-overtake
- *  invariant as broken for the cohort (detour, terminus turnaround,
- *  bad GPS) and fall back to greedy-by-timing for that cohort. */
+// When a (sched, live) pair's projected positions disagree by more than this, the no-overtake invariant is broken for the cohort (detour, turnaround, bad GPS); fall back to greedy-by-timing.
 const ROUTE_ORDER_IMPLAUSIBLE_M = 2_000;
 
 export interface ReconcileStats {
@@ -59,36 +19,18 @@ export interface ReconcileStats {
   matched: number;
   /** Scheduled rows left as `kind: 'scheduled'` (no live candidate). */
   unmatched: number;
-  /** Live observations that had a candidate group but were ambiguous
-   *  (multiple scheduled trips within tolerance, all tied for closest).
-   *  Reserved for future telemetry; today the closest still wins. */
+  /** Live observations that had a candidate group but were ambiguous (multiple scheduled trips within tolerance, all tied for closest). Today the closest still wins. */
   ambiguous: number;
-  /** Live observations emitted as `kind: 'gps-only'` orphan rows because
-   *  no scheduled row was a match but their (route, direction) is on
-   *  the input. */
+  /** Live observations emitted as `kind: 'gps-only'` orphan rows. */
   live: number;
 }
 
 export interface ReconcileOptions {
-  /** Unix ms wall clock. Combined with `timezone` to compute the
-   *  feed-local minutes-since-midnight that drives the adaptive
-   *  tolerance window. */
+  /** Combined with `timezone` for feed-local minutes-since-midnight that drives the adaptive tolerance window. */
   nowMs?: number;
-  /** Feed's IANA timezone, e.g. 'Europe/Bucharest'. Required when
-   *  `nowMs` is supplied. When omitted the reconciler falls back to a
-   *  fixed ±5 min tolerance. */
+  /** Required when `nowMs` is supplied. Without both, reconciler falls back to fixed ±5 min tolerance. */
   timezone?: string;
-  /** Optional shape lookup keyed by `${routeId}|${directionId}`. When a
-   *  cohort's shape is provided AND `nowMs`+`timezone` are set, the
-   *  reconciler matches by route order (sort scheduled by start time
-   *  asc + live obs by projected `distAlongM` desc, pair in sequence)
-   *  instead of greedy-by-timing-delta. Captures the physical truth
-   *  that buses on the same `(route, dir)` don't overtake each other,
-   *  which timing-only matching can violate on high-frequency lines.
-   *  Falls back to greedy-by-timing per cohort when the shape is
-   *  absent or when the route-order pairing is implausible (any pair's
-   *  expected-vs-actual distance disagrees by more than
-   *  `ROUTE_ORDER_IMPLAUSIBLE_M`). */
+  /** `${routeId}|${directionId}` -> measured polyline. Enables route-order pairing (no-overtake invariant) instead of greedy-by-timing. Falls back per cohort when shape absent or pair produces implausible disagreement > ROUTE_ORDER_IMPLAUSIBLE_M. */
   shapesByCohort?: ReadonlyMap<string, MeasuredPolyline>;
 }
 
@@ -101,15 +43,8 @@ export function reconcileWithLive(
     options.nowMs != null && options.timezone
       ? minSinceMidnightInTz(options.nowMs, options.timezone)
       : undefined;
-  // Index scheduled vehicles by (routeId, directionId). Only
-  // kind:'scheduled' rows that carry the new match-key fields are
-  // eligible — anything already promoted is left alone (idempotent),
-  // and rows missing tripStartMin / directionId are skipped (defensive
-  // for stale data shapes). `tripEndMin` (= scheduledArrival on
-  // active-trips Vehicles) feeds the route-order pairing's linear
-  // time interpolation; falls back to `tripStartMin` (zero duration)
-  // when scheduledArrival is missing, which degrades route-order to
-  // "everyone is at origin" and then matches by timing only.
+
+  // Index scheduled `scheduled` rows by (routeId, directionId). tripEndMin feeds route-order's linear interpolation; falls back to tripStartMin (zero duration) when scheduledArrival is missing, which degrades route-order to timing-only.
   const byKey = new Map<string, SchedEntry[]>();
   scheduled.forEach((v, idx) => {
     if (v.kind !== 'scheduled') return;
@@ -123,10 +58,6 @@ export function reconcileWithLive(
     byKey.set(key, list);
   });
 
-  // Group live observations into the same cohort keys + parse start
-  // times once. Live obs whose cohort has no scheduled siblings are
-  // dropped here (the orphan-emission pass below will still consider
-  // them — same gate as before).
   const liveByKey = new Map<string, LiveEntry[]>();
   for (const obs of live) {
     const startMin = parseLiveStartMin(obs);
@@ -140,11 +71,7 @@ export function reconcileWithLive(
     liveByKey.set(key, list);
   }
 
-  // Per-cohort matching: try route-order pairing when a shape is
-  // available, fall back to greedy-by-timing-delta otherwise (or when
-  // route-order produces an implausible pairing). Cohorts are disjoint
-  // (different routes / directions), so per-cohort processing is
-  // identical in outcome to a global pair-then-greedy walk.
+  // Per-cohort matching: route-order when a shape's available + cohort has both sides, otherwise greedy-by-timing. Cohorts are disjoint (different routes / directions), so per-cohort processing matches a global pair-then-greedy walk in outcome.
   const matchByScheduledIdx = new Map<number, LiveVehicleObservation>();
   const matchedLiveObs = new Set<LiveVehicleObservation>();
   let ambiguous = 0;
@@ -198,28 +125,7 @@ export function reconcileWithLive(
     };
   });
 
-  // Emit kind: 'gps-only' rows for live observations that didn't match any
-  // scheduled row. Two gates:
-  //   1) The (routeId, directionId) must appear on the input — we copy
-  //      a representative sibling's route + headsign onto the orphan
-  //      and refuse to surface a route the view doesn't already show.
-  //   2) The observation must carry a usable directionId (0 | 1).
-  // The Vehicle the reconciler emits is uniform with the rest of the
-  // pipeline (downstream applyGpsEta / assembleStationBoard treat
-  // kind: 'gps-only' alongside kind: 'tracked' for bucketing).
-  //
-  // ETA seed for parked-at-origin orphans:
-  //   We also record the sibling's TRAVEL TIME from origin to this
-  //   stop (sibling.scheduledArrival − sibling.tripStartMin). When
-  //   the orphan reports its own tripStartMin (from `start_time` or
-  //   the `..._HHMM` suffix), we synthesize an ETA on the emitted
-  //   row: `(obs.tripStartMin + travelTimeMin) − nowMin`. This gives
-  //   a sensible ETA for a bus parked at the trip's origin where
-  //   GPS speed is zero and a pure-GPS ETA would use the fallback
-  //   speed (noisy). `applyGpsEta` downstream KEEPS this seed for
-  //   genuinely-at-origin orphans and OVERWRITES it with a GPS-
-  //   derived ETA once the bus is moving — so an early departure
-  //   self-corrects on the next render tick.
+  // Emit kind: 'gps-only' orphan rows for unmatched live obs. (routeId, directionId) must appear on the input so we copy a representative sibling's route+headsign and refuse to surface a route the view doesn't already show. The orphan carries a sibling-derived ETA seed (origin + travel-time-from-origin) for parked-at-origin buses; applyGpsEta downstream keeps that seed for genuinely-at-origin orphans and overwrites it once the bus starts moving.
   let liveOut = 0;
   const repByKey = new Map<string, {
     route: Vehicle['route'];
@@ -240,7 +146,6 @@ export function reconcileWithLive(
     const existing = repByKey.get(key);
     if (
       !existing ||
-      // Prefer reps with both headsign + travel time when filling in.
       (!existing.headsign && v.headsign) ||
       (existing.travelTimeMin == null && travelTimeMin != null)
     ) {
@@ -258,7 +163,6 @@ export function reconcileWithLive(
     if (dir !== 0 && dir !== 1) continue;
     const rep = repByKey.get(`${obs.routeId}|${dir}`);
     if (!rep) continue;
-    // Sibling-derived ETA seed (re-evaluated each tick by applyGpsEta).
     let etaSeed: Vehicle['eta'] | undefined;
     const obsStartMin = parseLiveStartMin(obs);
     if (
@@ -298,23 +202,13 @@ export function reconcileWithLive(
   return { vehicles, stats: { matched, unmatched, ambiguous, live: liveOut } };
 }
 
-/** Parse the live observation's scheduled start time into minutes
- *  since local midnight. Reads only the canonical
- *  `TripDescriptor.start_time` ("HH:MM:SS") field — any per-feed
- *  trip_id encoding is expected to be resolved into `obs.startTime`
- *  upstream at parse time (see `src/lib/domain/enrichObservations.ts`).
- *  Returns null when the field is absent or unparseable; the
- *  reconciler treats those observations as unmatched. */
+/** Parse the live observation's scheduled start time into minutes since local midnight. Reads TripDescriptor.start_time ("HH:MM:SS") — per-feed trip_id encoding is resolved into `obs.startTime` upstream at parse time (see `enrichObservations.ts`). Returns null when the field is absent or unparseable. */
 export function parseLiveStartMin(obs: LiveVehicleObservation): number | null {
   if (!obs.startTime) return null;
   return timeToMinutes(obs.startTime);
 }
 
-/** Compute the matching tolerance (in minutes) for a single
- *  (routeId, directionId) cohort. Uses the median gap between
- *  consecutive trip starts within ±1h of `now` for that cohort.
- *  Widens the window if there are fewer than MIN_HEADWAY_SAMPLES
- *  trips, and falls back to a fixed tolerance when `now` is unknown. */
+/** Matching tolerance in minutes. Median gap between consecutive trip starts within ±1h of `now`, divided by 2. Clamped to [TOLERANCE_FLOOR_MIN, TOLERANCE_CEILING_MIN]. Widens the window (4h, then full day) when < MIN_HEADWAY_SAMPLES exist locally. Falls back to fixed ±5 min when `now` is unknown. */
 export function computeTolerance(
   tripStartMins: number[],
   nowMinSinceMidnight?: number,
@@ -336,8 +230,7 @@ export function computeTolerance(
     const median = gaps.length % 2 === 0 ? (gaps[mid - 1] + gaps[mid]) / 2 : gaps[mid];
     return clampTolerance(median / 2);
   }
-  // Cohort too small even across the whole day — use the floor so we
-  // only match dead-center hits.
+  // Cohort too small even across the whole day — use the floor so we only match dead-center hits.
   return TOLERANCE_FLOOR_MIN;
 }
 
@@ -345,13 +238,6 @@ function clampTolerance(value: number): number {
   if (!Number.isFinite(value) || value <= 0) return TOLERANCE_FLOOR_MIN;
   return Math.max(TOLERANCE_FLOOR_MIN, Math.min(TOLERANCE_CEILING_MIN, value));
 }
-
-// ------------------------------------------------------------------------
-// Cohort-level matchers. Each takes one (route, dir) cohort's scheduled
-// rows and live observations and returns the matched pairs (plus an
-// `ambiguous` telemetry count). The outer reconciler aggregates results
-// across cohorts.
-// ------------------------------------------------------------------------
 
 type SchedEntry = {
   idx: number;
@@ -365,11 +251,7 @@ type CohortMatch = {
   ambiguous: number;
 };
 
-/** Today's behaviour, extracted: enumerate all (live, sched) pairs
- *  within tolerance, sort by `|delta|` ascending, greedy walk. Each
- *  live obs and each scheduled row participate in at most one match.
- *  Used as the fallback when no shape is available or when route-order
- *  pairing produces an implausible result. */
+/** Fallback matcher. Enumerate all (live, sched) pairs within tolerance, sort by `|delta|` ascending, greedy walk. Each live obs and scheduled row participate in at most one match. */
 function pairCohortGreedyByTiming(
   scheds: readonly SchedEntry[],
   lives: readonly LiveEntry[],
@@ -409,34 +291,7 @@ function pairCohortGreedyByTiming(
   return result;
 }
 
-/** Route-order pairing. Captures the no-overtake invariant: buses on
- *  the same (route, dir) don't pass each other in normal operation, so
- *  the earliest scheduled trip should pair with the live obs that's
- *  furthest along the shape.
- *
- *  Deliberately ignores the timing tolerance for pair eligibility —
- *  the whole motivation for route-order is that the operator's
- *  reported `start_time` can lie, and timing-only matching mis-pairs
- *  in that case. The cohort itself (same route + direction) is the
- *  scope guard; getActiveTrips already filters scheduled trips to the
- *  "currently in transit" window upstream.
- *
- *  Algorithm:
- *    1. Project every live obs onto the shape; record `distAlongM`.
- *    2. Compute each scheduled trip's expected `distAlongM` at `now`
- *       via linear time interpolation:
- *         expected = (now - tripStartMin) / (tripEndMin - tripStartMin)
- *                  × shape.totalDistM
- *       clamped to [0, totalDistM].
- *    3. Sort scheduled by `tripStartMin` ascending (earliest = furthest
- *       along expected).
- *    4. Sort live by `distAlongM` descending (furthest along first).
- *    5. Pair in sequence (min(n_sched, n_live) pairs).
- *    6. If any pair's expected-vs-actual distance disagrees by more
- *       than `ROUTE_ORDER_IMPLAUSIBLE_M`, the no-overtake invariant
- *       likely doesn't hold for this cohort (detour, terminus
- *       turnaround, bad GPS). Fall back to greedy-by-timing for the
- *       whole cohort. */
+/** Route-order matcher. Captures the no-overtake invariant: earliest scheduled = furthest-along live. Algorithm: project live onto shape; expected scheduled distAlong via linear time interpolation; sort both sides; pair in sequence; if any pair's expected-vs-actual distance disagrees by > ROUTE_ORDER_IMPLAUSIBLE_M, fall back to greedy-by-timing for the whole cohort. */
 function pairCohortRouteOrder(
   scheds: readonly SchedEntry[],
   lives: readonly LiveEntry[],
@@ -468,9 +323,9 @@ function pairCohortRouteOrder(
         : 0;
     return { idx: s.idx, tripStartMin: s.tripStartMin, expectedDistAlongM };
   });
-  // Sort schedule by start asc (earliest first → furthest along expected).
+  // Sort schedule by start asc (earliest first → furthest along expected)
   schedDist.sort((a, b) => a.tripStartMin - b.tripStartMin);
-  // Sort live by distAlongM desc (furthest along first).
+  // Sort live by distAlongM desc (furthest along first)
   const sortedLive = [...liveDist].sort((a, b) => b.distAlongM - a.distAlongM);
 
   const n = Math.min(schedDist.length, sortedLive.length);
@@ -489,8 +344,6 @@ function pairCohortRouteOrder(
     });
   }
 
-  // Implausibility check: a single bad pair signals the invariant
-  // doesn't hold; fall back rather than ship a wrong pairing.
   if (pairs.some((p) => p.distDelta > ROUTE_ORDER_IMPLAUSIBLE_M)) {
     return pairCohortGreedyByTiming(scheds, lives, tol);
   }

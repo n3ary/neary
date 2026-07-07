@@ -1,18 +1,4 @@
-/*
- * stationBoard — pure helpers for turning a raw Vehicle[] into a
- * ready-to-render board for a single station. Used by:
- *   - the Stations view (/) per nearby stop
- *   - the Schedule drill-down (/schedule/route/[id]?stop=…)
- *
- * No DOM, no stores, no SQL. The worker hands us Vehicle[]; this module
- * applies the user's view preferences and produces sorted bucketed rows
- * the UI just renders.
- *
- * Timezone contract: every minute-since-midnight value in the pipeline
- * (scheduledDeparture, scheduledArrival, tripStartMin) is in the FEED's
- * local timezone. Callers must supply the feed timezone explicitly so
- * we don't silently mix system-local minutes with feed-local ones.
- */
+// Pure helpers: Vehicle[] → ready-to-render BoardRow[] for one station. No DOM, no SQL. Timezone contract: all minutes-since-midnight values are FEED-local.
 
 import {
   bucketOf,
@@ -41,29 +27,13 @@ export interface BoardRow {
 export interface BoardPrefs {
   showDepartedVehicles: boolean;
   showDropOffOnly: boolean;
-  /** Advanced: include vehicles bucketed as `off-route` in the board. */
+  /** Advanced: include off-route vehicles. */
   showOffRouteVehicles: boolean;
-  /** Per-context-bucket cap (applied to `incoming` / `drop-off` /
-   *  `departed`). Defaults to `DEFAULT_CONTEXT_BUCKET_CAP`. The
-   *  now-group (`departing` / `at-station` / `arriving`) and
-   *  `off-route` are always uncapped. */
+  /** Per-context-bucket cap. Defaults to DEFAULT_CONTEXT_BUCKET_CAP. Now-group + off-route are always uncapped. */
   stationBoardMaxRows?: number;
 }
 
-/** Assemble the bucketed, filtered, sorted board for one station's
- *  worth of vehicles. Pure. The result obeys the per-bucket cap rule
- *  in `capStationBoard` (now-group + off-route uncapped; context
- *  buckets capped at `stationBoardMaxRows`).
- *
- *  `stop` supplies the coordinates we need to measure how far each live
- *  vehicle actually is from the stop — the bucketer's at-station check
- *  is meaningful only with a real distance. Schedule-only vehicles (no
- *  position) get Infinity, which keeps them out of the at-stop branch.
- *
- *  `timezone` is the feed's IANA timezone (e.g. 'Europe/Bucharest'). It
- *  determines how `nowMs` is converted to minutes-since-midnight so the
- *  bucketer compares apples to apples with the schedule's HH:MM:SS
- *  values (which are feed-local by GTFS spec). */
+/** Assemble the bucketed, filtered, sorted board. `stop` coords feed the bucketer's at-station check (Infinity for schedule-only vehicles keeps them out of the at-stop branch). */
 export function assembleStationBoard(
   vehicles: Vehicle[],
   stop: { lat?: number; lon?: number },
@@ -83,9 +53,7 @@ export function assembleStationBoard(
       scheduledDepartureMin: v.schedule?.scheduledDeparture,
       nowMin,
     });
-    // Drop-off-only vehicles can't be boarded — segregate into their own
-    // section so they don't pollute incoming/arriving. Departed ones keep
-    // 'departed' (the drop-off flag is irrelevant once the vehicle has left).
+    // Drop-off-only vehicles can't be boarded — segregate into their own bucket; departed ones keep 'departed' (the flag is moot post-departure).
     const bucket = v.dropOffOnly && rawBucket !== 'departed' ? 'drop-off' : rawBucket;
     return { vehicle: v, bucket, etaMinutes: v.eta?.minutes ?? 0 };
   });
@@ -93,22 +61,10 @@ export function assembleStationBoard(
   return capStationBoard(sorted, prefs.stationBoardMaxRows ?? DEFAULT_CONTEXT_BUCKET_CAP);
 }
 
-/** Default cap applied to context buckets (`incoming` / `drop-off` /
- *  `departed`) when the user hasn't picked a value. Now-group buckets
- *  (`departing` / `at-station` / `arriving`) and the diagnostic
- *  `off-route` bucket are always uncapped. */
+/** Default cap applied to context buckets when the user hasn't picked a value. Now-group + off-route are always uncapped. */
 export const DEFAULT_CONTEXT_BUCKET_CAP = 3;
 
-/** Per-bucket cap. Returns `null` for buckets the rider should always
- *  see in full:
- *
- *    - Now-group: `departing` / `at-station` / `arriving` — the
- *      actionable set, never hidden.
- *    - `off-route`: diagnostic, opt-in via Advanced settings; if the
- *      user has enabled it, show all of them.
- *
- *  Context buckets (`incoming` / `drop-off` / `departed`) share the
- *  setting-driven cap. */
+// Now-group (departing/at-station/arriving) and off-route are uncapped; context buckets (incoming/drop-off/departed) share the setting-driven cap.
 function bucketCap(bucket: ArrivalBucket, maxRows: number): number | null {
   if (
     bucket === 'departing' ||
@@ -121,40 +77,12 @@ function bucketCap(bucket: ArrivalBucket, maxRows: number): number | null {
   return maxRows;
 }
 
-/** Cohort key for the per-`(route, direction)` dedup pass. Treats
- *  undefined and -1 direction as the same value so feeds without
- *  `direction_id` don't fragment their routes. */
+// Treats undefined and -1 direction as the same value so feeds without direction_id don't fragment routes.
 function dedupKey(row: BoardRow): string {
   return `${row.vehicle.route.id}_${row.vehicle.directionId ?? -1}`;
 }
 
-/** Trim the bucketed row set to what the StationCard will render.
- *
- *  Algorithm:
- *    1. Detect single-route board: if every row belongs to the same
- *       `routeId` the board already represents the rider's chosen
- *       view (single-route stop, or filtered via route badge — both
- *       directions of the route still survive). Dedup is skipped;
- *       per-bucket caps still apply.
- *    2. Group rows by bucket, preserving the input order (rows arrive
- *       pre-sorted by `compareForBoard`).
- *    3. Per-`(route, direction)` dedup inside each bucket — keep the
- *       soonest row per pair. Active only when step 1 said so.
- *    4. `later`-trip filter (only when dedup is skipped): drop rows
- *       whose `tripPhase` is `later` — future trips that haven't
- *       departed origin yet. Pure timetable guesses, no useful
- *       position info; the station card focuses on what's happening
- *       NOW for this route. The schedule view answers "when does
- *       this route run next-after-next". Applies uniformly across
- *       every bucket (incoming, drop-off, departed, …) — wherever a
- *       `later` row would surface, it gets hidden. `tripPhase` is set
- *       on every emitted row by `scheduleScanner.assignTripPhases`.
- *    5. Per-bucket cap (`bucketCap`). Now-group and `off-route`
- *       buckets are uncapped; context buckets use `maxRows`.
- *    6. Re-sort with `compareForBoard` so the on-screen order matches
- *       the spec regardless of bucket-traversal order.
- *
- *  Pure. */
+/** Trim the bucketed row set for the StationCard. Algorithm: single-route boards skip dedup and the `later`-trip filter (the rider's chosen view already collapses to one route); multi-route boards dedup per (route, direction) inside each bucket, drop `later`-phase rows (pure timetable guesses with no useful position info), apply per-bucket caps, and re-sort. */
 export function capStationBoard(rows: BoardRow[], maxRows = DEFAULT_CONTEXT_BUCKET_CAP): BoardRow[] {
   if (rows.length === 0) return rows;
 
@@ -192,34 +120,9 @@ export function capStationBoard(rows: BoardRow[], maxRows = DEFAULT_CONTEXT_BUCK
   return out.sort(compareForBoard);
 }
 
-/* ---------------------------------------------------------------------- *
- * Top-level pipeline composer
- * ---------------------------------------------------------------------- *
- *
- * The Stations view (and any other consumer that wants a fully-resolved
- * board) calls this ONE function instead of chaining
- *   filter → mergeReconciledIntoStationBoard → applyGpsEta → assembleStationBoard
- * itself. Keeps pipeline composition + timezone discipline in the
- * domain layer; the UI just renders what comes back.
- *
- * Stage order matches docs/specs/vehicles-and-views.md:
- *   1. Route filter (visual scope chosen by the user) — applied first
- *      so the rest of the pipeline operates on the right subset.
- *   2. Reconciled-vehicle merge — join per-stop scheduled rows with
- *      the worker's global reconciled set by `tripId`. Matched rows
- *      become `kind: 'tracked'` (GPS-bearing); orphan live obs
- *      whose (route, dir) the station serves are appended as
- *      `kind: 'gps-only'` rows with a sibling-derived ETA seed.
- *   3. GPS-derived ETA (multi-tier speed cascade) on reconciled rows
- *      at intermediate stops. Origin rows keep the scheduled departure
- *      as their ETA because the bus isn't moving yet.
- *   4. Bucket + filter + sort + cap (assembleStationBoard).
- */
+// Top-level pipeline composer — the Stations view and any other consumer that wants a fully-resolved board calls assembleLiveVehicles + bucketLiveBoardMemo instead of chaining the 4 stages themselves. Stage order matches docs/specs/vehicles-and-views.md.
 
-/** Inputs for `assembleLiveVehicles` — the worker-side half of the
- *  live pipeline (merge + GPS-ETA). The main-side bucket step lives
- *  separately so route filter + prefs (UI state) don't have to cross
- *  the worker IPC boundary. */
+/** Inputs for `assembleLiveVehicles` — the worker-side half (merge + GPS-ETA). Main-side bucket step lives separately so route filter + prefs don't cross the worker IPC boundary. */
 export interface AssembleLiveVehiclesInputs {
   /** Per-stop scheduled vehicles, all `kind: 'scheduled'`. */
   perStopVehicles: Vehicle[];
@@ -230,15 +133,11 @@ export interface AssembleLiveVehiclesInputs {
   stopDistancesByTrip?: Record<string, number[]>;
   nowMs: number;
   timezone: string;
-  /** Seconds added per intermediate stop in the dwell walk. From the
-   *  feed's _neary_config timing.dwell_sec; defaults to 20. */
+  /** Per-intermediate-stop dwell. From feed's _neary_config timing.dwell_sec; defaults to 20. */
   dwellSec?: number;
 }
 
-/** Merge + GPS-ETA — the heavy half of the live pipeline. Runs inside
- *  the worker (via `repo.subscribeStationBoards`) so shape polylines and
- *  stop-distance arrays never cross the IPC boundary. Pure function;
- *  exported for the worker query and for direct unit testing. */
+/** Worker-side merge + GPS-ETA. Pure — exported for unit testing. */
 export function assembleLiveVehicles(input: AssembleLiveVehiclesInputs): Vehicle[] {
   const nowMin = minSinceMidnightInTz(input.nowMs, input.timezone);
   const merged = mergeReconciledIntoStationBoard({
@@ -246,10 +145,7 @@ export function assembleLiveVehicles(input: AssembleLiveVehiclesInputs): Vehicle
     reconciledVehicles: input.reconciledVehicles,
     nowMin,
   });
-  // Sibling-shape fallback for orphans whose own trip_id isn't in the
-  // shapes Map. All trips on a single (route, direction) share their
-  // shape_id in every feed we've seen, so any scheduled sibling's
-  // polyline projects an orphan onto the correct route geometry.
+  // Sibling-shape fallback for orphans whose own trip_id isn't in shapes. All trips on a single (route, dir) share their shape_id, so any sibling's polyline projects an orphan onto the correct geometry.
   const shapesByRouteDir = buildShapesByRouteDir(input.perStopVehicles, input.shapes);
   return applyGpsEta(merged, input.shapes, input.stop, shapesByRouteDir, {
     nowMs: input.nowMs,
@@ -259,13 +155,9 @@ export function assembleLiveVehicles(input: AssembleLiveVehiclesInputs): Vehicle
   });
 }
 
-/** Inputs for `bucketLiveBoardMemo` — the main-side half of the live
- *  pipeline. Vehicles are already merged + GPS-ETA-adjusted by the
- *  worker (`repo.subscribeStationBoards`); main only filters by route and
- *  buckets/caps for display. */
+/** Inputs for `bucketLiveBoardMemo` — the main-side half. Vehicles are already merged + GPS-ETA-adjusted by the worker; main only filters by route and buckets for display. */
 export interface BucketLiveBoardInputs {
-  /** Per-stop vehicles, already through `assembleLiveVehicles` in the
-   *  worker — `kind` is final and ETA is GPS-adjusted where applicable. */
+  /** Already through `assembleLiveVehicles` in the worker — `kind` is final and ETA is GPS-adjusted. */
   vehicles: Vehicle[];
   stop: { lat?: number; lon?: number };
   prefs: BoardPrefs;
@@ -279,9 +171,7 @@ const bucketLiveBoardCache = new WeakMap<object, {
   result: BoardRow[];
 }>();
 
-/** Memoised main-side bucketing for vehicles already assembled by the
- *  worker. Replaces `assembleLiveBoardMemo` once the worker owns the
- *  shape / GPS-ETA half of the pipeline. */
+/** Memoised main-side bucketing. Cache key is the stop object identity + reference-equal inputs. */
 export function bucketLiveBoardMemo(input: BucketLiveBoardInputs): BoardRow[] {
   const cached = bucketLiveBoardCache.get(input.stop);
   if (
@@ -302,38 +192,19 @@ export function bucketLiveBoardMemo(input: BucketLiveBoardInputs): BoardRow[] {
   return result;
 }
 
-/* ---------------------------------------------------------------------- *
- * Station-side merge with the worker's reconciled vehicles
- * ---------------------------------------------------------------------- *
- *
- * The worker emits a GLOBAL reconciled vehicle set (no per-stop
- * context). The station view has a PER-STOP scheduled board with
- * arrival times at this specific stop. This helper joins them:
- *
- *   - Matched (`tripId` present in both): promote the per-stop row
- *     to `kind: 'tracked'`, keeping its per-stop schedule and
- *     copying the GPS position + freshness from the worker.
- *   - Orphans (worker `kind: 'gps-only'` rows whose (route, dir) is on
- *     the per-stop board): emit as `kind: 'gps-only'` rows on the
- *     station's board, with an ETA seed computed from a per-stop
- *     sibling's travel-time-from-origin (so a bus parked at the
- *     trip origin gets a sensible "arrives in N min" instead of
- *     waiting for GPS speed > 0).
- *
- * Pure. */
+// Station-side merge with the worker's global reconciled set: per-stop scheduled rows + worker gps-only orphans. Orphans get an ETA seed from per-stop sibling travel-time-from-origin so a parked bus doesn't wait for GPS speed.
+
 export interface StationMergeInputs {
   perStopVehicles: Vehicle[];
   reconciledVehicles: Vehicle[];
-  /** Minutes since local midnight at the feed's timezone. Used for
-   *  the orphan ETA seed only. */
+  /** Minutes since local midnight at the feed's timezone. Used for the orphan ETA seed only. */
   nowMin: number;
 }
 
 export function mergeReconciledIntoStationBoard(inputs: StationMergeInputs): Vehicle[] {
   const { perStopVehicles, reconciledVehicles, nowMin } = inputs;
 
-  // Index reconciled (GPS-matched) rows by tripId for O(1) promotion.
-  // We keep ONLY `kind: 'tracked'` here; orphans are handled below.
+  // Index reconciled `tracked` rows by tripId for O(1) promotion.
   const reconciledByTripId = new Map<string, Vehicle>();
   for (const v of reconciledVehicles) {
     if (v.kind !== 'tracked') continue;
@@ -341,15 +212,7 @@ export function mergeReconciledIntoStationBoard(inputs: StationMergeInputs): Veh
     reconciledByTripId.set(v.tripId, v);
   }
 
-  // Per-stop representative per (route, dir) for orphan ETA seed:
-  // travelTimeMin = scheduledArrival at THIS stop − tripStartMin at
-  // origin. Same recipe the old reconciler used per-station, just
-  // moved here since the worker doesn't know the consumer's stop.
-  // `dropOffOnly` also tracked here so live orphans at a terminus or
-  // a drop-off-only stop inherit the flag from their scheduled
-  // siblings — without it the orphan would leak into the now-group
-  // buckets (arriving / at-station / departing) instead of routing
-  // to `drop-off` in `assembleStationBoard`.
+  // Per-stop (route, dir) representative: travelTimeMin = scheduledArrival - tripStartMin, dropOffOnly carried through so live orphans at a terminus / drop-off-only stop inherit the flag and route to the `drop-off` bucket (not the now-group).
   const repByKey = new Map<string, {
     headsign: string | undefined;
     travelTimeMin: number | undefined;
@@ -381,9 +244,7 @@ export function mergeReconciledIntoStationBoard(inputs: StationMergeInputs): Veh
     }
   }
 
-  // Promote matched per-stop scheduled rows to `kind: 'tracked'`.
-  // Keep the per-stop schedule (arrival times at THIS stop) — we just
-  // attach the GPS position and confidence from the worker's row.
+  // Promote matched per-stop scheduled rows to `tracked`. Keep the per-stop schedule (arrival at THIS stop); attach GPS position + confidence from the worker.
   const promoted: Vehicle[] = perStopVehicles.map((v) => {
     if (v.kind !== 'scheduled') return v;
     const tid = v.tripId;
@@ -407,14 +268,7 @@ export function mergeReconciledIntoStationBoard(inputs: StationMergeInputs): Veh
     };
   });
 
-  // Emit orphan kind:'gps-only' rows for live obs the worker couldn't
-  // match to any active trip but whose (route, dir) this station
-  // serves. Two gates:
-  //   1) (route, dir) appears in `repByKey` — station-side scope.
-  //      The worker already gated against the global active-trip
-  //      set, so this is a per-station tightening.
-  //   2) The reconciled row has a position (always true for
-  //      kind:'gps-only' per the type union).
+  // Emit orphan kind:'gps-only' rows whose (route, dir) this station serves. The worker already gated against the global active-trip set; this is the per-station tightening.
   const orphans: Vehicle[] = [];
   for (const v of reconciledVehicles) {
     if (v.kind !== 'gps-only') continue;
@@ -436,9 +290,6 @@ export function mergeReconciledIntoStationBoard(inputs: StationMergeInputs): Veh
       ...v,
       headsign: v.headsign ?? rep.headsign,
       eta: etaSeed,
-      // At a terminus or drop-off-only stop the matched sibling
-      // carries dropOffOnly=true; propagate so this orphan routes
-      // to the `drop-off` bucket in assembleStationBoard.
       dropOffOnly: v.dropOffOnly ?? rep.dropOffOnly,
     });
   }
@@ -469,48 +320,19 @@ function buildShapesByRouteDir(
 export interface ApplyGpsEtaContext {
   /** Unix ms wall clock. */
   nowMs: number;
-  /** Feed's IANA timezone. Combined with `nowMs` to compute the
-   *  feed-local TOD bucket used by the speed cascade. */
+  /** Feed's IANA timezone. Combined with `nowMs` for the feed-local TOD bucket used by the speed cascade. */
   timezone: string;
-  /** Per-feed speed config. Defaults to the generic defaults; when the
-   *  feed registry eventually publishes `timing` blocks per feed,
-   *  callers will pass that through here. */
+  /** Per-feed speed config; defaults to the generic defaults. */
   feedConfig?: FeedSpeedConfig;
-  /** Time-of-day profile (peak/night windows). Defaults to the
-   *  generic profile. */
+  /** Time-of-day profile (peak/night windows); defaults to the generic profile. */
   todProfile?: TodProfile;
-  /** Optional trip_id -> ordered stop distances. Enables per-segment
-   *  dwell-aware walk in predictArrivalAlongShape. */
+  /** trip_id -> ordered stop distances. Enables per-segment dwell walk. */
   stopDistancesByTrip?: Record<string, number[]>;
-  /** Seconds added per intermediate stop in the dwell walk. Feed-
-   *  specific value from _neary_config; defaults to 20. */
+  /** Per-intermediate-stop dwell. From feed's _neary_config; defaults to 20. */
   dwellSec?: number;
 }
 
-/** Replace the schedule-based ETA on rows with a live position
- *  (`kind: 'tracked'` and `kind: 'gps-only'` orphans) with a GPS-
- *  derived one via the multi-tier speed cascade, where possible.
- *
- *  Shape lookup is two-step:
- *    1. By the row's own `tripId` (the common case for reconciled rows).
- *    2. By `(routeId, directionId)` from the sibling-shape fallback
- *       built in `assembleLiveBoard` — handles orphans whose own
- *       trip_id is in the live feed but absent from static.
- *
- *  Skipped at trip origin:
- *   - For reconciled rows: when `v.schedule.isFirstStop === true`.
- *     The schedule scanner labels the origin stop; the predictor
- *     would just produce noise from a parked bus's near-zero speed.
- *   - For orphan kind:'gps-only' rows: detected from the GPS projection
- *     itself — bus's `distAlong` on the shape is < AT_ORIGIN_DIST_M
- *     AND its speed is < AT_ORIGIN_SPEED_MS (or unknown). When the
- *     bus is detected at origin we keep the reconciler's sibling-
- *     derived ETA seed (see reconcile.ts) instead of overwriting
- *     with a noise estimate. The detection re-runs every render
- *     tick, so the ETA self-corrects to GPS-derived the moment the
- *     bus starts moving — handles early departures.
- *
- *  Pure. */
+/** Replace schedule-based ETA on rows with a live position with a GPS-derived one via the multi-tier speed cascade. Skipped at trip origin (a parked bus would just produce noise from near-zero speed). */
 export function applyGpsEta(
   vehicles: Vehicle[],
   shapes: Record<string, Polyline>,
@@ -530,9 +352,7 @@ export function applyGpsEta(
     if (!v.position) return v;
     const polyline = pickShape(v, shapes, shapesByRouteDir);
     if (!polyline || polyline.length < 2) return v;
-    // For live orphans: detect "parked at origin" — keep the
-    // sibling-derived ETA seed the reconciler attached, don't
-    // overwrite with a fallback-driven estimate.
+    // Live orphans: if the bus is parked at the origin (distance < AT_ORIGIN_DIST_M and speed < AT_ORIGIN_SPEED_MS), keep the reconciler's sibling-derived ETA seed instead of overwriting with noise. Re-checks every render tick, so the ETA self-corrects to GPS-derived the moment the bus starts moving.
     if (v.kind === 'gps-only') {
       const proj = projectOnPolyline(
         { lat: v.position.lat, lon: v.position.lon },
@@ -543,10 +363,6 @@ export function applyGpsEta(
         proj.distAlongM < AT_ORIGIN_DIST_M && speed < AT_ORIGIN_SPEED_MS;
       if (atOrigin && v.eta != null) return v;
     }
-    // Single domain entry point for GPS-anchored arrival prediction.
-    // It encapsulates the dead-reckon + per-segment + dwell walk so
-    // map and station can never disagree about the physics. Falls back
-    // to single-segment when this trip has no shape_dist_traveled.
     const { arrival: p, positionAtNow } = predictArrivalFromGps({
       obs: {
         lat: v.position.lat,
@@ -564,17 +380,7 @@ export function applyGpsEta(
       dwellSecondsPerStop: ctx.dwellSec ?? 20,
       ctx: { feedConfig, timezone: ctx.timezone, todProfile },
     });
-    // Also overwrite `position` with the dead-reckoned coords so the
-    // downstream bucketer's haversine distance-to-stop (see
-    // `assembleStationBoard`) reads the same "where is the bus right
-    // now?" the ETA does. Without this update, a stale fix could
-    // produce a dead-reckoned ETA that says "departed" while the
-    // bucketer still sees the bus 1 km from the stop and routes the
-    // row into `arriving`. `source: 'predicted-from-gps'` flags the
-    // mutation so consumers can tell apart "raw GTFS-RT fix" vs
-    // "projected to nowMs"; `asOf` advances to nowMs because that's
-    // when this position is true. Falls through unchanged when
-    // dead-reckon returned null (very-stale fix).
+    // Overwrite `position` with dead-reckoned coords so the downstream bucketer's haversine distance-to-stop reads the same "where is the bus right now?" the ETA does. `source: 'predicted-from-gps'` flags the mutation so consumers can tell apart raw GTFS-RT fix vs projected-to-nowMs. Falls through unchanged when dead-reckon returned null (very-stale fix).
     const position = positionAtNow
       ? {
           ...v.position,
@@ -596,11 +402,9 @@ export function applyGpsEta(
   });
 }
 
-/** Bus is "at origin" when its projection onto the trip shape is
- *  within this distance of the shape's start vertex. */
+// Bus is "at origin" when its projection onto the trip shape is within this distance of the shape's start vertex.
 const AT_ORIGIN_DIST_M = 100;
-/** And its reported speed (m/s) is below this. Includes null/undefined
- *  speed (parked buses often don't transmit speed). */
+// Includes null/undefined speed — parked buses often don't transmit speed.
 const AT_ORIGIN_SPEED_MS = 1;
 
 function pickShape(
@@ -615,10 +419,7 @@ function pickShape(
   return shapesByRouteDir[`${v.route.id}|${dir}`];
 }
 
-/** Deduped, sorted route list for a station based on the schedule.
- *  Lives in the domain so consumers (Stations page, future map view,
- *  showcase) all read routes the same way — numeric short-names sort
- *  numerically, alpha after. */
+/** Deduped, sorted route list for a station based on the schedule. Numeric short-names sort numerically, alpha after. */
 export function routesFromVehicles(vehicles: Vehicle[]): Route[] {
   const map = new Map<string, Route>();
   for (const v of vehicles) map.set(v.route.id, v.route);
