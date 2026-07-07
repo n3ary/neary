@@ -1,9 +1,4 @@
-<!--
-  Root layout — every route renders inside AppLayout (Header + StatusBar +
-  scrollable main + BottomNavigation). Per-route title and refresh handler
-  are derived from the route path; agency / health state come from stores
-  that the relevant routes populate.
--->
+<!-- Root layout. Every route renders inside AppLayout (Header + StatusBar + scrollable main + BottomNavigation). Per-route title and refresh handler derive from the route path; health state comes from the stores the relevant routes populate. -->
 <script lang="ts">
   import '$lib/styles/app.css';
   import { untrack } from 'svelte';

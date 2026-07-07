@@ -1,8 +1,4 @@
-<!--
-  CardContent — padded body slot for a Card. Separate primitive so Card can
-  host a header or footer alongside the main content without re-deriving
-  padding rules.
--->
+<!-- Padded body slot for a Card. Separate primitive so Card can host a header or footer alongside the main content without re-deriving padding rules. -->
 <script lang="ts">
   import type { Snippet } from 'svelte';
   import { cn } from './cn';

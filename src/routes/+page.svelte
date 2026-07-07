@@ -1,15 +1,4 @@
-<!--
-  Stations — the default landing route. Until a feed is selected, shows
-  an empty state pointing to Settings. With a feed selected, fetches the
-  nearest stops (GPS if the user has opted in, else the active feed's
-  published center) and renders a StationCard list with the bucketed
-  arrivals board for each.
-
-  GPS is strictly opt-in (#110). The browser permission dialog is never
-  triggered without an explicit user gesture — the in-page banner below
-  is one entry point, the header GPS dot is the other. Returning users
-  who opted in previously have the watch auto-resumed by +layout.
--->
+<!-- Default landing route. Empty state points to Settings until a feed is selected; with a feed bound, fetches nearest stops (GPS if opted in, else the feed's published center) and renders a StationCard list per stop. GPS is strictly opt-in — browser prompt is never triggered without a user gesture. -->
 <script lang="ts">
   import { untrack } from 'svelte';
   import { goto } from '$app/navigation';

@@ -1,8 +1,8 @@
 /*
- * Origin + terminus stop names for a (route, direction). Stable
- * across trips on the same direction (occasional short-runs
- * notwithstanding) so we read them from one representative trip
- * via `LIMIT 1` instead of scanning all of them.
+ * Origin + end-stop names for a (route, direction). Stable across
+ * trips on the same direction (occasional short-runs notwithstanding)
+ * so we read them from one representative trip via `LIMIT 1` instead
+ * of scanning all of them.
  *
  * Lets the schedule + map headers paint immediately, before (and
  * independent of) the trip / shape fetches that drive the body.

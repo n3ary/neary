@@ -13,7 +13,7 @@ import { selectAll } from '../sqlHelpers';
 
 /** Stops within `radiusMeters` of (lat, lon). Bounding-box prefilter
  *  in SQL (uses the lat/lon index) then Haversine refinement in JS.
- *  Drops stops that never appear in any stop_times (terminus pads,
+ *  Drops stops that never appear in any stop_times (end-stop pads,
  *  legacy entries).
  *
  *  Child stops (those with `parent_station` pointing at a location_type=1

@@ -1,29 +1,4 @@
-<!--
-  AppLayout - overall page shell: Header + StatusBar + scrollable main +
-  fixed BottomNavigation. All routes wrap their content in this via
-  +layout.svelte; per-route specifics (title, nav active) are passed in.
-
-  Header + StatusBar are wrapped in a single `sticky top-0` strip so
-  they stick together at the top of the viewport during body scroll
-  (StatusBar alone isn't sticky and would scroll away). BottomNavigation
-  is rendered OUTSIDE the flex column because `position: fixed` inside
-  a flex parent is a known iOS Safari quirk - taking it out guarantees
-  the nav pins to the viewport bottom regardless of the layout chain.
-
-  Main has bottom padding (pb-calc) so the fixed BottomNavigation (h-14
-  ~ 56 px) PLUS the iOS home-indicator inset don't cover the last
-  content row. Top safe-area inset is added inside Header (so the
-  colored band extends into the notch on iOS).
-
-  The shell uses `min-h-dvh` (dynamic viewport height), not `min-h-svh`
-  (smallest viewport height). In iOS PWA standalone mode `100svh` can
-  include the area below the home indicator, which makes the flex
-  container taller than the visible viewport; a `position: fixed`
-  element anchored at `bottom: 0` then appears to float up with a
-  blank strip below it (#184). `100dvh` tracks the current visible
-  viewport, so the container stays inside the screen and the nav
-  pins where it should.
--->
+<!-- Overall page shell: Header + StatusBar + scrollable main + fixed BottomNavigation. Header+StatusBar share a single sticky strip (StatusBar alone would scroll away); BottomNavigation is rendered outside the flex column because position: fixed inside flex is an iOS Safari quirk. Shell uses min-h-dvh (current visible viewport) not min-h-svh (which in iOS PWA standalone includes the area below the home indicator). -->
 <script lang="ts" generics="T extends string">
   import type { Snippet } from 'svelte';
   import BottomNavigation from './BottomNavigation.svelte';

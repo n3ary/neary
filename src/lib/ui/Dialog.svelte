@@ -1,12 +1,4 @@
-<!--
-  Dialog — full-screen-capable modal. Wraps bits-ui's Dialog with the
-  MUI-shape API call sites are familiar with (open + onclose + fullScreen).
-  Animation + overlay + focus trap + escape handling are all from bits-ui.
-
-  Composition pattern: a single `<Dialog>` component renders Root + Portal +
-  Overlay + Content. Inside it the consumer just writes plain content (often
-  using DialogTitle + DialogContent helpers in the same file).
--->
+<!-- Full-screen-capable modal. Wraps bits-ui's Dialog with the MUI-shape API call sites are familiar with (open + onclose + fullScreen). Animation + overlay + focus trap + escape handling all come from bits-ui. Composes Root + Portal + Overlay + Content from one element; consumer writes plain content inside (often with DialogTitle + DialogContent helpers). -->
 <script lang="ts">
   import type { Snippet } from 'svelte';
   import { Dialog as Bits } from 'bits-ui';

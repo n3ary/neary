@@ -1,25 +1,4 @@
-<!--
-  Map view — by-route, by-direction.
-
-  URL shape (path-only, like /schedule/route):
-    /map/route/[id]                multi-direction (not yet supported)
-    /map/route/[id]_0|[id]_1       single-direction map
-    /map/route/[id]_0|[id]_1/[v]   single-direction with vehicle v highlighted
-
-  Renders:
-    - the route's shape polyline,
-    - every stop along the representative trip,
-    - the user's current GPS (if known),
-    - one marker per active trip, positioned by domain prediction
-      (linear interpolation between consecutive stops at the
-      reactive `nowMin`). Schedule-only / not-yet-active vehicles
-      are dimmed; vehicles already past their terminus drop off.
-    - the selected vehicle ringed.
-
-  Direction-swap and zoom controls live in the header card to match
-  the schedule view's chrome. Tab on a stop shows a popup with the
-  station's name and a deep link to /station/[id].
--->
+<!-- By-route, by-direction map. URL (path only): /map/route/[id] (multi, not yet), /map/route/[id]_0|[id]_1 (single), /map/route/[id]_0|[id]_1/[v] (vehicle highlighted). Renders the shape polyline, every stop along the representative trip, the user's current GPS, and one marker per active trip positioned by domain prediction (linear interpolation between consecutive stops at reactive nowMin). Schedule-only / not-yet-active vehicles are dimmed; vehicles past their terminus drop off. Direction-swap and zoom controls live in the header card to match the schedule view's chrome. -->
 <script lang="ts">
   import { onDestroy, onMount } from 'svelte';
   import { goto } from '$app/navigation';

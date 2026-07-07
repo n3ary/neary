@@ -1,7 +1,4 @@
-<!--
-  DialogTitle — header strip for a Dialog. Renders an accessible <h2> via
-  bits-ui's Title primitive and an optional close button on the right.
--->
+<!-- Header strip for a Dialog. Renders an accessible <h2> via bits-ui's Title primitive and an optional close button on the right. -->
 <script lang="ts">
   import type { Snippet } from 'svelte';
   import { Dialog as Bits } from 'bits-ui';

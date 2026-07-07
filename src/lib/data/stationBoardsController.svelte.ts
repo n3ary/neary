@@ -1,24 +1,6 @@
-// Shared boards-and-assembly controller for /+page.svelte (GPS-based
-// nearby stations) and /station/[id]/+page.svelte (URL-id single
-// station). The two pages have identical "render a list of assembled
-// station boards" needs but different selection mechanisms — this
-// module owns the shared half: page state for boards, the worker
-// subscription that delivers per-stop GPS-adjusted vehicles, and the
-// per-board $derived.by that buckets the result for display.
+// Shared boards-and-assembly controller for /+page.svelte (GPS-based nearby stations) and /station/[id]/+page.svelte (URL-id single station). Same "render list of assembled boards" need, different selection mechanisms. Module owns the shared half: page state for boards, worker subscription delivering per-stop GPS-adjusted vehicles, per-board $derived.by that buckets for display. Caller owns selection (calls setBoards() from its own $effect with the query result) and route-filter state (per-stop on /, single on /station).
 //
-// The caller (page) owns selection — it calls setBoards() from its own
-// $effect with whatever boards came back from its query. The caller
-// also owns route-filter state (since /'s is per-stop and /station's
-// is single) and passes a getter via routeFilterFor.
-//
-// Architecture (post issue #122): heavy merge + GPS-ETA + per-tick
-// scheduled-board re-query all run inside the worker. Main subscribes
-// once via `repo.subscribeStationBoards(stopIds, cb)`; the worker
-// pushes `Array<{ stopId, vehicles }>` every live tick AND on every
-// stop-set change (so a fresh selection paints within a microtask
-// instead of waiting up to one poll). No per-tick IPC request from
-// main. Shape polylines / stop-distance arrays never cross the
-// boundary.
+// Architecture: heavy merge + GPS-ETA + per-tick scheduled-board re-query all run inside the worker. Main subscribes once via `repo.subscribeStationBoards(stopIds, cb)`; the worker pushes `Array<{ stopId, vehicles }>` every live tick AND on every stop-set change (so a fresh selection paints within a microtask instead of waiting up to one poll). No per-tick IPC request from main. Shape polylines / stop-distance arrays never cross the boundary.
 
 import * as Comlink from 'comlink';
 import { getGtfsRepo } from '$lib/data/gtfs/repo';

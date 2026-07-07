@@ -11,35 +11,35 @@ const profile: TodProfile = {
 
 describe('clockToBucket', () => {
   it('returns offpeak for daytime non-peak hours', () => {
-    expect(clockToBucket(12 * 60, profile)).toBe('offpeak'); // 12:00
-    expect(clockToBucket(15 * 60 + 59, profile)).toBe('offpeak'); // 15:59
+    expect(clockToBucket(12 * 60, profile)).toBe('offpeak');
+    expect(clockToBucket(15 * 60 + 59, profile)).toBe('offpeak');
   });
 
   it('returns peak inside a peak window', () => {
-    expect(clockToBucket(7 * 60, profile)).toBe('peak'); // 07:00 (inclusive)
-    expect(clockToBucket(8 * 60 + 30, profile)).toBe('peak'); // 08:30
-    expect(clockToBucket(17 * 60, profile)).toBe('peak'); // 17:00
+    expect(clockToBucket(7 * 60, profile)).toBe('peak');
+    expect(clockToBucket(8 * 60 + 30, profile)).toBe('peak');
+    expect(clockToBucket(17 * 60, profile)).toBe('peak');
   });
 
   it('treats the upper bound of a peak window as exclusive', () => {
-    expect(clockToBucket(9 * 60 + 30, profile)).toBe('offpeak'); // 09:30
-    expect(clockToBucket(19 * 60, profile)).toBe('offpeak'); // 19:00
+    expect(clockToBucket(9 * 60 + 30, profile)).toBe('offpeak');
+    expect(clockToBucket(19 * 60, profile)).toBe('offpeak');
   });
 
   it('detects night across the midnight wrap', () => {
-    expect(clockToBucket(22 * 60 + 30, profile)).toBe('night'); // 22:30 (inclusive)
+    expect(clockToBucket(22 * 60 + 30, profile)).toBe('night');
     expect(clockToBucket(23 * 60, profile)).toBe('night');
-    expect(clockToBucket(0, profile)).toBe('night'); // 00:00
-    expect(clockToBucket(3 * 60, profile)).toBe('night'); // 03:00
+    expect(clockToBucket(0, profile)).toBe('night');
+    expect(clockToBucket(3 * 60, profile)).toBe('night');
   });
 
   it('exits night at the upper bound of the night window', () => {
-    expect(clockToBucket(5 * 60 + 30, profile)).toBe('offpeak'); // 05:30
-    expect(clockToBucket(6 * 60, profile)).toBe('offpeak'); // 06:00
+    expect(clockToBucket(5 * 60 + 30, profile)).toBe('offpeak');
+    expect(clockToBucket(6 * 60, profile)).toBe('offpeak');
   });
 
+  // GTFS extended time (24h+) wraps and 01:00 is in the night window.
   it('handles GTFS-style 24h+ minutes (post-midnight night routes)', () => {
-    // 25:00 wraps to 01:00; 01:00 is in the night window.
     expect(clockToBucket(25 * 60, profile)).toBe('night');
   });
 
@@ -48,6 +48,6 @@ describe('clockToBucket', () => {
       peak_windows: [{ from: '04:00', to: '06:00' }],
       night_window: { from: '22:00', to: '05:00' },
     };
-    expect(clockToBucket(4 * 60 + 30, conflicting)).toBe('night'); // 04:30
+    expect(clockToBucket(4 * 60 + 30, conflicting)).toBe('night');
   });
 });

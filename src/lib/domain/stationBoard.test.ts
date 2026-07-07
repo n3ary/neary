@@ -214,7 +214,6 @@ describe('applyGpsEta', () => {
   });
 
   // ── At-origin re-evaluation for orphans ────────────────────────────
-  //
   // The reconciler can seed orphans with a sibling-derived ETA (see
   // reconcile.ts). applyGpsEta should:
   //  - PRESERVE that seed when the bus is detected at origin
@@ -259,8 +258,7 @@ describe('applyGpsEta', () => {
     expect(out[0].eta?.minutes).toBeLessThan(10);
   });
 
-  // ── Dead-reckoning a stale GPS fix (issue #86) ─────────────────────
-  //
+  // ── Dead-reckoning a stale GPS fix ─────────────────────
   // The map view extrapolates a vehicle's position forward by
   // (now - fix.asOf) * speed; the station view used to ignore the
   // fix age entirely, so a 2-minute-old fix on a fast-moving bus

@@ -1,8 +1,4 @@
-<!--
-  Button — primary action element. `variant` × `color` × `size` cover the
-  cases used across the app today (the MUI inventory had no more knobs). All
-  visual properties resolve to theme tokens via CSS vars.
--->
+<!-- Primary action element. variant x color x size covers the cases used across the app (the MUI inventory had no more knobs). All visual properties resolve to theme tokens via CSS vars. -->
 <script lang="ts">
   import type { Snippet } from 'svelte';
   import type { HTMLButtonAttributes } from 'svelte/elements';

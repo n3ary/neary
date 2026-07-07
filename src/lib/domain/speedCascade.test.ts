@@ -25,7 +25,7 @@ describe('estimateSegmentSpeed — cascade tiers', () => {
   describe('Tier 1: vehicle.speed', () => {
     it('uses the bus\'s own reported speed on the current segment when moving', () => {
       const out = estimateSegmentSpeed(inputs({
-        vehicle: { lat: 46.77, lon: 23.62, speedMs: 8 }, // 28.8 km/h
+        vehicle: { lat: 46.77, lon: 23.62, speedMs: 8 },
       }));
       expect(out.source).toBe('vehicle');
       expect(out.kmh).toBeCloseTo(28.8, 5);
@@ -34,7 +34,7 @@ describe('estimateSegmentSpeed — cascade tiers', () => {
 
     it('skips tier 1 when the bus is below the stopped threshold (≤ 5 km/h)', () => {
       const out = estimateSegmentSpeed(inputs({
-        vehicle: { lat: 46.77, lon: 23.62, speedMs: 1 }, // 3.6 km/h
+        vehicle: { lat: 46.77, lon: 23.62, speedMs: 1 },
       }));
       expect(out.source).not.toBe('vehicle');
     });
@@ -55,11 +55,11 @@ describe('estimateSegmentSpeed — cascade tiers', () => {
         segmentDistanceFromVehicleM: 1_000,
         nearbyVehicles: [
           // 5 samples, all within 1 km, all moving, all same direction.
-          { lat: 46.77, lon: 23.625, speedMs: 4, directionId: 0 },   // 14.4 km/h
-          { lat: 46.77, lon: 23.626, speedMs: 5, directionId: 0 },   // 18.0 km/h
-          { lat: 46.77, lon: 23.627, speedMs: 6, directionId: 0 },   // 21.6 km/h
-          { lat: 46.77, lon: 23.628, speedMs: 7, directionId: 0 },   // 25.2 km/h
-          { lat: 46.77, lon: 23.629, speedMs: 8, directionId: 0 },   // 28.8 km/h
+          { lat: 46.77, lon: 23.625, speedMs: 4, directionId: 0 },
+          { lat: 46.77, lon: 23.626, speedMs: 5, directionId: 0 },
+          { lat: 46.77, lon: 23.627, speedMs: 6, directionId: 0 },
+          { lat: 46.77, lon: 23.628, speedMs: 7, directionId: 0 },
+          { lat: 46.77, lon: 23.629, speedMs: 8, directionId: 0 },
         ],
       }));
       expect(out.source).toBe('fleet');

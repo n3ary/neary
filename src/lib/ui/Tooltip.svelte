@@ -1,9 +1,4 @@
-<!--
-  Tooltip — wraps bits-ui's Tooltip with an MUI-style API (`title` +
-  `placement`). Each instance is self-providing so call sites don't need to
-  mount a root <Tooltip.Provider> — accessibility and timing are still
-  correct, the only cost is each tooltip holds its own delay timer (cheap).
--->
+<!-- Wraps bits-ui's Tooltip with an MUI-style API (`title` + `placement`). Each instance is self-providing — accessibility + timing still correct, the only cost is each tooltip holds its own delay timer (cheap). -->
 <script lang="ts">
   import type { Snippet } from 'svelte';
   import { Tooltip as Bits } from 'bits-ui';

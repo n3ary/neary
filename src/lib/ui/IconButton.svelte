@@ -1,7 +1,4 @@
-<!--
-  IconButton — round, icon-only button. Same focus / disabled behaviour as
-  Button minus the label slot and padding rules.
--->
+<!-- Round, icon-only button. Same focus / disabled behaviour as Button minus the label slot and padding rules. -->
 <script lang="ts">
   import type { Snippet } from 'svelte';
   import type { HTMLButtonAttributes } from 'svelte/elements';

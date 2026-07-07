@@ -1,7 +1,4 @@
-<!--
-  Spinner — indeterminate circular activity indicator. Pure CSS, no SVG, no
-  per-render style cost. Default size matches MUI's small CircularProgress.
--->
+<!-- Indeterminate circular activity indicator. Pure CSS, no SVG, no per-render style cost. Default 20px to match MUI's small CircularProgress. -->
 <script lang="ts">
   import { cn } from './cn';
 
@@ -12,7 +9,7 @@
 
   let { size = 20, class: className }: Props = $props();
 
-  // Derived so the border scales with prop updates (caller may swap sizes).
+  // Border scales with size so the visible stroke stays roughly proportional when caller swaps sizes.
   const border = $derived(Math.max(2, Math.floor(size / 10)));
 </script>
 

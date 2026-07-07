@@ -1,8 +1,4 @@
-<!--
-  Box — polymorphic container. Equivalent to a `<div>` (or other tag via the
-  `as` prop) with class composition. Replaces MUI's Box without the sx prop
-  runtime.
--->
+<!-- Polymorphic container. Equivalent to a <div> (or other tag via the `as` prop) with class composition. Replaces MUI's Box without the sx prop runtime. -->
 <script lang="ts">
   import type { Snippet } from 'svelte';
   import type { HTMLAttributes } from 'svelte/elements';

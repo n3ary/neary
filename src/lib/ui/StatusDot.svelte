@@ -1,16 +1,4 @@
-<!--
-  StatusDot — small colored circle used by the header to surface health
-  (GPS / Connection / Schedule / Live). Each dot owns a Tooltip explaining
-  the source on hover/focus AND posts the same message as a transient
-  info entry to the StatusBar when tapped (touch surfaces can't hover).
-
-  State colors are theme-token-backed so a high-contrast skin recolors them
-  automatically:
-    ok       → success token
-    stale    → warning token
-    error    → danger token
-    idle     → muted neutral (data source unused or disabled)
--->
+<!-- Small colored circle used by the header to surface health (GPS / Connection / Schedule / Live). Each dot owns a Tooltip explaining the source on hover/focus AND posts the same message as a transient StatusBar entry when tapped (touch surfaces can't hover). State colors are theme-token-backed (ok=success, stale=warning, error=danger, idle=muted). -->
 <script lang="ts">
   import Tooltip from './Tooltip.svelte';
   import { cn } from './cn';
@@ -24,9 +12,7 @@
     tooltip?: string;
     /** Pulse animation for "ok" state to signal liveness (e.g. live vehicles tick). */
     pulse?: boolean;
-    /** Overrides the default tap handler (which surfaces the tooltip text
-     *  to the StatusBar). Used by the GPS dot's 'off' state to trigger the
-     *  enable flow instead. */
+    /** Overrides the default tap handler (which surfaces the tooltip to the StatusBar). Used by the GPS dot's 'off' state to trigger the enable flow instead. */
     onclick?: () => void;
     class?: string;
   };

@@ -1,8 +1,4 @@
-<!--
-  VehicleCard — single component covering the 4-state vehicle taxonomy.
-  The visual encoding (solid / dashed / dotted / 50% opacity,
-  badge icon, accent color) is mechanical from `vehicle.kind`, so every
-  surface that renders a vehicle (list, schedule board, map popup) reads
+<!-- Single component covering the 4-state vehicle taxonomy. Visual encoding (solid / dashed / dotted / 50% opacity, badge icon, accent color) is mechanical from `vehicle.kind`, so every surface that renders a vehicle (list, schedule board, map popup) reads
   identically.
 
   Layout:
@@ -63,7 +59,7 @@
 
   // Only render the dot for GPS-backed rows (green). `scheduled`
   // rows would draw a grey dot, but absence of green already conveys
-  // 'no realtime' — the extra grey mark just adds visual noise.
+  // 'no GTFS-RT' — the extra grey mark just adds visual noise.
   const showKindDot = $derived(vehicle.kind !== 'scheduled');
 
   // ETA / scheduled-time secondary line.

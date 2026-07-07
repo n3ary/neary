@@ -1,24 +1,4 @@
-<!--
-  SelectFeedCard — the "no feed bound" banner rendered by every view
-  that needs one. Self-contained: reads locationStore + feedsStore +
-  userPrefs directly so consumers don't repeat the "smart suggestion"
-  wiring.
-
-  Three body/actions branches:
-
-  - GPS on and position inside a published feed's bbox → one-tap
-    "Use {feed}" primary action + Open Settings secondary. Copy
-    acknowledges the detection.
-  - GPS on and no published feed covers the position → softer
-    message (nearby stops won't be available), Open Settings only.
-  - GPS off (or no feeds loaded yet) → generic "pick one in Settings"
-    copy that consumers can tailor via `fallbackBody`.
-
-  This is the same UX shape the Stations view (/) uses when no feed
-  is bound; extracted so /favorites, /station/[id], /schedule/route,
-  /map/route can share it without duplicating the smart-suggestion
-  derivation.
--->
+<!-- "No feed bound" banner rendered by every view that needs one. Self-contained: reads locationStore + feedsStore + userPrefs directly so consumers don't repeat the smart-suggestion wiring. Three branches: GPS on + position inside feed's bbox (one-tap "Use {feed}" + Open Settings); GPS on + no feed covers position (softer message, Open Settings only); GPS off / feeds unloaded (generic "pick one in Settings" copy that callers can tailor via `fallbackBody`). -->
 <script lang="ts">
   import { goto } from '$app/navigation';
   import { Bus } from 'lucide-svelte';

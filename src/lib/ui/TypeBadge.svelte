@@ -1,8 +1,4 @@
-<!--
-  TypeBadge — small badge representing a vehicle type
-  (bus / tram / trolleybus / …). Shape matches RouteBadge so it
-  reads as a peer to route badges in the same UI surface (rounded
-  square, similar padding + font).
+<!-- Small badge representing a vehicle type. Shape matches RouteBadge (rounded square, similar padding + font) so it reads as a peer in the same UI surface.
 
   Color is data-driven: callers pass a `color` (typically taken from
   a route of that type in the loaded catalog). No palette and no

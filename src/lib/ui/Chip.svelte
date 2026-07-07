@@ -1,12 +1,4 @@
-<!--
-  Chip — compact label/tag with optional leading icon. Supports `size` and a
-  small set of semantic colors mapped to theme tokens, so chips inherit any
-  skin change automatically.
-
-  For one-off data-driven colors (e.g. network chips), pass `hex` (a CSS
-  color string). When present it overrides `color`/`variant` with inline
-  styles; text color is auto-computed for contrast via `fg`.
--->
+<!-- Compact label/tag with optional leading icon. Semantic colors map to theme tokens so chips inherit skin changes. One-off data-driven colors via `hex` (a CSS string), which overrides `color`/`variant` with inline styles and auto-computes contrast `fg`. -->
 <script lang="ts">
   import type { Snippet } from 'svelte';
   import { cn } from './cn';

@@ -1,12 +1,4 @@
-<!--
-  Station detail view — by-id entry point. Same render path as the
-  Stations landing page (assembleLiveBoard → StationCard) but the stop
-  is resolved by URL param instead of GPS + selector. Used today by
-  type-the-id, in the future by map tap-to-inspect.
-
-  No GPS dependency, no location store touched. Refresh + live polling
-  flow exactly as on /.
--->
+<!-- By-id station detail. Same render path as the Stations landing page (assembleLiveBoard → StationCard) but the stop is resolved by URL param instead of GPS + selector. No GPS dependency. Used today by type-the-id, in the future by map tap-to-inspect. -->
 <script lang="ts">
   import { page } from '$app/state';
   import {

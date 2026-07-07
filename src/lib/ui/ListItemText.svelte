@@ -1,7 +1,4 @@
-<!--
-  ListItemText — two-line text block (primary + optional secondary) for use
-  inside a ListItem. Truncates both lines so list rows stay single-line.
--->
+<!-- Two-line text block (primary + optional secondary) for use inside a ListItem. Truncates both lines so list rows stay single-line. -->
 <script lang="ts">
   import type { Snippet } from 'svelte';
   import { cn } from './cn';

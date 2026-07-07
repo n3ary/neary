@@ -1,7 +1,4 @@
-<!--
-  Switch — controlled boolean toggle. bits-ui handles a11y + keyboard,
-  styling is ours (thumb slides on data-[state=checked]).
--->
+<!-- Controlled boolean toggle. bits-ui handles a11y + keyboard; styling is ours (thumb slides on data-[state=checked]). -->
 <script lang="ts">
   import { Switch as Bits } from 'bits-ui';
   import { cn } from './cn';

@@ -1,11 +1,4 @@
-<!--
-  ToggleGroup — single-select toggle row (MUI's ToggleButtonGroup +
-  ToggleButton flattened into one prop-driven component). Used for things
-  like "today / tomorrow" in the schedule view and "auto / light / dark"
-  in the theme picker.
-
-  Multi-select is intentionally not exposed yet — no call site needs it.
--->
+<!-- Single-select toggle row (MUI's ToggleButtonGroup + ToggleButton flattened). Used for "today / tomorrow" in schedule and "auto / light / dark" in theme. Multi-select is intentionally not exposed yet — no call site needs it. -->
 <script lang="ts" generics="T extends string">
   import type { Snippet } from 'svelte';
   import { ToggleGroup as Bits } from 'bits-ui';

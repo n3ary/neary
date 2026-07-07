@@ -1,8 +1,4 @@
-<!--
-  Typography — semantic + visually scaled text. Variant chooses both the tag
-  and the class set; component prop overrides the tag without losing the
-  variant's styling.
--->
+<!-- Semantic + visually scaled text. Variant chooses both the tag and the class set; `component` prop overrides the tag without losing the variant's styling. -->
 <script lang="ts">
   import type { Snippet } from 'svelte';
   import { cn } from './cn';

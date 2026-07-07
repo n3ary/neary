@@ -1,8 +1,4 @@
-<!--
-  ProgressBar — determinate progress. Pure CSS bar; the parent supplies the
-  current value (0-100). For indeterminate progress, use the StatusBar's
-  loading kind — that's the canonical app-wide loading indicator.
--->
+<!-- Determinate progress bar. The parent supplies the current value (0-100, clamped). For indeterminate progress, use the StatusBar's loading kind — that's the canonical app-wide loading indicator. -->
 <script lang="ts">
   import { cn } from './cn';
 

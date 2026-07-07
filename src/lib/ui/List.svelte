@@ -1,7 +1,4 @@
-<!--
-  List — semantic <ul> wrapper. No styling beyond removing default browser
-  bullets / padding so callers can compose with Stack-style utilities.
--->
+<!-- Semantic <ul> wrapper. No styling beyond removing default browser bullets / padding so callers can compose with Stack-style utilities. -->
 <script lang="ts">
   import type { Snippet } from 'svelte';
   import type { HTMLAttributes } from 'svelte/elements';

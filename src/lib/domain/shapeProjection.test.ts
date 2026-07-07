@@ -5,7 +5,7 @@ import { distAlongBetween, projectOnPolyline, type Polyline } from '@n3ary/gtfs-
 // latitude, 1° of longitude ≈ 76 km. Vertices roughly 1 km apart so
 // math is easy to eyeball.
 const STRAIGHT: Polyline = [
-  { lat: 46.770, lon: 23.580 }, // 0
+  { lat: 46.770, lon: 23.580 },
   { lat: 46.770, lon: 23.5931 }, // ~1 km east
   { lat: 46.770, lon: 23.6062 }, // ~2 km east
   { lat: 46.770, lon: 23.6193 }, // ~3 km east

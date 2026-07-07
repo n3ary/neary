@@ -11,18 +11,17 @@ const shape10km = [
   { lat: 46.7, lon: 23.731 },
 ];
 
+// 0.131° lon ≈ 10 km at Cluj's latitude.
 function lonAt(meters: number): number {
-  // 0.131° lon ≈ 10 km at Cluj's latitude. Inverse for picking a
-  // lon that maps to `meters` along the shape.
   return 23.6 + 0.131 * (meters / 10_000);
 }
 
 function inputs(overrides: Partial<PredictArrivalInputs> = {}): PredictArrivalInputs {
   return {
-    vehiclePos: { lat: 46.7, lon: lonAt(2_000) }, // 2 km in
-    stopPos: { lat: 46.7, lon: lonAt(5_000) },    // 5 km in
+    vehiclePos: { lat: 46.7, lon: lonAt(2_000) },
+    stopPos: { lat: 46.7, lon: lonAt(5_000) },
     polyline: shape10km,
-    vehicleSpeedMs: 5,                            // 18 km/h
+    vehicleSpeedMs: 5,
     todBucket: 'offpeak',
     feedConfig: DEFAULT_FEED_SPEED_CONFIG,
     ...overrides,
@@ -31,18 +30,16 @@ function inputs(overrides: Partial<PredictArrivalInputs> = {}): PredictArrivalIn
 
 describe('predictArrivalAlongShape', () => {
   it('uses the vehicle\'s reported speed (cascade tier 1) when moving', () => {
-    const out = predictArrivalAlongShape(inputs({ vehicleSpeedMs: 10 })); // 36 km/h
+    const out = predictArrivalAlongShape(inputs({ vehicleSpeedMs: 10 }));
     expect(out.source).toBe('vehicle');
-    // 3 km remaining at 36 km/h → 5 min
     expect(out.minutes).toBeCloseTo(5, 1);
     expect(out.distanceMeters).toBeCloseTo(3_000, -2);
     expect(out.confidence).toBe('high');
   });
 
   it('falls through to time-of-day when the bus is stopped (speed <= 5 km/h)', () => {
-    const out = predictArrivalAlongShape(inputs({ vehicleSpeedMs: 1 })); // 3.6 km/h
+    const out = predictArrivalAlongShape(inputs({ vehicleSpeedMs: 1 }));
     expect(out.source).toBe('tod');
-    // 3 km at the offpeak default → minutes = 180 / kmh_offpeak
     expect(out.minutes).toBeCloseTo(180 / DEFAULT_FEED_SPEED_CONFIG.kmh_offpeak, 1);
     expect(out.confidence).toBe('medium');
   });
@@ -85,7 +82,7 @@ describe('predictArrivalAlongShape', () => {
 
   it('adds dwell time for intermediate stops when provided', () => {
     const out = predictArrivalAlongShape(inputs({
-      vehicleSpeedMs: 10, // 36 km/h
+      vehicleSpeedMs: 10,
       dwellStopDistAlongM: [3_000, 4_000, 5_000],
       dwellSecondsPerStop: 20,
     }));

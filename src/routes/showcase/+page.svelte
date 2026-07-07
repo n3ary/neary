@@ -1,8 +1,4 @@
-<!--
-  /showcase — visual sandbox for every primitive in src/lib/ui/. The global
-  AppLayout (in +layout.svelte) provides the header, status bar, and bottom
-  nav, so this page only renders the primitive demos.
--->
+<!-- Visual sandbox for every primitive in src/lib/ui/. Global AppLayout provides the chrome (header, status bar, bottom nav), so this page only renders the primitive demos. -->
 <script lang="ts">
   import { onMount } from 'svelte';
   import {
@@ -322,9 +318,9 @@
       <Switch
         checked={switchOn}
         onchange={(v) => (switchOn = v)}
-        aria-label="Toggle ghost vehicles"
+        aria-label="Toggle scheduled-only vehicles"
       />
-      <Typography variant="body2">Show ghost vehicles</Typography>
+      <Typography variant="body2">Show scheduled-only vehicles</Typography>
     </Stack>
 
     <Stack spacing={1}>

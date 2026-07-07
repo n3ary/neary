@@ -70,7 +70,7 @@ export function getRouteMapView(
 
   // 1) Active trips on (route, direction). Origin departure within
   // [localMin - lookbackMin, localMin + lookaheadMin], AND not yet
-  // past the terminus. Empty when no calendar is active today
+  // past the end stop. Empty when no calendar is active today
   // (services=[]) OR when every trip is either past or out of
   // window — in either case we still want to render the route
   // structure (see step 3 below), so don't early-return here.

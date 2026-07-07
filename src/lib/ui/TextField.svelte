@@ -1,8 +1,4 @@
-<!--
-  TextField — labeled native input. No headless lib needed; the native
-  <input> already covers everything we use today. Outlined-style only;
-  add variants when a call site demands one.
--->
+<!-- Labeled native input. No headless lib needed — the native <input> already covers what we use. Outlined-style only. -->
 <script lang="ts">
   import type { HTMLInputAttributes } from 'svelte/elements';
   import { cn } from './cn';

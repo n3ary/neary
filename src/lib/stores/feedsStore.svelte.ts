@@ -1,13 +1,4 @@
-/*
- * Singleton store backing the feed registry across components.
- *
- * One fetch per app session; everyone reads through `feedsStore.feeds`.
- * Without this, every component that needs the registry would re-fetch.
- *
- * No persistence — the registry is small (~few KB) and effectively static
- * for the lifetime of an app session. raw.githubusercontent.com's ~5-min
- * edge cache + browser cache handle repeat-load latency.
- */
+// Singleton for the feed registry. One fetch per app session; everyone reads through `feedsStore.feeds`. raw.githubusercontent.com's ~5-min edge cache + browser cache handle repeat-load latency.
 
 import { fetchFeeds, type Feed } from '$lib/data/feeds';
 
@@ -15,19 +6,11 @@ class FeedsStore {
   feeds = $state<Feed[] | null>(null);
   loading = $state(false);
   error = $state<string | null>(null);
-  /** Id of the feed currently bound to the GTFS worker (set by +layout
-   *  after `repo.setFeed(...)` resolves). Consumers gate their queries
-   *  on this rather than `userPrefs.feedId` to avoid racing the bind. */
+  /** Set by +layout after `repo.setFeed(...)` resolves. Consumers gate queries on this rather than `userPrefs.feedId` to avoid racing the bind. */
   boundFeedId = $state<string | null>(null);
-  /** Id of the feed whose `setFeed` is currently in flight (between the
-   *  worker kickoff and the success / failure resolve). Distinct from
-   *  `boundFeedId` so the settings row can render a spinner during the
-   *  download without falsely claiming "already bound" to queries. */
+  /** In-flight setFeed id between kickoff and resolve. Distinct from `boundFeedId` so the settings row can render a spinner without falsely claiming "already bound". */
   bindingFeedId = $state<string | null>(null);
-  /** Best-effort download progress (0-100) for `bindingFeedId`. Null
-   *  before the first progress event. Reads from the same onProgress
-   *  byte-counter that powers StatusBar, so Settings + StatusBar
-   *  stay in lockstep. */
+  /** Download progress 0-100 for `bindingFeedId`. Mirrors the StatusBar's onProgress counter so they stay in lockstep. */
   bindingProgress = $state<number | null>(null);
 
   /** Idempotent — safe to call from multiple effects. */
@@ -44,17 +27,7 @@ class FeedsStore {
     }
   }
 
-  /**
-   * Force a re-fetch even when the registry is already in memory.
-   * SPA navigation to the settings view doesn't reload the page, so
-   * without this the user sees whatever snapshot the registry had on
-   * first app boot — including a stale `generated_at` per feed.
-   *
-   * Concurrent calls coalesce: if a refresh is in flight, callers
-   * await the same network round-trip. The previous feeds list stays
-   * visible during the fetch (no flash) and only swaps once the new
-   * payload lands; on failure the previous list is preserved.
-   */
+  // Coalescing re-fetch. Preserves the old list on failure so the UI doesn't flash empty.
   async refresh(): Promise<void> {
     if (this.loading) return;
     this.loading = true;
@@ -73,11 +46,7 @@ class FeedsStore {
     return this.feeds.find((f) => f.id === id) ?? null;
   }
 
-  /** The bound feed's IANA timezone, falling back to 'UTC' while the
-   *  registry is still loading or the worker isn’t bound yet. Single
-   *  source for every consumer of the schedule-pipeline (page-level
-   *  composers, prediction helpers) so we never silently mix
-   *  system-local time with feed-local time. */
+  /** Bound feed's IANA timezone, falling back to 'UTC' while loading/unbound. Single source for every schedule-pipeline consumer so we never mix system-local with feed-local time. */
   get activeTimezone(): string {
     return this.byId(this.boundFeedId)?.timezone ?? 'UTC';
   }

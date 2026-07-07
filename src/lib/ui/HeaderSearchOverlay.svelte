@@ -1,24 +1,5 @@
-<!--
-  HeaderSearchOverlay — global search dialog opened from the header icon.
-  Combines stops + routes in one result list so the rider can jump to
-  either a station or a route without switching UIs.
+<!-- Global search dialog opened from the header icon. Combines stops + routes in one result list so the rider can jump to either without switching UIs. Empty = nearby (when GPS) + favorited routes + fallback. Typed = matching routes (short_name only — long_name matches too broadly) + stops (diacritic-insensitive). Only surfaces stops with arrival_time and routes with hasSchedule !== false — a search hit should be actionable. Backdrop click + Escape dismiss via bits-ui Dialog. -->
 
-  Empty query:
-    - Nearby: up to 2 nearest stations (when GPS is enabled)
-    - Your favorites: every favorited route with a schedule
-    - Fallback message when both are empty
-
-  Typed query:
-    - Matching routes (short_name + long_name, diacritic-insensitive)
-    - Matching stops (name, diacritic-insensitive)
-
-  Only surfaces stops with at least one non-empty arrival_time and
-  routes with `hasSchedule !== false` — a search hit should be
-  actionable, not a dead-end.
-
-  Backdrop click + Escape dismiss via bits-ui Dialog. Self-contained:
-  reads locationStore, feedsStore, favoritesStore directly.
--->
 <script lang="ts">
   import { goto } from '$app/navigation';
   import { Dialog as Bits } from 'bits-ui';
@@ -47,15 +28,9 @@
 
   let query = $state('');
   let debouncedQuery = $state('');
-  // Route catalogue for the bound feed, fetched once per feed. Small
-  // (~200-800 routes) so we filter in JS -- no need for a separate SQL
-  // search query.
   let allRoutes = $state<Route[] | null>(null);
   let stopResults = $state<StopWithDistance[] | null>(null);
   let routeResults = $state<Route[] | null>(null);
-  // Routes serving each result stop, fetched in one batched call after
-  // stops resolve. Keyed by stop_id; empty for stops with no scheduled
-  // routes (shouldn't happen after the arrival_time filter but guarded).
   let stopRoutes = $state<Record<string, Route[]>>({});
   let loading = $state(false);
   let errorMsg = $state<string | null>(null);
@@ -70,8 +45,7 @@
   const hasGps = $derived(locationStore.position != null);
   const sortMode = $derived<'distance' | 'name'>(hasGps ? 'distance' : 'name');
 
-  // 150 ms debounce on the input so each keystroke doesn't kick off a
-  // worker round-trip.
+  // 150 ms debounce so each keystroke doesn't kick off a worker round-trip.
   let debounceTimer: ReturnType<typeof setTimeout> | null = null;
   $effect(() => {
     const q = query;
@@ -84,8 +58,7 @@
     };
   });
 
-  // Reset + autofocus when opened. Autofocus runs on the next tick so
-  // bits-ui has mounted the portal.
+  // Reset + autofocus when opened. Autofocus on next tick so bits-ui has mounted the portal.
   $effect(() => {
     if (open) {
       query = '';
@@ -98,15 +71,13 @@
     }
   });
 
-  // Invalidate the route catalogue when the feed changes so the next
-  // open re-fetches for the new feed.
+  // Invalidate the route catalogue when the feed changes.
   $effect(() => {
     feedsStore.boundFeedId; // subscribe
     allRoutes = null;
   });
 
-  // Fetch the route catalogue on demand: when the overlay opens and
-  // we don't have one cached for the current feed.
+  // Lazy-fetch the route catalogue on open.
   $effect(() => {
     if (!open) return;
     const fid = feedsStore.boundFeedId;
@@ -122,21 +93,14 @@
     })();
   });
 
-  // Main search effect. Runs when open + debounced query + anchor +
-  // catalogue change. Two branches:
-  //   1. text typed: filter routes (by short/long name) + stops (via
-  //      worker). Show mixed results, routes first.
-  //   2. empty text: nearest 2 stops (if GPS) + all favorited routes.
+  // Main search: typed → routes by short_name + nearest stops; empty → nearest 2 stops (if GPS) + favorited routes. NT-fallback routes are filtered (no arrival_time would dead-end).
   $effect(() => {
     if (!open) return;
     const routes = allRoutes;
-    if (routes == null) return; // wait for catalogue
+    if (routes == null) return;
     const a = anchor;
     const q = debouncedQuery;
     const needle = normalizeForSearch(q);
-
-    // Filter to routes with schedule: NT-fallback (no-time) routes don't
-    // belong in results since tapping them would open an empty schedule.
     const scheduledRoutes = routes.filter((r) => r.hasSchedule !== false);
 
     loading = true;
@@ -145,9 +109,6 @@
       try {
         const repo = getGtfsRepo();
         if (needle) {
-          // Typed mode. Match route short_name only -- long_name is
-          // usually the origin/terminus pair and matches too broadly,
-          // drowning the exact-number match a rider actually wanted.
           const matchingRoutes = scheduledRoutes
             .filter((r) => normalizeForSearch(r.shortName).includes(needle))
             .sort((x, y) => compareRouteShortName(x.shortName, y.shortName))
@@ -158,9 +119,6 @@
           routeResults = matchingRoutes;
           stopResults = stops;
         } else {
-          // Empty mode. Nearest 4 stops when GPS is on; favorites only
-          // when GPS is on too - otherwise the home-page Favorites card
-          // (#226) already lists them and we'd double up.
           const nearby = hasGps && a
             ? await repo.searchStops('', a.lat, a.lon, 4, 'distance')
             : [];
@@ -190,9 +148,7 @@
       routeResults.length === 0,
   );
 
-  // After each search settles, fetch the route chips for every result
-  // stop in one batched worker round-trip. Cleared between searches so
-  // stale chips don't paint while the next fetch is in flight.
+  // After each search settles, batched fetch the route chips for every result stop. Out-of-order guard: only apply if current stopResults still contains the same ids. Silent on failure — chips are supplementary.
   $effect(() => {
     if (!open) return;
     const stops = stopResults;
@@ -206,11 +162,6 @@
       try {
         const repo = getGtfsRepo();
         const routes = await repo.getRoutesForStops(ids);
-        // Guard against out-of-order resolution: only apply if the
-        // current stopResults still contains these ids. Also drop
-        // routes without a schedule -- consistent with the top-level
-        // route-search filter, and keeps the chip row honest (a badge
-        // that opens a dead-end schedule is worse than no badge).
         const currentIds = new Set((stopResults ?? []).map((s) => s.id));
         const filtered: Record<string, Route[]> = {};
         for (const id of Object.keys(routes)) {
@@ -220,8 +171,7 @@
         }
         stopRoutes = filtered;
       } catch {
-        // Silent -- badge chips are supplementary; failure to fetch
-        // them shouldn't tear down the search results themselves.
+        // badge chips are supplementary; failure shouldn't tear down the search results
       }
     })();
   });
@@ -352,9 +302,7 @@
     role="button"
     tabindex={0}
     onclick={(e) => {
-      // Bail when the click came from an inner anchor/button so the
-      // badge (map), calendar (schedule), and heart (favorite) taps
-      // don't also fire the card's default open-schedule action.
+      // Bail when the click came from an inner anchor/button so the badge (map), calendar (schedule), and heart (favorite) taps don't fire the default open-schedule action.
       if ((e.target as Element | null)?.closest('a, button')) return;
       openRouteSchedule(route);
     }}

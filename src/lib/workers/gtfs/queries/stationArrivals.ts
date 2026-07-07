@@ -36,12 +36,12 @@ export function getStationArrivals(
     //                      so the UI can render it at full opacity
     //                      (schedule is authoritative there) while
     //                      fading intermediate-stop scheduled rows.
-    //   last_seq         — trip's terminus index, used to detect
-    //                      drop-off-only terminus arrivals.
-    //   trip_end_time    — arrival_time at that terminus, used to keep
+    //   last_seq         — trip's end-stop index, used to detect
+    //                      drop-off-only arrivals there.
+    //   trip_end_time    — arrival_time at the end stop, used to keep
     //                      a vehicle in the 'departed' bucket only
     //                      while it's still en route (not yet arrived
-    //                      at its terminus).
+    //                      at its end stop).
     //   trip_start_time  — departure_time at the trip's FIRST stop
     //                      (origin). Surfaced for the reconciler so it
     //                      can match live observations by
