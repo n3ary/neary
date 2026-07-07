@@ -134,6 +134,14 @@ tappable to enable.
 | `stale` (60s–5min) | amber | "GPS last fix N min ago" |
 | `error` (fix > 5min) | red | "GPS last fix N min ago" |
 
+The `lastUpdated` field is normalized via `normalizePositionTimestamp` in
+`src/lib/stores/gps/locationStore.svelte.ts` because some iOS Safari
+WebKit builds report `GeolocationPosition.timestamp` in **seconds**
+rather than milliseconds. Without the normalize, a fresh fix would
+land `lastUpdated` at ~1.78e9 (current time as seconds), and
+`this.now - lastUpdated` becomes ~31 years, rendering as "GPS last fix
+16305118 min ago" on the header dot with the red `error` state.
+
 ## Reset behaviour for the dismissed flags
 
 | Flag | Resets on… |
