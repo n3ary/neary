@@ -8,17 +8,16 @@
 <script lang="ts">
   import { onMount } from 'svelte';
   import { version } from '$app/environment';
-  import { Circle, CircleDot, Locate, Moon, Sun, Trash2 } from 'lucide-svelte';
+  import { Circle, CircleDot, Locate, MapPin, Moon, Sun, Trash2 } from 'lucide-svelte';
   import {
     Box, Button, Card, CardContent, Chip, Dialog, DialogContent, DialogTitle,
-    IconButton, NoLocationCard, Spinner, Stack, Switch, ToggleGroup, Tooltip, Typography,
+    IconButton, InfoCard, NoLocationCard, Spinner, Stack, Switch, ToggleGroup, Tooltip, Typography,
     formatBytes, formatWhen,
   } from '$lib/ui';
   import { getGtfsRepo } from '$lib/data/gtfs/repo';
   import type { Feed } from '$lib/data/feeds';
   import { feedsStore } from '$lib/stores/feedsStore.svelte';
   import { locationStore } from '$lib/stores/locationStore.svelte';
-  import { noLocationCardDismissedStore } from '$lib/stores/noLocationCardDismissedStore.svelte';
   import { statusBus } from '$lib/stores/statusBus.svelte';
   import { userPrefs, type Theme } from '$lib/stores/userPrefs.svelte';
 
@@ -60,19 +59,13 @@
   // GPS on when permission is denied. Replace the Switch with the
   // shared NoLocationCard in that state. Same card as the home page;
   // non-dismissible here because the user came to settings to fix it.
+  // When the browser doesn't expose geolocation at all, the Switch
+  // also lies (toggling it can't work) - show a static unsupported
+  // message instead. The dismissal reset on fresh opt-in is owned by
+  // `noLocationCardDismissedStore` itself.
   const denied = $derived(
     locationStore.permission === 'denied',
   );
-  // Reset the NoLocationCard dismissal flag on a fresh opt-in so the
-  // user gets the card again on next denial (mirrors the home page).
-  let prevGpsOptedIn = userPrefs.gpsOptedIn;
-  $effect(() => {
-    const isOptedIn = userPrefs.gpsOptedIn;
-    if (isOptedIn && !prevGpsOptedIn) {
-      noLocationCardDismissedStore.reset();
-    }
-    prevGpsOptedIn = isOptedIn;
-  });
 
   let versionFirstSeenAt = $state<number | null>(null);
 
@@ -273,7 +266,15 @@
   </Card>
 
   <!-- ===== Privacy ===== -->
-  {#if denied}
+  {#if !locationStore.isSupported}
+    <InfoCard title="Location not supported">
+      {#snippet icon()}<MapPin size={16} />{/snippet}
+      {#snippet body()}
+        Your browser doesn't expose a geolocation API, so the location toggle
+        below wouldn't do anything.
+      {/snippet}
+    </InfoCard>
+  {:else if denied}
     <!-- NoLocationCard is its own card with its own title; no
          surrounding Privacy header is needed and adding one outside
          the card makes it look orphaned. -->

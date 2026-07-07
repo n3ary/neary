@@ -30,7 +30,6 @@
   import { feedsStore } from '$lib/stores/feedsStore.svelte';
   import { locationStore } from '$lib/stores/locationStore.svelte';
   import { favoritesStore } from '$lib/stores/favoritesStore.svelte';
-  import { noLocationCardDismissedStore } from '$lib/stores/noLocationCardDismissedStore.svelte';
   import { refreshBus } from '$lib/stores/refreshBus.svelte';
   import { searchOverlayStore } from '$lib/stores/searchOverlayStore.svelte';
   import { statusBus } from '$lib/stores/statusBus.svelte';
@@ -262,22 +261,13 @@
   const denied = $derived(
     gpsState === 'unavailable' && locationStore.permission === 'denied',
   );
-
-  // Issue #226: the demoted "No location" card is dismissable. The
-  // dismissal state is owned by `noLocationCardDismissedStore` (also
-  // read by the settings page). A fresh opt-in (any path: Card 3 Try
-  // again, settings toggle, header dot) resets the flag so the user
-  // gets one more nudge if their browser denies the prompt. Initialise
-  // `prevGpsOptedIn` to the current value so a returning user with
-  // stale permission doesn't see a spurious reset on mount.
-  let prevGpsOptedIn = userPrefs.gpsOptedIn;
-  $effect(() => {
-    const isOptedIn = userPrefs.gpsOptedIn;
-    if (isOptedIn && !prevGpsOptedIn) {
-      noLocationCardDismissedStore.reset();
-    }
-    prevGpsOptedIn = isOptedIn;
-  });
+  // Genuine no-API-support case. Distinct from "transient error":
+  // when geolocation exists but the watch errored with no position
+  // (unavailable && !denied && isSupported) we don't show the
+  // Location-not-supported card - the header dot is the only signal.
+  const gpsUnsupported = $derived(
+    !locationStore.isSupported && gpsState === 'unavailable' && !denied,
+  );
 
   // Issue #226: render the user's favorited routes inline on the
   // Favorites card instead of a "go to /favorites" CTA. The fetch is
@@ -354,19 +344,19 @@
     {#if gpsState === 'not-opted-in' || denied}
       {#snippet searchIcon()}<Search size={16} />{/snippet}
       {#snippet searchCard()}
-        <InfoCard variant="primary" title="Find a station">
-          {#snippet icon()}<MapPin size={16} />{/snippet}
-          {#snippet body()}
-            Tap to search any station or route by name or number.
-          {/snippet}
-          {#snippet actions()}
-            {#if userPrefs.feedId != null}
+        {#if userPrefs.feedId != null}
+          <InfoCard variant="primary" title="Find a station">
+            {#snippet icon()}<MapPin size={16} />{/snippet}
+            {#snippet body()}
+              Tap to search any station or route by name or number.
+            {/snippet}
+            {#snippet actions()}
               <Button variant="contained" startIcon={searchIcon} onclick={() => searchOverlayStore.open()}>
                 Search
               </Button>
-            {/if}
-          {/snippet}
-        </InfoCard>
+            {/snippet}
+          </InfoCard>
+        {/if}
       {/snippet}
       {#snippet favoritesCard()}
         {#if userPrefs.feedId != null && favoritesStore.routeIds.size > 0}
@@ -460,11 +450,13 @@
       <NoLocationCard dismissible />
     {/if}
 
-    {#if gpsState === 'unavailable' && !denied}
-      <!-- Genuine no-API-support case only. The denied state covers
-           the more common permission-denied case via the Search +
-           Favorites + NoLocation stack above; this card is for when
-           the browser simply can't expose geolocation at all. -->
+    {#if gpsUnsupported}
+      <!-- Only the genuine no-API-support case. The denied state
+           covers permission-denied above (Search + Favorites +
+           NoLocation). A transient watch error (unavailable &&
+           !denied && isSupported) shows nothing on home - the header
+           dot is the only signal, since the next GPS attempt may
+           succeed. -->
       <InfoCard title="Location not supported">
         {#snippet icon()}<MapPin size={16} />{/snippet}
         {#snippet body()}

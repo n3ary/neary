@@ -1,14 +1,19 @@
 /*
  * noLocationCardDismissedStore - sticky "dismissed" flag for the
  * NoLocationCard. Persists in localStorage so a dismissed card stays
- * hidden across reloads. Consumers reset() the flag when the user
- * takes a fresh opt-in action (the policy for *when* to reset lives
- * in the consumer, not here, so each consumer can react to its own
- * signals).
+ * hidden across reloads.
+ *
+ * The store also watches userPrefs.gpsOptedIn for a false -> true
+ * transition (a fresh opt-in) and resets the dismissal automatically.
+ * Centralising the reset here means every NoLocationCard consumer
+ * (home + settings today, plus future ones) gets the right behavior
+ * without duplicating the watcher.
  *
  * Persistence: localStorage key `neary:noLocationCardDismissed`,
  * stored as the literal string '1'. SSR-safe (no-ops on the server).
  */
+
+import { userPrefs } from './userPrefs.svelte';
 
 const STORAGE_KEY = 'neary:noLocationCardDismissed';
 
@@ -23,6 +28,28 @@ function loadInitial(): boolean {
 
 class NoLocationCardDismissedStore {
   #dismissed = $state(loadInitial());
+
+  constructor() {
+    // Detect a fresh opt-in (false -> true) and reset the dismissal
+    // so the card reappears if the next permission attempt fails.
+    // Running under $effect.root because this singleton is
+    // instantiated at module load, outside any component scope.
+    let prevOptedIn = userPrefs.gpsOptedIn;
+    $effect.root(() => {
+      $effect(() => {
+        const isOptedIn = userPrefs.gpsOptedIn;
+        if (isOptedIn && !prevOptedIn) {
+          this.#dismissed = false;
+          try {
+            localStorage.removeItem(STORAGE_KEY);
+          } catch {
+            // ignore
+          }
+        }
+        prevOptedIn = isOptedIn;
+      });
+    });
+  }
 
   /** Reactive read; the card hides itself when this is true. */
   get dismissed(): boolean {

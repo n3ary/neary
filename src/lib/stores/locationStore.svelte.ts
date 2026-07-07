@@ -76,14 +76,15 @@ class LocationStore {
         this.error = err;
         if (err.code === err.PERMISSION_DENIED) {
           this.permission = 'denied';
-          // Revert opt-in so declining the browser prompt isn't a
-          // one-way trip into a stuck red dot. The header reads 'off'
-          // (grey, tap-to-enable) and the home page shows the Enable
-          // banner again -- the user can re-tap whenever they want.
-          // The browser remembers the denial; subsequent enable()
-          // calls only re-prompt if the user clears it in browser
-          // settings.
-          userPrefs.gpsOptedIn = false;
+          // Don't revert userPrefs.gpsOptedIn here: the rest of the
+          // app reacts to the denied state via locationStore.permission
+          // and the home / settings derive `denied` from gpsState +
+          // permission. Reverting would strand the user in a "not-
+          // opted-in" semantics state while permission is still
+          // 'denied', which breaks the home-page denied stack and the
+          // auto-resume effect in +layout. The browser remembers the
+          // denial; subsequent enable() calls re-prompt only after the
+          // user clears it in browser settings.
           this.stop();
         }
       },
@@ -255,6 +256,14 @@ class LocationStore {
    *  first fix' (the legitimate 'waiting' state). */
   get isWatching(): boolean {
     return this.watchId !== null;
+  }
+
+  /** True iff the browser exposes a geolocation API. Settings and the
+   *  home page branch on this to avoid offering toggles / search
+   *  affordances that can't work in unsupported browsers. SSR-safe
+   *  (returns false on the server). */
+  get isSupported(): boolean {
+    return typeof navigator !== 'undefined' && 'geolocation' in navigator;
   }
 
   /**
