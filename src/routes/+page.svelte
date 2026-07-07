@@ -13,9 +13,9 @@
 <script lang="ts">
   import { untrack } from 'svelte';
   import { goto } from '$app/navigation';
-  import { AlertTriangle, Calendar, Heart, Locate, MapPin, Search, X } from 'lucide-svelte';
+  import { AlertTriangle, Calendar, Heart, Locate, MapPin, Search } from 'lucide-svelte';
   import {
-    Box, Button, Card, CardContent, IconButton, InfoCard, RouteBadge, SelectFeedCard, Spinner, Stack, StationCard,
+    Box, Button, Card, CardContent, InfoCard, NoLocationCard, RouteBadge, SelectFeedCard, Spinner, Stack, StationCard,
     Typography, iconButtonClass,
   } from '$lib/ui';
   import { getGtfsRepo } from '$lib/data/gtfs/repo';
@@ -30,6 +30,7 @@
   import { feedsStore } from '$lib/stores/feedsStore.svelte';
   import { locationStore } from '$lib/stores/locationStore.svelte';
   import { favoritesStore } from '$lib/stores/favoritesStore.svelte';
+  import { noLocationCardDismissedStore } from '$lib/stores/noLocationCardDismissedStore.svelte';
   import { refreshBus } from '$lib/stores/refreshBus.svelte';
   import { searchOverlayStore } from '$lib/stores/searchOverlayStore.svelte';
   import { statusBus } from '$lib/stores/statusBus.svelte';
@@ -263,43 +264,17 @@
   );
 
   // Issue #226: the demoted "No location" card is dismissable. The
-  // dismissal is sticky so it stops nagging users who intentionally
-  // chose search; the header GPS dot is still available if they
-  // change their mind later. A fresh opt-in (any path: Card 3 Try
-  // again, settings toggle, header dot) resets the flag so the
-  // user gets one more nudge if their browser denies the prompt.
-  const NO_LOCATION_DISMISS_KEY = 'neary:noLocationCardDismissed';
-  function loadNoLocationDismissed(): boolean {
-    if (typeof localStorage === 'undefined') return false;
-    try {
-      return localStorage.getItem(NO_LOCATION_DISMISS_KEY) === '1';
-    } catch {
-      return false;
-    }
-  }
-  let noLocationDismissed = $state(loadNoLocationDismissed());
-  function dismissNoLocationCard() {
-    noLocationDismissed = true;
-    try {
-      localStorage.setItem(NO_LOCATION_DISMISS_KEY, '1');
-    } catch {
-      // Quota / disabled - silently noop. UI state already reflects dismissal.
-    }
-  }
-  // Track the previous opt-in flag so we can detect a fresh opt-in
-  // (false -> true) and reset the dismissal. Initialised to the
-  // current value so a returning user with stale permission doesn't
-  // see a spurious reset on mount.
+  // dismissal state is owned by `noLocationCardDismissedStore` (also
+  // read by the settings page). A fresh opt-in (any path: Card 3 Try
+  // again, settings toggle, header dot) resets the flag so the user
+  // gets one more nudge if their browser denies the prompt. Initialise
+  // `prevGpsOptedIn` to the current value so a returning user with
+  // stale permission doesn't see a spurious reset on mount.
   let prevGpsOptedIn = userPrefs.gpsOptedIn;
   $effect(() => {
     const isOptedIn = userPrefs.gpsOptedIn;
     if (isOptedIn && !prevGpsOptedIn) {
-      noLocationDismissed = false;
-      try {
-        localStorage.removeItem(NO_LOCATION_DISMISS_KEY);
-      } catch {
-        // ignore
-      }
+      noLocationCardDismissedStore.reset();
     }
     prevGpsOptedIn = isOptedIn;
   });
@@ -512,38 +487,10 @@
         </Card>
       {/if}
 
-      <!-- Card 3 - No location (dismissable, demoted). Composed from
-           Card primitives (not InfoCard) so the dismiss IconButton
-           can sit absolute in the top-right without touching the
-           shared InfoCard component. -->
-      {#if !noLocationDismissed}
-        <Card>
-          <CardContent class="relative">
-            <Stack direction="row" spacing={1} align="center" class="pr-8">
-              <MapPin size={16} class="shrink-0 text-[color:var(--color-fg-muted)]" />
-              <Typography variant="h6">No location</Typography>
-            </Stack>
-            <Typography variant="caption" class="block pt-1">
-              Want stops near you automatically? Allow location in your browser's
-              site settings, then tap try again.
-            </Typography>
-            <Stack direction="row" spacing={1} align="center" class="pt-2">
-              <Button variant="text" size="small" onclick={() => locationStore.enable()}>
-                Try again
-              </Button>
-            </Stack>
-            <IconButton
-              size="small"
-              color="inherit"
-              aria-label="Dismiss"
-              onclick={dismissNoLocationCard}
-              class="absolute top-1 right-1 text-[color:var(--color-fg-muted)]"
-            >
-              <X size={16} />
-            </IconButton>
-          </CardContent>
-        </Card>
-      {/if}
+      <!-- Card 3 - No location (dismissable, demoted). Shared with
+           the settings page via NoLocationCard; dismissal state is
+           global so dismissing in one place persists in the other. -->
+      <NoLocationCard dismissible />
     {:else if gpsState === 'unavailable'}
       <InfoCard title="Location not supported">
         {#snippet icon()}<MapPin size={16} />{/snippet}
