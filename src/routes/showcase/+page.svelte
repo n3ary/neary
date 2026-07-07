@@ -554,13 +554,11 @@
       <Typography variant="body2">RouteChipsRow — fit + dynamic cap from rowWidth</Typography>
       <Typography variant="caption" class="text-[color:var(--color-fg-muted)]">
         Same chip row StopSearchCard and FavoriteStationRow use. The visible
-        count is min(fit, dynamicCap) where dynamicCap is derived from the
-        measured rowWidth: how many badges fit alongside a +N chip at a
-        comfortable 32px-per-badge density, clamped to [2, 10]. Narrow rows
-        collapse naturally; wide rows never stretch past a summary-friendly
-        count, so a +N chip always appears when the catalogue exceeds the
-        cap. Pass maxVisible to force a hard upper bound. Resize the browser
-        to watch the count move between "all fit" and "+N collapsed".
+        count is min(naturalFit, comfortableCap) where the natural fit and
+        the comfortable cap are both derived from the measured rowWidth
+        (see routeChipLayout.ts). The cap is clamped to [2, 10] so a +N
+        chip always appears when the catalogue exceeds it, on every width.
+        Pass maxVisible to force a hard upper bound.
       </Typography>
       <Stack spacing={1}>
         <Stack spacing={0.5}>
