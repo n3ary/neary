@@ -1,4 +1,4 @@
-<!-- Overall page shell: Header + StatusBar + scrollable main + fixed BottomNavigation. Header+StatusBar share a single sticky strip (StatusBar alone would scroll away); BottomNavigation is rendered outside the flex column because position: fixed inside flex is an iOS Safari quirk. Shell uses min-h-dvh (#184): the dynamic viewport height, which on iOS PWA standalone equals the visible area (above the home indicator). The first-paint case (#227) where the nav floats up is tracked separately. -->
+<!-- Overall page shell: Header + StatusBar + scrollable main + fixed BottomNavigation. Header+StatusBar share a single sticky strip (StatusBar alone would scroll away); BottomNavigation is rendered outside the flex column because position: fixed inside flex is an iOS Safari quirk. Shell uses min-h-100vh: the full layout viewport height, NOT dvh. On iOS PWA standalone the dvh shell stops at the visible area (above the home indicator) while the nav's position: fixed resolves to the visible area on first paint and the full screen post-navigation — the two states disagree and the home-indicator band ends up as a gap or a content-overlap. Using min-h-100vh makes the main reach the screen bottom in both states; the nav's bottom anchor and padding are sized to compensate (#227). -->
 <script lang="ts" generics="T extends string">
   import type { Snippet } from 'svelte';
   import BottomNavigation from './BottomNavigation.svelte';
@@ -39,7 +39,7 @@
   }: Props = $props();
 </script>
 
-<div class="min-h-dvh flex flex-col bg-[color:var(--color-bg)] text-[color:var(--color-fg)]">
+<div class="min-h-100vh flex flex-col bg-[color:var(--color-bg)] text-[color:var(--color-fg)]">
   <!-- Sticky strip: Header (sticky itself) + StatusBar. Wrapping them
        in one sticky element means they move together as a unit while
        the user scrolls, instead of the Header pinning and the StatusBar
@@ -55,7 +55,7 @@
        calc, the last content row on iPhones with a home indicator gets
        covered by the inset (the nav itself pads up by safe-bottom, the
        page must too). -->
-  <main class="flex-1 overflow-x-hidden pb-[calc(3.5rem+var(--space-safe-bottom))]">
+  <main class="flex-1 overflow-x-hidden pb-[calc(3.5rem+env(safe-area-inset-bottom,34px))]">
     {@render children?.()}
   </main>
 </div>
