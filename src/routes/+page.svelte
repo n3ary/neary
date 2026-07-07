@@ -13,9 +13,9 @@
 <script lang="ts">
   import { untrack } from 'svelte';
   import { goto } from '$app/navigation';
-  import { AlertTriangle, Locate, MapPin } from 'lucide-svelte';
+  import { AlertTriangle, Heart, Locate, MapPin, Search, X } from 'lucide-svelte';
   import {
-    Box, Button, Card, CardContent, InfoCard, SelectFeedCard, Spinner, Stack, StationCard,
+    Box, Button, Card, CardContent, IconButton, InfoCard, SelectFeedCard, Spinner, Stack, StationCard,
     Typography,
   } from '$lib/ui';
   import { getGtfsRepo } from '$lib/data/gtfs/repo';
@@ -260,6 +260,29 @@
     gpsState === 'unavailable' && locationStore.permission === 'denied',
   );
 
+  // Issue #226: the demoted "No location" card is dismissable. The
+  // dismissal is sticky so it stops nagging users who intentionally
+  // chose search; the header GPS dot is still available if they
+  // change their mind later.
+  const NO_LOCATION_DISMISS_KEY = 'neary:noLocationCardDismissed';
+  function loadNoLocationDismissed(): boolean {
+    if (typeof localStorage === 'undefined') return false;
+    try {
+      return localStorage.getItem(NO_LOCATION_DISMISS_KEY) === '1';
+    } catch {
+      return false;
+    }
+  }
+  let noLocationDismissed = $state(loadNoLocationDismissed());
+  function dismissNoLocationCard() {
+    noLocationDismissed = true;
+    try {
+      localStorage.setItem(NO_LOCATION_DISMISS_KEY, '1');
+    } catch {
+      // Quota / disabled — silently noop. UI state already reflects dismissal.
+    }
+  }
+
   // For the "wrong feed" empty state: find the closest published feed
   // to the user's position so we can offer to switch. Only meaningful
   // when GPS is available; safe to compute eagerly because feeds list
@@ -325,25 +348,89 @@
         {/snippet}
       </InfoCard>
     {:else if denied}
-      <InfoCard title="No location — search instead">
-        {#snippet icon()}<MapPin size={16} />{/snippet}
+      <!-- Issue #226: three stacked cards replace the single "No
+           location - search instead" InfoCard. Visual hierarchy is
+           enforced by button variant + size + card chrome. Search
+           is the primary affordance so a user without GPS reaches a
+           usable experience in one tap. Favorites offers a faster
+           path for returning users. No-location is demoted and
+           dismissable so it stops nagging users who intentionally
+           chose search. -->
+
+      <!-- Card 1 - Search (primary). startIcon distinguishes this
+           from the Enable-location button users just tapped; it
+           opens the existing HeaderSearchOverlay. -->
+      {#snippet searchIcon()}<Search size={16} />{/snippet}
+      <InfoCard variant="primary" title="Find a station">
+        {#snippet icon()}<Search size={16} />{/snippet}
         {#snippet body()}
-          Your browser is blocking location for this site, so we can't suggest
-          stops near you. Search for a station by name to keep going. To get
-          auto-suggestions later, allow location in your browser's site
-          settings, then tap <strong>Try again</strong>.
+          Type a station or route name. Search stays on this device.
         {/snippet}
         {#snippet actions()}
           {#if userPrefs.feedId != null}
-            <Button variant="contained" size="small" onclick={() => searchOverlayStore.open()}>
+            <Button variant="contained" startIcon={searchIcon} onclick={() => searchOverlayStore.open()}>
               Search a station
             </Button>
           {/if}
-          <Button variant="text" size="small" onclick={() => locationStore.enable()}>
-            Try again
-          </Button>
         {/snippet}
       </InfoCard>
+
+      <!-- Card 2 - Favorites (secondary). Routes only for now since
+           station favorites don't exist yet. Hidden when empty so
+           the screen stays calm for first-time users; revisit if
+           usage shows users never discover favorites. -->
+      {#if favoritesStore.routeIds.size > 0}
+        <Card>
+          <CardContent>
+            <Stack direction="row" spacing={1} align="center">
+              <Heart size={16} class="shrink-0 text-[color:var(--color-fg-muted)]" />
+              <Typography variant="h6">Your favorites</Typography>
+            </Stack>
+            <Typography variant="caption" class="block pt-1">
+              {favoritesStore.routeIds.size} saved route{favoritesStore.routeIds.size !== 1 ? 's' : ''}.
+              Open the Favorites tab to jump back in.
+            </Typography>
+            <Stack direction="row" spacing={1} align="center" class="pt-2">
+              <Button variant="outlined" size="small" onclick={() => goto('/favorites')}>
+                Open favorites
+              </Button>
+            </Stack>
+          </CardContent>
+        </Card>
+      {/if}
+
+      <!-- Card 3 - No location (dismissable, demoted). Composed from
+           Card primitives (not InfoCard) so the dismiss IconButton
+           can sit absolute in the top-right without touching the
+           shared InfoCard component. -->
+      {#if !noLocationDismissed}
+        <Card>
+          <CardContent class="relative">
+            <Stack direction="row" spacing={1} align="center" class="pr-8">
+              <MapPin size={16} class="shrink-0 text-[color:var(--color-fg-muted)]" />
+              <Typography variant="h6">No location</Typography>
+            </Stack>
+            <Typography variant="caption" class="block pt-1">
+              Want stops near you automatically? Allow location in your browser's
+              site settings, then tap try again.
+            </Typography>
+            <Stack direction="row" spacing={1} align="center" class="pt-2">
+              <Button variant="text" size="small" onclick={() => locationStore.enable()}>
+                Try again
+              </Button>
+            </Stack>
+            <IconButton
+              size="small"
+              color="inherit"
+              aria-label="Dismiss"
+              onclick={dismissNoLocationCard}
+              class="absolute top-1 right-1 text-[color:var(--color-fg-muted)]"
+            >
+              <X size={16} />
+            </IconButton>
+          </CardContent>
+        </Card>
+      {/if}
     {:else if gpsState === 'unavailable'}
       <InfoCard title="Location not supported">
         {#snippet icon()}<MapPin size={16} />{/snippet}
