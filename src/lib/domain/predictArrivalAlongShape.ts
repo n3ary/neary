@@ -7,6 +7,7 @@ import {
 } from './predictPosition';
 import {
   distAlongBetween,
+  haversineMeters,
   measurePolyline,
   pointAtDistance,
   projectOnPolyline,
@@ -56,6 +57,9 @@ export interface ArrivalPrediction {
 const HIGH_CONF_PERP_M = 50;
 const MEDIUM_CONF_PERP_M = 150;
 
+// Terminal loops and post-terminus turnarounds can land the projection on a segment whose cumdist diverges from the vehicle's actual position. Above this ratio of |signedDistM| to haversine, the projection has wandered and haversine wins.
+const POLYLINE_SAFETY_RATIO = 3;
+
 export function predictArrivalAlongShape(
   input: PredictArrivalInputs,
 ): ArrivalPrediction {
@@ -65,8 +69,40 @@ export function predictArrivalAlongShape(
   // signed: positive = vehicle before stop, negative = past
   const signedDistM = distAlongBetween(vehProj, stopProj);
   const absDistM = Math.abs(signedDistM);
+  const haversineM = haversineMeters(
+    input.vehiclePos.lat, input.vehiclePos.lon,
+    input.stopPos.lat, input.stopPos.lon,
+  );
   const useSegmentWalk = input.dwellStopDistAlongM != null;
   const dwellStops = input.dwellStopDistAlongM ?? [];
+
+  if (absDistM > haversineM * POLYLINE_SAFETY_RATIO) {
+    const sample = estimateSegmentSpeed({
+      segment: {
+        fromLat: input.vehiclePos.lat, fromLon: input.vehiclePos.lon,
+        toLat: input.stopPos.lat, toLon: input.stopPos.lon,
+      },
+      segmentDistanceFromVehicleM: 0,
+      vehicle:
+        input.vehicleSpeedMs != null && input.vehicleSpeedMs > 0
+          ? {
+              lat: input.vehiclePos.lat,
+              lon: input.vehiclePos.lon,
+              speedMs: input.vehicleSpeedMs,
+              directionId: input.vehicleDirectionId,
+            }
+          : undefined,
+      nearbyVehicles: input.nearbyVehicles,
+      todBucket: input.todBucket,
+      feedConfig: input.feedConfig,
+    });
+    return {
+      minutes: (haversineM / 1000) / sample.kmh * 60,
+      distanceMeters: haversineM,
+      source: sample.source,
+      confidence: downgradeForOffShape(sample.confidence, vehProj.perpDistM, stopProj.perpDistM),
+    };
+  }
 
   if (signedDistM <= 0) {
     const sample = estimateSegmentSpeed({

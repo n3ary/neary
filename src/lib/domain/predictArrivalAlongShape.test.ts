@@ -90,4 +90,32 @@ describe('predictArrivalAlongShape', () => {
     // Intermediate dwell: stops at 3 km + 4 km only = 40 s = 0.667 min.
     expect(out.minutes).toBeCloseTo(5 + 40 / 60, 1);
   });
+
+  it('falls back to haversine when the polyline projection wanders via a terminal loop', () => {
+    // Synthetic shape with a post-terminus loop: A → stop B → terminal C, then
+    // a loop-back D → E running south of A–C. A vehicle physically near B but
+    // slightly south projects onto the D → E segment, inflating signedDistM
+    // well beyond the haversine distance to B.
+    const shapeWithTerminalLoop = [
+      { lat: 46.70, lon: 23.60 }, // A: origin
+      { lat: 46.70, lon: 23.65 }, // B: stop (distAlongM ~3.8 km)
+      { lat: 46.70, lon: 23.70 }, // C: terminal (distAlongM ~7.6 km)
+      { lat: 46.69, lon: 23.69 }, // D: loop-back start (south of C)
+      { lat: 46.69, lon: 23.60 }, // E: loop-back end (south of A)
+    ];
+
+    // |signedDistM| projects to ~7.4 km via D → E; haversine is ~1.8 km.
+    // Without the sanity clamp, offpeak tier reads 7.4 / 25 * 60 = 17.7 min.
+    // With the clamp, haversine wins: 1.8 / 25 * 60 = 4.3 min.
+    const out = predictArrivalAlongShape(inputs({
+      vehiclePos: { lat: 46.685, lon: 23.66 },
+      polyline: shapeWithTerminalLoop,
+      vehicleSpeedMs: 0, // stopped → tier 1 suppressed → TOD offpeak wins
+    }));
+
+    expect(out.distanceMeters).toBeLessThan(3_000);
+    expect(out.distanceMeters).toBeGreaterThan(1_000);
+    expect(out.source).toBe('tod');
+    expect(out.minutes).toBeLessThan(8);
+  });
 });
