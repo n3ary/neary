@@ -390,7 +390,7 @@
       {#snippet searchIcon()}<Search size={16} />{/snippet}
       {#snippet searchCard()}
         {#if userPrefs.feedId != null}
-          <InfoCard variant="primary" title="Find a station">
+          <InfoCard variant="primary" title="Where to?">
             {#snippet icon()}<MapPin size={16} />{/snippet}
             {#snippet body()}
               Tap to search any station or route by name or number.
