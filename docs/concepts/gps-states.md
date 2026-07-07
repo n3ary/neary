@@ -26,52 +26,29 @@ because it's a generic pattern reusable for non-GPS dismissed flags.
 
 ## Derived flags (script-level)
 
-The home page derives four named flags once and reads them in the markup:
+The home page derives six named flags once and reads them in the markup
+(see the [`$derived` block in
+`+page.svelte#L262-L287`](../../src/routes/+page.svelte#L262-L287) for
+the literal Svelte 5 runes - these change together so they live next to
+each other in the file):
 
-```ts
-// src/routes/+page.svelte
-const denied = $derived(
-  gpsState === 'unavailable' && locationStore.permission === 'denied',
-);
-const gpsUnsupported = $derived(
-  !locationStore.isSupported && gpsState === 'unavailable' && !denied,
-);
-const showEnablePrompt = $derived(
-  gpsState === 'not-opted-in'
-  && !userPrefs.hasEverEnabledGPS
-  && !enableLocationPromptDismissedStore.dismissed,
-);
-const showSearchAndFavorites = $derived(
-  gpsState === 'not-opted-in' || denied,
-);
-const showNoLocationCard = $derived(denied);
-const showLocationUnsupported = $derived(gpsUnsupported);
-```
+- `denied` - `gpsState === 'unavailable' && locationStore.permission === 'denied'`
+- `gpsUnsupported` - `!locationStore.isSupported && gpsState === 'unavailable' && !denied`
+- `showEnablePrompt` - `gpsState === 'not-opted-in' && !userPrefs.hasEverEnabledGPS && !enableLocationPromptDismissedStore.dismissed`
+- `showSearchAndFavorites` - `gpsState === 'not-opted-in' || denied`
+- `showNoLocationCard` - `denied`
+- `showLocationUnsupported` - `gpsUnsupported`
 
-Settings derives:
-
-```ts
-// src/routes/settings/+page.svelte
-const denied = $derived(locationStore.permission === 'denied');
-// isSupported via locationStore.isSupported
-```
-
-Header dot uses `locationStore.freshness` (a getter, not a $derived).
+Settings derives a single `denied` flag from `locationStore.permission`
+([settings/+page.svelte#L66-L69](../../src/routes/settings/+page.svelte#L66-L69));
+`isSupported` is read from `locationStore` directly in the JSX. Header
+dot uses `locationStore.freshness` (a getter, not a `$derived`).
 
 ## `gpsState` machine
 
-Derived in the home page from the underlying sources:
-
-```
-gpsState = $derived.by<GpsState>(() => {
-  if (typeof navigator === 'undefined' || !('geolocation' in navigator)) return 'unavailable';
-  if (locationStore.position) return 'available';
-  if (locationStore.permission === 'denied') return 'unavailable';
-  if (locationStore.error && !locationStore.position) return 'unavailable';
-  if (!userPrefs.gpsOptedIn) return 'not-opted-in';
-  return 'pending';
-});
-```
+See the [`$derived.by<GpsState>(...)` block in
+`+page.svelte#L61-L70`](../../src/routes/+page.svelte#L61-L70) for the
+literal predicate.
 
 Order matters: the `permission === 'denied'` check sits above the
 `gpsOptedIn` check so a denied user stays in `unavailable` (and thus
