@@ -367,8 +367,7 @@
   }
 </script>
 
-<!-- mx-auto centered + flex flex-col + flex-1 + w-full so the outer wrapper stretches to fill <main>'s height (same shape as the map view's container) — see tail div below for the rationale. -->
-<div class="mx-auto flex w-full max-w-3xl flex-1 flex-col px-4 py-6">
+<div class="mx-auto max-w-3xl px-4 py-6">
   <Stack spacing={1}>
 
     <!-- ── Setup banners ─────────────────────────────────────────────
@@ -581,16 +580,6 @@
     {/if}
 
   </Stack>
-
-  <!-- Tail filler. On short views (Stations with one nearby card, Schedule
-       with one short list, empty Favs/Settings) the cards alone don't fill
-       <main>; the filled empty area below reads as "a dark gap between the
-       last card and the fixed BottomNavigation". This is the same shape the
-       map view uses to fill its container — a flex-1 sibling that collapses
-       to 0 on long views (flex-1 + min-h-0 so it can shrink past content
-       height) and stretches to whatever's left on short views. No visible
-       content; just takes up the area the user reads as a gap. -->
-  <div class="flex-1 min-h-0" aria-hidden="true"></div>
 </div>
 
 <!--
