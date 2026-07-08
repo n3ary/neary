@@ -94,7 +94,7 @@
       {#if markerStopIds && markerStopIds.length > 0}
         <StationMarkerBadges
           stopIds={markerStopIds}
-          markerFor={(id) => favoritesStore.markerFor(id)}
+          markerFor={favoritesStore.markerFor}
           size={12}
           class="shrink-0"
         />
