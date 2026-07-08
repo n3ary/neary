@@ -36,7 +36,6 @@
   import TripStopList from './TripStopList.svelte';
   import Typography from './Typography.svelte';
   import StationMarkerBadges from './StationMarkerBadges.svelte';
-  import { getUpcomingStopsByTrip } from '$lib/data/gtfs/upcomingStops';
   import VehicleCard from './VehicleCard.svelte';
   import { cn } from './cn';
 
@@ -145,14 +144,16 @@
 
   // Per-vehicle headsign markers: unique markers across the stops
   // the vehicle will visit AFTER this station. Reuses the same
-  // worker round-trip used by the expanded stops list, just deduped
-  // by trip so 10 vehicles sharing a board don't fan out 10 calls.
-  // Empty for vehicles at the trip's last stop (no remaining).
+  // `getUpcomingStops` helper that powers the expanded stops list,
+  // called per vehicle (N+1) - acceptable for a typical board
+  // (5-10 vehicles) and avoids introducing a parallel batched
+  // helper for one consumer. Empty for vehicles at the trip's
+  // last stop (no remaining).
   let vehicleHeadStopIds = $state<Map<string, string[]>>(new Map());
 
   $effect(() => {
     const fid = feedsStore.boundFeedId;
-    if (!fid || rows.length === 0) {
+    if (!fid || rows.length === 0 || !getUpcomingStops) {
       vehicleHeadStopIds = new Map();
       return;
     }
@@ -160,22 +161,22 @@
     const eligible = rows
       .map((r) => r.vehicle)
       .filter((v) => v.schedule?.tripId && !v.schedule?.isLastStop);
-    const tripIds = Array.from(new Set(eligible.map((v) => v.schedule!.tripId!)));
-    if (tripIds.length === 0) {
+    if (eligible.length === 0) {
       vehicleHeadStopIds = new Map();
       return;
     }
     let cancelled = false;
     (async () => {
       try {
-        const stopsByTrip = await getUpcomingStopsByTrip(tripIds, station.id);
-        if (cancelled) return;
         const out = new Map<string, string[]>();
-        for (const v of eligible) {
-          const tid = v.schedule!.tripId!;
-          const stops = stopsByTrip.get(tid) ?? [];
-          out.set(v.id, stops.map((s) => s.stopId));
-        }
+        await Promise.all(
+          eligible.map(async (v) => {
+            const stops = await getUpcomingStops!(v.schedule!.tripId!, station.id);
+            if (cancelled) return;
+            out.set(v.id, stops.map((s) => s.stopId));
+          }),
+        );
+        if (cancelled) return;
         vehicleHeadStopIds = out;
       } catch {
         // Headsign markers are decorative; failures leave the previous
