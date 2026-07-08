@@ -39,6 +39,7 @@
   import {
     parseFavoritesTab,
     sortRoutesForPicker,
+    sortStationsAlphabetically,
     sortStationsForPicker,
     type FavoritesTab,
   } from '$lib/domain/favoritesListLayout';
@@ -51,20 +52,10 @@
 
   // ── Tab state + URL deep-link ───────────────────────────────────
 
-  function defaultTabFromPrefs(): FavoritesTab {
-    const routeTs = userPrefs.lastRouteMarkedAt;
-    const stationTs = userPrefs.lastStationMarkerAssignedAt;
-    if (routeTs == null && stationTs == null) return 'routes';
-    if (routeTs == null) return 'stations';
-    if (stationTs == null) return 'routes';
-    return stationTs > routeTs ? 'stations' : 'routes';
-  }
-
   let activeTab = $state<FavoritesTab>(initialTab());
 
   function initialTab(): FavoritesTab {
-    const fromUrl = parseFavoritesTab(page.url.searchParams.get('tab'));
-    return fromUrl ?? defaultTabFromPrefs();
+    return parseFavoritesTab(page.url.searchParams.get('tab')) ?? 'routes';
   }
 
   $effect(() => {
@@ -195,13 +186,19 @@
 
   const stationAnchor = $derived.by(() => {
     if (locationStore.position) {
+      // Plain object literal — already cloneable through postMessage.
       return {
         lat: locationStore.position.coords.latitude,
         lon: locationStore.position.coords.longitude,
       };
     }
     const feed = feedsStore.byId(feedsStore.boundFeedId);
-    return feed?.center ?? null;
+    if (!feed) return null;
+    // Manual copy from the proxied Feed.center — Svelte 5's $state
+    // proxies are not always structured-cloneable, and feeding a
+    // proxied anchor into the worker was throwing "The object can
+    // not be cloned" on the stations tab pagination call.
+    return { lat: feed.center.lat, lon: feed.center.lon };
   });
 
   // ── Effects: initial loads ──────────────────────────────────────
@@ -238,7 +235,7 @@
       try {
         const repo = getGtfsRepo();
         const resolved = await repo.getStopsByIds(ids);
-        favoriteStations = sortStationsForPicker(resolved, stationAnchor);
+        favoriteStations = sortStationsAlphabetically(resolved);
         const routes = await repo.getRoutesForStops(ids);
         const filtered: Record<string, Route[]> = {};
         for (const [k, list] of Object.entries(routes)) {
@@ -411,32 +408,19 @@
     );
   });
 
-  // Favorited stations in priority order: home, work, cityCenter
-  // (singletons float to the top), then favorite by distance/alpha.
-  const favStationsSorted = $derived.by<StopWithDistance[]>(() => {
-    const list = [...favoriteStations];
-    list.sort((a, b) => {
-      const ma = favoritesStore.markerFor(a.id);
-      const mb = favoritesStore.markerFor(b.id);
-      const order = (m: StationMarker | undefined) => {
-        if (m === 'home') return 0;
-        if (m === 'work') return 1;
-        if (m === 'cityCenter') return 2;
-        if (m === 'favorite') return 3;
-        return 4;
-      };
-      const oa = order(ma);
-      const ob = order(mb);
-      if (oa !== ob) return oa - ob;
-      return a.name.localeCompare(b.name);
-    });
-    return list;
-  });
+  // Favorited stations, already alphabetical from the source effect
+  // (sortStationsAlphabetically). Marker type does not influence
+  // order - home / work / cityCenter / favorite stations interleave
+  // alphabetically, same as on the home FavoritesCard.
+  const favStationsSorted = $derived<StopWithDistance[]>(favoriteStations);
 
-  // "All other stations": client-side filter by marker set, then
-  // resort by distance (or alpha).
+  // "All other stations": the stations that AREN'T in the favorites
+  // card above. Filter cascade (mode + network) trims the page; the
+  // marker filter further trims the visible page. Stations with any
+  // marker are always excluded - they already appear in the
+  // "Your favorites" card, so duplicating them here is noise.
   const otherStationsSorted = $derived.by<StopWithDistance[]>(() => {
-    let list = otherStationsPage;
+    let list = otherStationsPage.filter((s) => favoritesStore.markerFor(s.id) === undefined);
     if (activeMarkerFilter.size > 0) {
       list = list.filter((s) => {
         const m = favoritesStore.markerFor(s.id);
@@ -458,6 +442,16 @@
     home: 'Home',
     work: 'Work',
     cityCenter: 'City center',
+  };
+  // Marker filter chip colors. Matches the marker-icon palette used
+  // elsewhere (favorite = danger; home / work / cityCenter = primary).
+  // Foregrounds are the theme's matching `-fg` tokens so the contrast
+  // follows light/dark mode.
+  const MARKER_COLORS: Record<StationMarker, { bg: string; fg: string }> = {
+    favorite: { bg: 'var(--color-danger)', fg: 'var(--color-danger-fg, #fff)' },
+    home: { bg: 'var(--color-primary)', fg: 'var(--color-primary-fg)' },
+    work: { bg: 'var(--color-primary)', fg: 'var(--color-primary-fg)' },
+    cityCenter: { bg: 'var(--color-primary)', fg: 'var(--color-primary-fg)' },
   };
 
   // Per-stop marker map for the expanded route view.
@@ -542,26 +536,58 @@
                   </Typography>
                   <Stack direction="row" spacing={1} align="center" wrap>
                     {#each allNetworks as net (net.id)}
-                      {@const Icon = networkIcon(net.id)}
                       {@const active = networkFilter === net.id}
-                      <Chip
+                      <TypeBadge
                         size="small"
-                        hex={net.color}
-                        fg={networkTextColor(net.color)}
+                        label={net.name}
+                        color={net.color}
+                        {active}
                         onclick={() => toggleNetwork(net.id)}
-                        class={active ? '' : 'opacity-50'}
-                      >
-                        {#snippet icon()}<Icon size={12} />{/snippet}
-                        {net.name}
-                      </Chip>
+                      />
                     {/each}
                   </Stack>
                 </Stack>
               {/if}
 
-              {#if filtersActive}
+              <Stack spacing={0.5}>
+                <Typography variant="h5">Filter by marker</Typography>
                 <Typography variant="caption" class="text-[color:var(--color-fg-muted)]">
-                  Stations below the tabs are filtered to those served by at least one matching route.
+                  {#if activeMarkerFilter.size === 0}
+                    {#if activeTab === 'routes'}
+                      Showing every route. Tap a marker to narrow down to routes that stop at a marked station.
+                    {:else}
+                      Showing every station. Tap a marker to narrow down.
+                    {/if}
+                  {:else if activeTab === 'routes'}
+                    Routes that serve at least one {Array.from(activeMarkerFilter).map((m) => MARKER_LABELS[m]).join(' or ')} station.
+                  {:else}
+                    Stations marked as {Array.from(activeMarkerFilter).map((m) => MARKER_LABELS[m]).join(' or ')}.
+                  {/if}
+                </Typography>
+                <Stack direction="row" spacing={1} align="center" wrap>
+                  <TypeBadge
+                    size="small"
+                    label="All"
+                    active={activeMarkerFilter.size === 0}
+                    onclick={clearMarkerFilter}
+                  />
+                  {#each STATION_MARKERS as m (m)}
+                    <TypeBadge
+                      size="small"
+                      label={MARKER_LABELS[m]}
+                      color={MARKER_COLORS[m].bg}
+                      fg={MARKER_COLORS[m].fg}
+                      active={activeMarkerFilter.has(m)}
+                      onclick={() => toggleMarkerFilter(m)}
+                    />
+                  {/each}
+                </Stack>
+              </Stack>
+
+              {#if filtersActive || activeMarkerFilter.size > 0}
+                <Typography variant="caption" class="text-[color:var(--color-fg-muted)]">
+                  Stations below the tabs are filtered to those served by at least one matching route,
+                  and (if a marker is selected) routes that stop at a marked station.
                   Your favorited stations are always shown regardless.
                 </Typography>
               {/if}
@@ -585,154 +611,122 @@
 
       <!-- Page-width tabs sit BELOW the combined Your favorites card.
            They only control the catalog (All other routes / All other
-           stations) below. -->
-      <Tabs
-        value={activeTab}
-        items={[
-          { value: 'routes', label: 'Routes' },
-          { value: 'stations', label: 'Stations' },
-        ]}
-        onchange={setTab}
-        variant="block"
-      />
+           stations) below. Tabs + catalog card share a single border
+           so the tab reads as the section header of the catalog, not
+           a free-floating row. -->
+      <div class="rounded-md border border-[color:var(--color-border)] overflow-hidden">
+        <Tabs
+          value={activeTab}
+          items={[
+            { value: 'routes', label: 'Routes' },
+            { value: 'stations', label: 'Stations' },
+          ]}
+          onchange={setTab}
+          variant="block"
+        />
 
-      {#if activeTab === 'routes'}
-        <!-- ── Routes tab: All other routes ──────────────────── -->
-        {#if otherRoutes.length > 0 || noScheduleRoutes.length > 0}
-          <Card>
-            <CardContent>
-              <Stack spacing={1}>
-                <Stack spacing={0.5}>
-                  <Typography variant="h5">
-                    {favRoutes.length > 0 ? 'All other routes' : 'All routes'}
-                  </Typography>
-                  <Typography variant="caption" class="text-[color:var(--color-fg-muted)]">
-                    Routes running in the next hour float to the top.
-                  </Typography>
-                </Stack>
+        {#if activeTab === 'routes'}
+          <!-- ── Routes tab: All other routes ──────────────────── -->
+          {#if otherRoutes.length > 0 || noScheduleRoutes.length > 0}
+            <Card class="rounded-none border-0 border-t border-[color:var(--color-border)] shadow-none">
+              <CardContent>
                 <Stack spacing={1}>
-                  {#each otherRoutes as route (route.id)}
-                    {@render expandableRouteRow({ route })}
-                  {/each}
-                  {#each noScheduleRoutes as route (route.id)}
-                    {@render expandableRouteRow({ route })}
-                  {/each}
+                  <Stack spacing={0.5}>
+                    <Typography variant="h5">
+                      {favRoutes.length > 0 ? 'All other routes' : 'All routes'}
+                    </Typography>
+                    <Typography variant="caption" class="text-[color:var(--color-fg-muted)]">
+                      Routes running in the next hour float to the top.
+                    </Typography>
+                  </Stack>
+                  <Stack spacing={1}>
+                    {#each otherRoutes as route (route.id)}
+                      {@render expandableRouteRow({ route })}
+                    {/each}
+                    {#each noScheduleRoutes as route (route.id)}
+                      {@render expandableRouteRow({ route })}
+                    {/each}
+                  </Stack>
                 </Stack>
-              </Stack>
-            </CardContent>
-          </Card>
-        {/if}
-      {:else}
-        <!-- ── Stations tab: marker filter + All other stations ──── -->
+              </CardContent>
+            </Card>
+          {/if}
+        {:else}
+          <!-- "All other stations" - paginated catalog. -->
+          {#if otherStationsPage.length > 0 || otherStationsLoading || otherStationsError}
+            <Card class="rounded-none border-0 border-t border-[color:var(--color-border)] shadow-none">
+              <CardContent>
+                <Stack spacing={1}>
+                  <Stack spacing={0.5}>
+                    <Typography variant="h5">
+                      {favStationsSorted.length > 0 ? 'All other stations' : 'All stations'}
+                    </Typography>
+                    <Typography variant="caption" class="text-[color:var(--color-fg-muted)]">
+                      {#if otherStationsLoading && otherStationsPage.length === 0}
+                        Loading…
+                      {:else if otherStationsError}
+                        {otherStationsError}
+                      {:else if otherStationsTotal > 0}
+                        {#if activeMarkerFilter.size > 0}
+                          Showing {otherStationsSorted.length} of {otherStationsTotal} stations.
+                        {:else if filtersActive}
+                          Showing {otherStationsPage.length} of {otherStationsTotal} stations matching the filter.
+                        {:else}
+                          Showing {otherStationsPage.length} of {otherStationsTotal} stations.
+                        {/if}
+                        {#if locationStore.position}
+                          Nearest first.
+                        {/if}
+                      {:else}
+                        {filtersActive
+                          ? 'No stations match the current filter.'
+                          : 'No stations in this feed.'}
+                      {/if}
+                    </Typography>
+                  </Stack>
+                  <Stack spacing={1}>
+                    {#each otherStationsSorted as stop (stop.id)}
+                      <FavoriteStationRow
+                        stop={stop}
+                        marker={favoritesStore.markerFor(stop.id)}
+                        onChangeMarker={(next) => changeStationMarker(stop.id, next)}
+                        onbodyclick={() => selectStation(stop.id)}
+                        routes={stationsScope[stop.id]}
+                        hasGps={!!locationStore.position && stop.distance != null}
+                        variant="card"
+                        class="mt-1"
+                      />
+                    {/each}
+                  </Stack>
 
-        <!-- Marker filter chip row. Client-side; scoped to this tab. -->
-        <Card>
-          <CardContent>
-            <Stack spacing={0.5}>
-              <Typography variant="h5">Filter by marker</Typography>
-              <Typography variant="caption" class="text-[color:var(--color-fg-muted)]">
-                {#if activeMarkerFilter.size === 0}
-                  Showing every station. Tap a marker to narrow down.
-                {:else}
-                  Showing stations marked as {Array.from(activeMarkerFilter).map((m) => MARKER_LABELS[m]).join(' or ')}.
-                {/if}
-              </Typography>
-              <Stack direction="row" spacing={1} align="center" wrap>
-                <Chip
-                  size="small"
-                  variant="filled"
-                  onclick={clearMarkerFilter}
-                  class={activeMarkerFilter.size === 0 ? '' : 'opacity-50'}
-                >
-                  All
-                </Chip>
-                {#each STATION_MARKERS as m (m)}
-                  <Chip
-                    size="small"
-                    variant="filled"
-                    onclick={() => toggleMarkerFilter(m)}
-                    class={activeMarkerFilter.has(m) ? '' : 'opacity-50'}
-                  >
-                    {MARKER_LABELS[m]}
-                  </Chip>
-                {/each}
-              </Stack>
-            </Stack>
-          </CardContent>
-        </Card>
+                  <div bind:this={sentinelEl} aria-hidden="true" class="h-1"></div>
 
-        <!-- "All other stations" - paginated catalog. -->
-        <Card>
-          <CardContent>
-            <Stack spacing={1}>
-              <Stack spacing={0.5}>
-                <Typography variant="h5">
-                  {favStationsSorted.length > 0 ? 'All other stations' : 'All stations'}
-                </Typography>
-                <Typography variant="caption" class="text-[color:var(--color-fg-muted)]">
-                  {#if otherStationsLoading && otherStationsPage.length === 0}
-                    Loading…
-                  {:else if otherStationsError}
-                    {otherStationsError}
-                  {:else if otherStationsTotal > 0}
-                    {#if activeMarkerFilter.size > 0}
-                      Showing {otherStationsSorted.length} of {otherStationsTotal} stations.
-                    {:else if filtersActive}
-                      Showing {otherStationsPage.length} of {otherStationsTotal} stations matching the filter.
-                    {:else}
-                      Showing {otherStationsPage.length} of {otherStationsTotal} stations.
-                    {/if}
-                    {#if locationStore.position}
-                      Nearest first.
-                    {/if}
-                  {:else}
-                    {filtersActive
-                      ? 'No stations match the current filter.'
-                      : 'No stations in this feed.'}
+                  {#if otherStationsLoading}
+                    <Stack direction="row" spacing={1} align="center" class="py-2">
+                      <Spinner size={14} />
+                      <Typography variant="caption">Loading more stations…</Typography>
+                    </Stack>
+                  {:else if otherStationsHasMore}
+                    <Stack direction="row" spacing={1} align="center" class="py-2">
+                      <button
+                        type="button"
+                        class="text-xs text-[color:var(--color-fg-muted)] hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--color-primary)] rounded"
+                        onclick={() => fetchNextStationsPage()}
+                      >
+                        Load more
+                      </button>
+                    </Stack>
+                  {:else if otherStationsPage.length > 0}
+                    <Typography variant="caption" class="text-[color:var(--color-fg-muted)] py-2">
+                      End of stations.
+                    </Typography>
                   {/if}
-                </Typography>
-              </Stack>
-              <Stack spacing={1}>
-                {#each otherStationsSorted as stop (stop.id)}
-                  <FavoriteStationRow
-                    stop={stop}
-                    marker={favoritesStore.markerFor(stop.id)}
-                    onChangeMarker={(next) => changeStationMarker(stop.id, next)}
-                    onbodyclick={() => selectStation(stop.id)}
-                    routes={stationsScope[stop.id]}
-                    hasGps={!!locationStore.position && stop.distance != null}
-                    variant="card"
-                    class="mt-1"
-                  />
-                {/each}
-              </Stack>
-
-              <div bind:this={sentinelEl} aria-hidden="true" class="h-1"></div>
-
-              {#if otherStationsLoading}
-                <Stack direction="row" spacing={1} align="center" class="py-2">
-                  <Spinner size={14} />
-                  <Typography variant="caption">Loading more stations…</Typography>
                 </Stack>
-              {:else if otherStationsHasMore}
-                <Stack direction="row" spacing={1} align="center" class="py-2">
-                  <button
-                    type="button"
-                    class="text-xs text-[color:var(--color-fg-muted)] hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--color-primary)] rounded"
-                    onclick={() => fetchNextStationsPage()}
-                  >
-                    Load more
-                  </button>
-                </Stack>
-              {:else if otherStationsPage.length > 0}
-                <Typography variant="caption" class="text-[color:var(--color-fg-muted)] py-2">
-                  End of stations.
-                </Typography>
-              {/if}
-            </Stack>
-          </CardContent>
-        </Card>
-      {/if}
+              </CardContent>
+            </Card>
+          {/if}
+        {/if}
+      </div>
     </Stack>
   {/if}
 </div>
