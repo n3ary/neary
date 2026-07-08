@@ -746,6 +746,7 @@
       {route}
       isFav={favoritesStore.hasRoute(route.id)}
       onToggleFavorite={() => favoritesStore.toggleRoute(route.id)}
+      onbodyclick={() => toggleRouteStops(route)}
     />
     {#if expandable}
       <Collapsible in={expanded} reduced>
