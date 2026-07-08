@@ -6,7 +6,6 @@
   import type { StationMarker } from '$lib/stores/favoritesStore.svelte';
   import Avatar from './Avatar.svelte';
   import RouteChipsRow from './RouteChipsRow.svelte';
-  import StationMarkerBadge from './StationMarkerBadge.svelte';
   import StationMarkerDropdown from './StationMarkerDropdown.svelte';
   import { cn } from './cn';
 
@@ -94,15 +93,11 @@
     <Bus size={20} />
   </Avatar>
   <div class="min-w-0 flex-1 flex flex-col gap-1">
-    <div class="flex items-center gap-1.5">
-      <!-- Inline marker badge in front of the station name. Same
-           visual contract as the dedicated /station/[id] header so
-           the user recognises the marker without scanning to the
-           dropdown trigger on the right. Hidden when the station
-           has no marker. -->
-      {#if marker}
-        <StationMarkerBadge {marker} size={12} />
-      {/if}
+    <div class="flex items-center gap-2">
+      <!-- Marker is conveyed by the dropdown trigger on the right;
+           a left-side badge next to the name would be redundant in a
+           list row. The dedicated station detail page (/station/[id])
+           renders the badge via StationCard. -->
       <span class="min-w-0 flex-1 text-sm font-medium truncate">{stop.name}</span>
       {#if hasGps && distance != null}
         <span class="shrink-0 text-xs font-mono text-[color:var(--color-fg-muted)]">

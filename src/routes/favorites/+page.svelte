@@ -158,7 +158,6 @@
   // ── Stations tab state ──────────────────────────────────────────
 
   let favoriteStations = $state<StopWithDistance[]>([]);
-  let favoriteStationsRoutes = $state<Record<string, Route[]>>({});
   let favoriteStationsError = $state<string | null>(null);
 
   // Routes that serve at least one station carrying a marker in the
@@ -269,13 +268,14 @@
   });
 
   // Stations with any marker (favorite / home / work / cityCenter).
+  // Routes-per-station is loaded by FavoritesCard itself — no need to
+  // duplicate that worker call here.
   $effect(() => {
     const fid = feedsStore.boundFeedId;
     if (!fid) return;
     const ids = Array.from(favoritesStore.markers.keys());
     if (ids.length === 0) {
       favoriteStations = [];
-      favoriteStationsRoutes = {};
       return;
     }
     (async () => {
@@ -283,13 +283,6 @@
         const repo = getGtfsRepo();
         const resolved = await repo.getStopsByIds(ids);
         favoriteStations = sortStationsAlphabetically(resolved);
-        const routes = await repo.getRoutesForStops(ids);
-        const filtered: Record<string, Route[]> = {};
-        for (const [k, list] of Object.entries(routes)) {
-          const scheduled = list.filter((r) => r.hasSchedule !== false);
-          if (scheduled.length > 0) filtered[k] = scheduled;
-        }
-        favoriteStationsRoutes = filtered;
         favoriteStationsError = null;
       } catch (e) {
         favoriteStationsError = e instanceof Error ? e.message : String(e);
@@ -681,7 +674,9 @@
 
       <!-- Combined "Your favorites" card. Always visible regardless of
            active tab. Lists favorited routes AND marked stations, with
-           their marker badges. -->
+           their marker badges. The routeRow snippet wraps each row in
+           expandableRouteRow so a tap on the row expands to show the
+           station list (TripStopList) — same as the catalog rows below. -->
       {#if favRoutes.length > 0 || favStationsSorted.length > 0}
         <FavoritesCard
           routes={favRoutes}
@@ -689,7 +684,11 @@
           stationMarkers={favoritesStore.markers}
           onChangeStationMarker={changeStationMarker}
           headerStyle="standalone"
-        />
+        >
+          {#snippet routeRow(args: { route: Route; markerStopIds: readonly string[] })}
+            {@render expandableRouteRow(args)}
+          {/snippet}
+        </FavoritesCard>
       {/if}
 
       <!-- Page-width tabs sit BELOW the combined Your favorites card.
@@ -852,138 +851,3 @@
     {/if}
   </div>
 {/snippet}
-
-<!-- Same shape as Stations: outer is flex flex-col flex-1 so a tail filler can stretch below the content on short lists and collapse to 0 when the favorites list fills the viewport. -->
-<div class="mx-auto flex w-full max-w-3xl flex-1 flex-col px-4 py-6">
-  {#if userPrefs.feedId == null}
-    <SelectFeedCard fallbackBody="Pick a feed in Settings to star routes here." />
-  {:else if error}
-    <Card>
-      <CardContent>
-        <Typography variant="h6" class="text-[color:var(--color-danger)]">Failed to load routes</Typography>
-        <Typography variant="caption">{error}</Typography>
-      </CardContent>
-    </Card>
-  {:else if allRoutes == null}
-    <Card>
-      <CardContent>
-        <Stack direction="row" spacing={1} align="center">
-          <Spinner size={16} />
-          <Typography variant="caption">Loading routes…</Typography>
-        </Stack>
-      </CardContent>
-    </Card>
-  {:else}
-    <Stack spacing={2}>
-      {#if presentTypes.length > 1 || allNetworks.length > 0}
-        <Card>
-          <CardContent>
-            <Stack spacing={1.5}>
-              {#if presentTypes.length > 1}
-                <Stack spacing={0.5}>
-                  <Typography variant="h5">Filter by mode</Typography>
-                  <Typography variant="caption" class="text-[color:var(--color-fg-muted)]">
-                    {typeFilter === null
-                      ? `Showing all ${allRoutes.length} routes. Tap a mode to narrow down.`
-                      : `${filteredRoutes.length} of ${allRoutes.length} routes match.`}
-                  </Typography>
-                  <Stack direction="row" spacing={1} align="center" wrap>
-                    {#each presentTypes as t (t)}
-                      <TypeBadge type={t} color={colorByType.get(t)} active={typeFilter === t} onclick={() => toggleType(t)} />
-                    {/each}
-                  </Stack>
-                </Stack>
-              {/if}
-
-              {#if allNetworks.length > 0}
-                <Stack spacing={0.5}>
-                  <Typography variant="h5">Filter by network</Typography>
-                  <Typography variant="caption" class="text-[color:var(--color-fg-muted)]">
-                    {networkFilter === null
-                      ? 'Tap a network to narrow down.'
-                      : `Showing ${filteredRoutes.length} route${filteredRoutes.length !== 1 ? 's' : ''} in this network.`}
-                  </Typography>
-                  <Stack direction="row" spacing={1} align="center" wrap>
-                    {#each allNetworks as net (net.id)}
-                      {@const Icon = networkIcon(net.id)}
-                      {@const active = networkFilter === net.id}
-                      <Chip
-                        size="small"
-                        hex={net.color}
-                        fg={networkTextColor(net.color)}
-                        onclick={() => toggleNetwork(net.id)}
-                        class={active ? '' : 'opacity-50'}
-                      >
-                        {#snippet icon()}<Icon size={12} />{/snippet}
-                        {net.name}
-                      </Chip>
-                    {/each}
-                  </Stack>
-                </Stack>
-              {/if}
-            </Stack>
-          </CardContent>
-        </Card>
-      {/if}
-
-      {#if favRoutes.length > 0 || favoriteStations.length > 0}
-        <FavoritesCard
-          routes={favRoutes}
-          stations={favoriteStations}
-          stationMarkers={favoritesStore.markers}
-          onChangeStationMarker={changeStationMarker}
-          headerStyle="standalone"
-        >
-          {#snippet routeRow(args: { route: Route; markerStopIds: readonly string[] })}
-            {@render expandableRouteRow(args)}
-          {/snippet}
-        </FavoritesCard>
-      {/if}
-
-      {#if otherRoutes.length > 0}
-        <Card>
-          <CardContent>
-            <Stack spacing={1}>
-              <Stack spacing={0.5}>
-                <Typography variant="h5">
-                  {(favRoutes.length > 0 || favoriteStations.length > 0) ? 'All other routes' : 'All routes'}
-                </Typography>
-                <Typography variant="caption" class="text-[color:var(--color-fg-muted)]">
-                  {otherRoutes.length} more to choose from. Tap the heart to favorite.
-                </Typography>
-              </Stack>
-              <Stack spacing={1}>
-                {#each otherRoutes as route (route.id)}
-                  {@render expandableRouteRow({ route, markerStopIds: catalogRouteStopIds[route.id] ?? [] })}
-                {/each}
-              </Stack>
-            </Stack>
-          </CardContent>
-        </Card>
-      {/if}
-
-      {#if noScheduleRoutes.length > 0}
-        <Card>
-          <CardContent>
-            <Stack spacing={1}>
-              <Stack spacing={0.5}>
-                <Typography variant="h5">All other routes (no schedule available)</Typography>
-                <Typography variant="caption" class="text-[color:var(--color-fg-muted)]">
-                  {noScheduleRoutes.length} route{noScheduleRoutes.length !== 1 ? 's' : ''} without timetable data. Tap the heart to favorite.
-                </Typography>
-              </Stack>
-              <Stack spacing={1}>
-                {#each noScheduleRoutes as route (route.id)}
-                  {@render expandableRouteRow({ route, markerStopIds: catalogRouteStopIds[route.id] ?? [] })}
-                {/each}
-              </Stack>
-            </Stack>
-          </CardContent>
-        </Card>
-      {/if}
-    </Stack>
-  {/if}
-
-  <!-- Tail filler — stretches to fill whatever space the favorites list leaves in <main>. See Stations +page.svelte for the long-form explanation. -->
-  <div class="flex-1 min-h-0" aria-hidden="true"></div>
-</div>

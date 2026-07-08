@@ -561,7 +561,6 @@
             ontoggle={() => stationsViewStore.pickExpand(
               effectiveExpandedStopId === stop.id ? null : stop.id,
             )}
-            marker={null}
           />
         {/each}
       {/if}
