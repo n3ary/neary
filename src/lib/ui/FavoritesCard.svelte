@@ -23,9 +23,12 @@
     stationMarkers?: ReadonlyMap<string, StationMarker>;
     /** Mutate a station's marker. `null` clears. */
     onChangeStationMarker?: (stopId: string, next: StationMarker | null) => void;
-    /** Undefined = show everything. When set, truncates with the
-     *  View-all footer (only if `viewAllHref` is also set). */
-    limit?: number;
+    /** Max routes to show before truncating with the View-all
+     *  footer. Undefined = show all. */
+    routeLimit?: number;
+    /** Max stations to show before truncating with the View-all
+     *  footer. Undefined = show all. */
+    stationLimit?: number;
     /** Footer only renders when truncated AND `viewAllHref` is set. */
     viewAllHref?: string;
     routesLoading?: boolean;
@@ -46,7 +49,8 @@
     routes, stations,
     stationMarkers,
     onChangeStationMarker,
-    limit,
+    routeLimit,
+    stationLimit,
     viewAllHref,
     routesLoading = false,
     routesError = null,
@@ -56,11 +60,19 @@
     headerStyle = 'compact',
   }: Props = $props();
 
-  const visibleRoutes = $derived(limit ? routes.slice(0, limit) : routes);
-  const visibleStations = $derived(limit ? stations.slice(0, limit) : stations);
+  const visibleRoutes = $derived(routeLimit != null ? routes.slice(0, routeLimit) : routes);
+  const visibleStations = $derived(stationLimit != null ? stations.slice(0, stationLimit) : stations);
+  // Stop IDs each visible route serves, batched in one worker call.
+  // Used to render marker badges inline on each row (unique markers
+  // for the route's marked stations). Empty when there are no routes
+  // to look up - matches the existing stopRoutes pattern.
+  let routeStopIds = $state<Record<string, string[]>>({});
   const total = $derived(routes.length + stations.length);
   const shown = $derived(visibleRoutes.length + visibleStations.length);
-  const truncated = $derived(!!limit && shown < total);
+  const truncated = $derived(
+    (routeLimit != null && visibleRoutes.length < routes.length) ||
+    (stationLimit != null && visibleStations.length < stations.length),
+  );
   // One batched worker round-trip so the home limit and /favorites
   // picker view share the same routes-per-station lookup.
   let stopRoutes = $state<Record<string, Route[]>>({});
@@ -94,6 +106,31 @@
     })();
     return () => { cancelled = true; };
   });
+
+  // Per-route stop lists for marker badges. One worker round-trip
+  // for the visible routes; tracked on `visibleRoutes` so the
+  // marker badges follow the same limit + ordering as the rows.
+  $effect(() => {
+    if (visibleRoutes.length === 0) {
+      routeStopIds = {};
+      return;
+    }
+    const ids = visibleRoutes.map((r) => r.id);
+    const currentIds = new Set(ids);
+    let cancelled = false;
+    (async () => {
+      try {
+        const repo = getGtfsRepo();
+        const result = await repo.getStopsForRoutes(ids);
+        if (cancelled) return;
+        if (visibleRoutes.some((r) => !currentIds.has(r.id))) return;
+        routeStopIds = result;
+      } catch {
+        // Marker badges are decorative; an empty map keeps the row renderable.
+      }
+    })();
+    return () => { cancelled = true; };
+  });
   // Subheaders only when both sections exist -- a single section
   // self-labels, two stacked "Routes" would just repeat.
   const showRoutesHeader = $derived(
@@ -105,9 +142,6 @@
 
   function defaultChangeMarker(stopId: string, next: StationMarker | null): void {
     if (next === null) {
-      // Same-marker toggle: clear. Use the store's setMarker to handle
-      // the singleton invariants (home/work/cityCenter clear the prior
-      // owner automatically).
       const current = favoritesStore.markerFor(stopId);
       if (current === undefined) return;
       favoritesStore.setMarker(stopId, null);
@@ -152,6 +186,7 @@
                 {route}
                 isFav={favoritesStore.hasRoute(route.id)}
                 onToggleFavorite={() => favoritesStore.toggleRoute(route.id)}
+                markerStopIds={routeStopIds[route.id]}
                 variant="card"
                 class="mt-1"
               />

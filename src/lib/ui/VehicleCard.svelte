@@ -14,10 +14,12 @@
   import { formatHHMM, formatRelativeMin } from '$lib/domain/types';
   import type { Urgency } from '$lib/domain/buckets';
   import RouteBadge from './RouteBadge.svelte';
+  import StationMarkerBadges from './StationMarkerBadges.svelte';
   import { urgencyClass } from './urgencyClass';
   import { iconButtonClass } from './iconButtonClass';
   import { cn } from './cn';
   import { userPrefs } from '$lib/stores/userPrefs.svelte';
+  import { favoritesStore } from '$lib/stores/favoritesStore.svelte';
   import { statusBus } from '$lib/stores/statusBus.svelte';
 
   type Props = {
@@ -38,12 +40,19 @@
     /** Reflects the expanded state of the stops list panel; rotates
      *  the chevron when true. */
     stopsExpanded?: boolean;
+    /** Stop IDs the vehicle will visit AFTER the station the user is
+     *  viewing. The row renders a deduplicated, in-canonical-order
+     *  set of marker badges (favorite / home / work / cityCenter)
+     *  inline at the end of the headsign. Omit when there's no
+     *  upcoming-journey data (map popup, search-overlay row). */
+    headsignStopIds?: readonly string[];
     class?: string;
   };
 
   let {
     vehicle, urgency, onclick, scheduleHref, mapHref,
     onStopsExpand, stopsExpanded = false,
+    headsignStopIds,
     class: className,
   }: Props = $props();
 
@@ -217,6 +226,19 @@
           class="shrink-0 text-[color:var(--color-fg-muted)]"
         />
         <span class="truncate">{headsign}</span>
+        <!-- Unique markers for the stops this vehicle will visit AFTER
+             this station. Inline-flex so the headsign still ellipsises
+             before the badges push the row wider. Omitted from rows
+             that don't have a headsignStopIds map (map popup, search
+             overlay row). -->
+        {#if headsignStopIds && headsignStopIds.length > 0}
+          <StationMarkerBadges
+            stopIds={headsignStopIds}
+            markerFor={favoritesStore.markerFor}
+            size={12}
+            class="shrink-0"
+          />
+        {/if}
         <!-- Kind/state dot inline at the end of the headsign — was a
              separate fixed slot in the icon group, moved here to free
              one of the row's right-hand slots. Hidden for `scheduled`

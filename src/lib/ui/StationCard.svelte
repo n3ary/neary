@@ -21,6 +21,7 @@
   import type { ScheduleTripStop } from '$lib/data/gtfs/types';
   import type { StationMarker } from '$lib/stores/favoritesStore.svelte';
   import { favoritesStore } from '$lib/stores/favoritesStore.svelte';
+  import { feedsStore } from '$lib/stores/feedsStore.svelte';
   import Avatar from './Avatar.svelte';
   import Box from './Box.svelte';
   import Card from './Card.svelte';
@@ -34,6 +35,8 @@
   import Tooltip from './Tooltip.svelte';
   import TripStopList from './TripStopList.svelte';
   import Typography from './Typography.svelte';
+  import StationMarkerBadges from './StationMarkerBadges.svelte';
+  import { getUpcomingStopsByTrip } from '$lib/data/gtfs/upcomingStops';
   import VehicleCard from './VehicleCard.svelte';
   import { cn } from './cn';
 
@@ -139,6 +142,48 @@
     if (typeof m !== 'number') return '';
     return m < 1000 ? `${Math.round(m)} m` : `${(m / 1000).toFixed(1)} km`;
   }
+
+  // Per-vehicle headsign markers: unique markers across the stops
+  // the vehicle will visit AFTER this station. Reuses the same
+  // worker round-trip used by the expanded stops list, just deduped
+  // by trip so 10 vehicles sharing a board don't fan out 10 calls.
+  // Empty for vehicles at the trip's last stop (no remaining).
+  let vehicleHeadStopIds = $state<Map<string, string[]>>(new Map());
+
+  $effect(() => {
+    const fid = feedsStore.boundFeedId;
+    if (!fid || rows.length === 0) {
+      vehicleHeadStopIds = new Map();
+      return;
+    }
+    // Vehicles that have a trip and aren't at the last stop.
+    const eligible = rows
+      .map((r) => r.vehicle)
+      .filter((v) => v.schedule?.tripId && !v.schedule?.isLastStop);
+    const tripIds = Array.from(new Set(eligible.map((v) => v.schedule!.tripId!)));
+    if (tripIds.length === 0) {
+      vehicleHeadStopIds = new Map();
+      return;
+    }
+    let cancelled = false;
+    (async () => {
+      try {
+        const stopsByTrip = await getUpcomingStopsByTrip(tripIds, station.id);
+        if (cancelled) return;
+        const out = new Map<string, string[]>();
+        for (const v of eligible) {
+          const tid = v.schedule!.tripId!;
+          const stops = stopsByTrip.get(tid) ?? [];
+          out.set(v.id, stops.map((s) => s.stopId));
+        }
+        vehicleHeadStopIds = out;
+      } catch {
+        // Headsign markers are decorative; failures leave the previous
+        // (or empty) map in place so the row still renders.
+      }
+    })();
+    return () => { cancelled = true; };
+  });
 
   // Dedup routes from `allRoutes` if supplied (so all routes serving the
   // station show even when capped out of the 5-row board), otherwise
@@ -354,6 +399,7 @@
                         : undefined}
                       onStopsExpand={stopsEligible ? () => toggleStops(vehicle) : undefined}
                       stopsExpanded={expandedVehicleId === vehicle.id || loadingVehicleId === vehicle.id}
+                      headsignStopIds={vehicleHeadStopIds.get(vehicle.id)}
                     />
                     {#if stopsEligible}
                       <!-- reduced=true: skip Collapsible's

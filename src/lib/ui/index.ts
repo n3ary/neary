@@ -50,6 +50,7 @@ export { default as FavoriteStationRow } from './FavoriteStationRow.svelte';
 export { default as RouteChipsRow } from './RouteChipsRow.svelte';
 export { default as FavoritesCard } from './FavoritesCard.svelte';
 export { default as StationMarkerBadge } from './StationMarkerBadge.svelte';
+export { default as StationMarkerBadges } from './StationMarkerBadges.svelte';
 export { default as StationMarkerDropdown } from './StationMarkerDropdown.svelte';
 export { naturalFit, badgeWidth } from './routeChipLayout';
 

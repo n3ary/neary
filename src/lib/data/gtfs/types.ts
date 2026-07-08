@@ -297,6 +297,10 @@ export interface GtfsRepo {
    * search overlay to render route chips on every result row.
    */
   getRoutesForStops(stopIds: readonly string[]): Promise<Record<string, Route[]>>;
+  /** Distinct stop IDs served by one route, across all trips. */
+  getStopsForRoute(routeId: string): Promise<string[]>;
+  /** Batched variant: `routeId -> stopIds[]` for many routes. */
+  getStopsForRoutes(routeIds: readonly string[]): Promise<Record<string, string[]>>;
 
   /**
    * Route ids for which `stopId` is the first stop (origin) of at least one trip.
