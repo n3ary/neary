@@ -30,7 +30,7 @@
   <Bits.List
     class={cn(
       variant === 'block'
-        ? 'grid w-full grid-cols-2 rounded-md bg-[color:var(--color-border)]/50'
+        ? 'grid w-full grid-cols-2'
         : 'inline-flex items-center gap-1 p-1 rounded-md bg-[color:var(--color-border)]/50',
     )}
   >
@@ -40,7 +40,11 @@
         class={cn(
           'px-3 h-9 text-sm transition-colors',
           variant === 'block'
-            ? 'rounded-md data-[state=active]:bg-[color:var(--color-surface)] data-[state=active]:text-[color:var(--color-fg)] data-[state=active]:shadow-sm text-[color:var(--color-fg-muted)] hover:text-[color:var(--color-fg)]'
+            // Selected tab fills with a soft primary tint; the
+            // surrounding container in /favorites handles the
+            // shared border so the tabs and the catalog card read
+            // as one section.
+            ? 'text-[color:var(--color-fg-muted)] hover:text-[color:var(--color-fg)] data-[state=active]:bg-[color:var(--color-primary)]/15 data-[state=active]:text-[color:var(--color-primary)] data-[state=active]:font-semibold'
             : 'rounded-md data-[state=active]:bg-[color:var(--color-surface)] data-[state=active]:text-[color:var(--color-fg)] data-[state=active]:shadow-sm text-[color:var(--color-fg-muted)] hover:text-[color:var(--color-fg)]',
           'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--color-primary)]',
         )}

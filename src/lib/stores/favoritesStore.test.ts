@@ -92,37 +92,31 @@ describe('favoritesStore station markers', () => {
     expect(favoritesStore.markerFor('s-1')).toBe('home');
   });
 
-  it('assigning home to a new station clears the previous home', () => {
+  it('many stations can share the home marker', () => {
     favoritesStore.setMarker('s-1', 'home');
     favoritesStore.setMarker('s-2', 'home');
-    expect(favoritesStore.markerFor('s-1')).toBeUndefined();
+    favoritesStore.setMarker('s-3', 'home');
+    expect(favoritesStore.markerFor('s-1')).toBe('home');
     expect(favoritesStore.markerFor('s-2')).toBe('home');
+    expect(favoritesStore.markerFor('s-3')).toBe('home');
+    expect(favoritesStore.markers.size).toBe(3);
   });
 
-  it('assigning work to a new station clears the previous work', () => {
+  it('many stations can share the work marker', () => {
     favoritesStore.setMarker('s-1', 'work');
     favoritesStore.setMarker('s-2', 'work');
-    expect(favoritesStore.markerFor('s-1')).toBeUndefined();
+    expect(favoritesStore.markerFor('s-1')).toBe('work');
     expect(favoritesStore.markerFor('s-2')).toBe('work');
   });
 
-  it('assigning cityCenter to a new station clears the previous cityCenter', () => {
+  it('many stations can share the cityCenter marker', () => {
     favoritesStore.setMarker('s-1', 'cityCenter');
     favoritesStore.setMarker('s-2', 'cityCenter');
-    expect(favoritesStore.markerFor('s-1')).toBeUndefined();
+    expect(favoritesStore.markerFor('s-1')).toBe('cityCenter');
     expect(favoritesStore.markerFor('s-2')).toBe('cityCenter');
   });
 
-  it('home, work, cityCenter are independent singletons', () => {
-    favoritesStore.setMarker('s-1', 'home');
-    favoritesStore.setMarker('s-2', 'work');
-    favoritesStore.setMarker('s-3', 'cityCenter');
-    expect(favoritesStore.markerFor('s-1')).toBe('home');
-    expect(favoritesStore.markerFor('s-2')).toBe('work');
-    expect(favoritesStore.markerFor('s-3')).toBe('cityCenter');
-  });
-
-  it('favorite has no singleton constraint', () => {
+  it('favorite has no count limit', () => {
     favoritesStore.setMarker('s-1', 'favorite');
     favoritesStore.setMarker('s-2', 'favorite');
     favoritesStore.setMarker('s-3', 'favorite');
@@ -136,10 +130,10 @@ describe('favoritesStore station markers', () => {
     expect(favoritesStore.markerFor('s-1')).toBeUndefined();
   });
 
-  it('toggleMarker different-type reassigns and respects singleton', () => {
+  it('toggleMarker different-type reassigns without evicting other stations', () => {
     favoritesStore.toggleMarker('s-1', 'home');
     favoritesStore.toggleMarker('s-2', 'home');
-    expect(favoritesStore.markerFor('s-1')).toBeUndefined();
+    expect(favoritesStore.markerFor('s-1')).toBe('home');
     expect(favoritesStore.markerFor('s-2')).toBe('home');
   });
 

@@ -126,12 +126,14 @@
           <opt.Icon
             size={14}
             strokeWidth={2.25}
-            fill={opt.marker === 'favorite' ? 'currentColor' : 'none'}
+            fill={selected && opt.marker === 'favorite' ? 'currentColor' : 'none'}
             class={cn(
-              // favorite: always the danger color (red) per the
-              // explicit exception. Other options: primary when
-              // selected, muted when not.
-              opt.marker === 'favorite'
+              // Selected option: full color (favorite = danger, others = primary).
+              // Unselected (including favorite when home/work/cityCenter is the
+              // active marker): muted grey. The "favorite always red" exception
+              // dropped — favorite reads as just another unselected option
+              // when it isn't the active marker.
+              selected && opt.marker === 'favorite'
                 ? 'text-[color:var(--color-danger)]'
                 : selected
                   ? 'text-[color:var(--color-primary)]'

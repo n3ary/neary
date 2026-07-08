@@ -147,16 +147,17 @@
             : [];
           routeResults = matchingRoutes;
           stopResults = stops;
-        } else {
-          // Favorites are unconditional (the user explicitly opened
-          // search, so duplicating the home card is the point). Nearby
-          // is GPS-gated and deduped against the favorite-stations set.
+} else {
+          // Empty query: show all favorited routes + the closest
+          // GPS-anchored stops. Nearby is GPS-gated only - no dedup
+          // against the favorites set. A favorited nearby station
+          // belongs in both the home favorites card and the search
+          // overlay's nearby section; the user knows it twice.
           const favs = scheduledRoutes
             .filter((r) => favoritesStore.hasRoute(r.id))
-            .sort((x, y) => compareRouteShortName(x.shortName, y.shortName));
+            .sort((x, y) => compareRouteShortName(x.shortName, x.shortName));
           const nearby = hasGps && a
             ? (await repo.searchStops('', a.lat, a.lon, 8, 'distance'))
-                .filter((s) => !favoritesStore.hasMarker(s.id))
                 .slice(0, 4)
             : [];
           routeResults = favs;
