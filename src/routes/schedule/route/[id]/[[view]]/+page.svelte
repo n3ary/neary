@@ -486,8 +486,7 @@ import { favoritesStore } from '$lib/stores/favoritesStore.svelte';
   {/if}
 {/snippet}
 
-<!-- Same shape as Stations: outer is flex flex-col flex-1 so a tail filler can stretch on short lists and collapse to 0 when the departure list fills the viewport. -->
-<div class="mx-auto flex w-full max-w-5xl flex-1 flex-col px-4 py-6">
+<div class="mx-auto max-w-5xl px-4 py-6">
   {#if userPrefs.feedId == null}
     <SelectFeedCard fallbackBody="Pick a feed in Settings to view route schedules." />
   {:else if !routeIdValid}
@@ -726,9 +725,6 @@ import { favoritesStore } from '$lib/stores/favoritesStore.svelte';
       {/if}
     </Stack>
   {/if}
-
-  <!-- Tail filler — stretches to fill whatever space the departure list leaves in <main>. See Stations +page.svelte for the long-form explanation. -->
-  <div class="flex-1 min-h-0" aria-hidden="true"></div>
 </div>
 
 <style>

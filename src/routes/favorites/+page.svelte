@@ -556,6 +556,45 @@
   }
 </script>
 
+<!-- expandableRouteRow: route row + stops-list Collapsible. Routes
+     with no schedule have no representative trip, so the card is
+     non-expandable. The expanded stop list picks up the markers map
+     so each stop shows its badge when set. -->
+{#snippet expandableRouteRow({ route, markerStopIds }: { route: Route; markerStopIds: readonly string[] })}
+  {@const expandable = route.hasSchedule !== false}
+  {@const expanded = expandedRouteId === route.id}
+  {@const stops = routeStops.get(route.id)}
+  {@const loading = loadingRouteId === route.id}
+  {@const failed = stopsErrorRouteId === route.id && expanded && !loading}
+  <div>
+    <FavoriteRouteRow
+      {route}
+      isFav={favoritesStore.hasRoute(route.id)}
+      onToggleFavorite={() => favoritesStore.toggleRoute(route.id)}
+      onbodyclick={() => toggleRouteStops(route)}
+      {markerStopIds}
+    />
+    {#if expandable}
+      <Collapsible in={expanded} reduced>
+        <div class="px-1 pt-1">
+          {#if loading}
+            <Stack direction="row" spacing={1} align="center" class="px-2 py-1">
+              <Spinner size={14} />
+              <Typography variant="caption">Loading stops…</Typography>
+            </Stack>
+          {:else if failed || (expanded && stops != null && stops.length === 0)}
+            <Typography variant="caption" class="px-2 py-1 text-[color:var(--color-fg-muted)]">
+              No stops published for this route today.
+            </Typography>
+          {:else if stops != null}
+            <TripStopList {stops} markers={routeStopMarkers} />
+          {/if}
+        </div>
+      </Collapsible>
+    {/if}
+  </div>
+{/snippet}
+
 <div class="mx-auto max-w-3xl px-4 py-6">
   {#if userPrefs.feedId == null}
     <SelectFeedCard fallbackBody="Pick a feed in Settings to star routes here." />
@@ -809,45 +848,6 @@
           {/if}
         {/if}
       </div>
-    </Stack>
+</Stack>
   {/if}
 </div>
-
-<!-- expandableRouteRow: route row + stops-list Collapsible. Routes
-     with no schedule have no representative trip, so the card is
-     non-expandable. The expanded stop list picks up the markers map
-     so each stop shows its badge when set. -->
-{#snippet expandableRouteRow({ route, markerStopIds }: { route: Route; markerStopIds: readonly string[] })}
-  {@const expandable = route.hasSchedule !== false}
-  {@const expanded = expandedRouteId === route.id}
-  {@const stops = routeStops.get(route.id)}
-  {@const loading = loadingRouteId === route.id}
-  {@const failed = stopsErrorRouteId === route.id && expanded && !loading}
-  <div>
-    <FavoriteRouteRow
-      {route}
-      isFav={favoritesStore.hasRoute(route.id)}
-      onToggleFavorite={() => favoritesStore.toggleRoute(route.id)}
-      onbodyclick={() => toggleRouteStops(route)}
-      {markerStopIds}
-    />
-    {#if expandable}
-      <Collapsible in={expanded} reduced>
-        <div class="px-1 pt-1">
-          {#if loading}
-            <Stack direction="row" spacing={1} align="center" class="px-2 py-1">
-              <Spinner size={14} />
-              <Typography variant="caption">Loading stops…</Typography>
-            </Stack>
-          {:else if failed || (expanded && stops != null && stops.length === 0)}
-            <Typography variant="caption" class="px-2 py-1 text-[color:var(--color-fg-muted)]">
-              No stops published for this route today.
-            </Typography>
-          {:else if stops != null}
-            <TripStopList {stops} markers={routeStopMarkers} />
-          {/if}
-        </div>
-      </Collapsible>
-    {/if}
-  </div>
-{/snippet}
