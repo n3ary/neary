@@ -39,15 +39,15 @@
   }: Props = $props();
 </script>
 
-<div class="min-h-svh flex flex-col bg-[color:var(--color-bg)] text-[color:var(--color-fg)]">
+<div class="min-h-svh flex flex-col bg-[color:var(--color-surface)] text-[color:var(--color-fg)]">
   <!-- Sticky strip so Header and StatusBar scroll together (StatusBar alone would scroll away); wrapper's surface background hides the gap between an active Header and an inactive StatusBar. -->
   <div class="sticky top-0 z-40 bg-[color:var(--color-surface)]">
     <Header {title} {health} {onrefresh} {refreshing} {showSearch} />
     <StatusBar />
   </div>
-  <!-- Surface bg hides the --bg shell showing through flex-1's slack area on short views (Stations with one card, Schedule, empty Favs/Settings) where that slack read as a stripe between the last card and the fixed nav. -->
-  <!-- Bottom padding clears the fixed BottomNavigation plus the iOS home-indicator inset so the nav + inset don't cover the last content row. -->
-  <main class="flex-1 overflow-x-hidden bg-[color:var(--color-surface)] pb-[calc(3.5rem+env(safe-area-inset-bottom,0px))]">
+  <!-- Top spacer pushes the page's flex-col children to the bottom of <main> (just above the fixed BottomNavigation). Without it, flex-1 on <main> would leave the slack area between the content and the nav, reading as an empty band on short views (Stations with one card, Schedule with a short list, empty Favs/Settings). The spacer collapses to 0 when the content overflows, so long views scroll naturally. Bottom padding clears the nav plus the iOS home-indicator inset so the last content row can scroll above both. -->
+  <main class="flex-1 flex flex-col overflow-x-hidden pb-[calc(3.5rem+env(safe-area-inset-bottom,0px))]">
+    <div class="flex-1 min-h-0"></div>
     {@render children?.()}
   </main>
 </div>
