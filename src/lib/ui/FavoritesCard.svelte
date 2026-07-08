@@ -36,8 +36,10 @@
     routesError?: string | null;
     /** Wins over content. */
     stationsError?: string | null;
-    /** e.g. wrap with a stops-list Collapsible on /favorites. */
-    routeRow?: Snippet<[{ route: Route }]>;
+    /** e.g. wrap with a stops-list Collapsible on /favorites. The
+     *  snippet receives the route plus its stopIds so it can render
+     *  marker badges without re-fetching. */
+    routeRow?: Snippet<[{ route: Route; markerStopIds: readonly string[] }]>;
     /** e.g. wrap with a custom row on a different surface. */
     stationRow?: Snippet<[{ stop: StopWithDistance }]>;
     /** 'compact' = Heart icon + h6 (home card-in-card);
@@ -180,7 +182,7 @@
         <Stack spacing={1}>
           {#each visibleRoutes as route (route.id)}
             {#if routeRow}
-              {@render routeRow({ route })}
+              {@render routeRow({ route, markerStopIds: routeStopIds[route.id] ?? [] })}
             {:else}
               <FavoriteRouteRow
                 {route}

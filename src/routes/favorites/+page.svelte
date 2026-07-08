@@ -930,10 +930,11 @@
         <FavoritesCard
           routes={favRoutes}
           stations={favoriteStations}
+          stationMarkers={favoritesStore.markers}
+          onChangeStationMarker={changeStationMarker}
           headerStyle="standalone"
-          {stationsError}
         >
-          {#snippet routeRow(args: { route: Route })}
+          {#snippet routeRow(args: { route: Route; markerStopIds: readonly string[] })}
             {@render expandableRouteRow(args)}
           {/snippet}
         </FavoritesCard>
@@ -953,7 +954,7 @@
               </Stack>
               <Stack spacing={1}>
                 {#each otherRoutes as route (route.id)}
-                  {@render expandableRouteRow({ route })}
+                  {@render expandableRouteRow({ route, markerStopIds: catalogRouteStopIds[route.id] ?? [] })}
                 {/each}
               </Stack>
             </Stack>
@@ -973,7 +974,7 @@
               </Stack>
               <Stack spacing={1}>
                 {#each noScheduleRoutes as route (route.id)}
-                  {@render expandableRouteRow({ route })}
+                  {@render expandableRouteRow({ route, markerStopIds: catalogRouteStopIds[route.id] ?? [] })}
                 {/each}
               </Stack>
             </Stack>
