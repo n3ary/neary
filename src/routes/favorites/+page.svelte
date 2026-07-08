@@ -849,5 +849,5 @@
         {/if}
       </div>
 </Stack>
-  {/if}
+{/if}
 </div>
