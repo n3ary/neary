@@ -48,8 +48,6 @@ class UserPrefs {
         stationBoardMaxRows: number;
         gpsOptedIn: boolean;
         hasEverEnabledGPS: boolean;
-        lastRouteFavoritedAt: number | null;
-        lastStationFavoritedAt: number | null;
         lastRouteMarkedAt: number | null;
         lastStationMarkerAssignedAt: number | null;
       }>;
@@ -62,13 +60,8 @@ class UserPrefs {
       if (typeof o.stationBoardMaxRows === 'number' && o.stationBoardMaxRows > 0) this.stationBoardMaxRows = o.stationBoardMaxRows;
       if (typeof o.gpsOptedIn === 'boolean') this.gpsOptedIn = o.gpsOptedIn;
       if (typeof o.hasEverEnabledGPS === 'boolean') this.hasEverEnabledGPS = o.hasEverEnabledGPS;
-      // Prefer the new keys; fall back to the old `last{Favorite,StationFavorited}At`
-      // shape so a build upgrading from the pre-marker spec keeps the
-      // user's last-activity timestamps instead of resetting to null.
       if (typeof o.lastRouteMarkedAt === 'number') this.lastRouteMarkedAt = o.lastRouteMarkedAt;
-      else if (typeof o.lastRouteFavoritedAt === 'number') this.lastRouteMarkedAt = o.lastRouteFavoritedAt;
       if (typeof o.lastStationMarkerAssignedAt === 'number') this.lastStationMarkerAssignedAt = o.lastStationMarkerAssignedAt;
-      else if (typeof o.lastStationFavoritedAt === 'number') this.lastStationMarkerAssignedAt = o.lastStationFavoritedAt;
     } catch {
       // Corrupt/unreadable — defaults
     }

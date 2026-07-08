@@ -168,29 +168,14 @@ describe('favoritesStore station markers', () => {
   });
 });
 
-describe('favoritesStore loadInitial + migration (legacy marker shape)', () => {
+describe('favoritesStore loadInitial', () => {
   beforeEach(() => {
     favoritesStore.clearRoutes();
     favoritesStore.clearMarkers();
     localStorage.clear();
   });
 
-  it('migrates legacy neary:favoriteStations to { [id]: "favorite" }', () => {
-    // Simulate the pre-#237 contract: an array of station ids.
-    localStorage.setItem('neary:favoriteStations', JSON.stringify(['s-1', 's-2', 's-3']));
-    // Build a fresh store against the current localStorage state.
-    const fresh = new FavoritesStoreInternal();
-    expect(fresh.markerFor('s-1')).toBe('favorite');
-    expect(fresh.markerFor('s-2')).toBe('favorite');
-    expect(fresh.markerFor('s-3')).toBe('favorite');
-    expect(JSON.parse(localStorage.getItem('neary:stationMarkers') ?? '{}')).toEqual({
-      's-1': 'favorite',
-      's-2': 'favorite',
-      's-3': 'favorite',
-    });
-  });
-
-  it('reads the new key directly when present (skips migration)', () => {
+  it('reads the new key directly when present', () => {
     localStorage.setItem('neary:stationMarkers', JSON.stringify({ 's-1': 'home', 's-2': 'favorite' }));
     const fresh = new FavoritesStoreInternal();
     expect(fresh.markerFor('s-1')).toBe('home');

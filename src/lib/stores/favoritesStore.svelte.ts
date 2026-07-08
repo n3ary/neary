@@ -3,18 +3,11 @@
 // station has at most one marker; a station's marker replaces any
 // previous one for the same station. The "single home / work /
 // cityCenter" invariants are enforced here, not at the call site.
-//
-// Legacy migration: builds before 2026-07-07 wrote a `neary:favoriteStations`
-// JSON array (the old #234 contract). On first load with the new
-// storage key missing, we project that array to `{ [id]: "favorite" }`
-// and write the new key. The legacy key is preserved on disk for
-// one release in case rollback is needed.
 
 import { SvelteMap, SvelteSet } from 'svelte/reactivity';
 import { userPrefs } from './userPrefs.svelte';
 
 const STORAGE_KEY_ROUTES = 'neary:favoriteRoutes';
-const STORAGE_KEY_STATIONS_LEGACY = 'neary:favoriteStations';
 const STORAGE_KEY_MARKERS = 'neary:stationMarkers';
 
 export type StationMarker = 'favorite' | 'home' | 'work' | 'cityCenter';
@@ -49,40 +42,14 @@ function loadRoutes(): string[] {
 
 function loadMarkers(): Record<string, StationMarker> {
   if (typeof localStorage === 'undefined') return {};
-  // Prefer the new key.
   try {
     const raw = localStorage.getItem(STORAGE_KEY_MARKERS);
-    if (raw) {
-      const parsed: unknown = JSON.parse(raw);
-      if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
-        const out: Record<string, StationMarker> = {};
-        for (const [k, v] of Object.entries(parsed as Record<string, unknown>)) {
-          if (isStationMarker(v)) out[k] = v;
-        }
-        return out;
-      }
-    }
-  } catch {
-    // fall through to legacy
-  }
-  // Legacy migration: project the old favoritesStations array to
-  // { [id]: "favorite" }.
-  try {
-    const legacyRaw = localStorage.getItem(STORAGE_KEY_STATIONS_LEGACY);
-    if (!legacyRaw) return {};
-    const arr: unknown = JSON.parse(legacyRaw);
-    if (!Array.isArray(arr)) return {};
+    if (!raw) return {};
+    const parsed: unknown = JSON.parse(raw);
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return {};
     const out: Record<string, StationMarker> = {};
-    for (const id of arr) {
-      if (typeof id === 'string' || typeof id === 'number') {
-        out[String(id)] = 'favorite';
-      }
-    }
-    // Persist the migrated form so subsequent loads skip this path.
-    try {
-      localStorage.setItem(STORAGE_KEY_MARKERS, JSON.stringify(out));
-    } catch {
-      // Quota / disabled — silent; the migration still applies in-memory.
+    for (const [k, v] of Object.entries(parsed as Record<string, unknown>)) {
+      if (isStationMarker(v)) out[k] = v;
     }
     return out;
   } catch {
