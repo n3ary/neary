@@ -57,3 +57,55 @@ export function getRouteSchedule(
     .filter((r) => r.tripStartMin >= fromMin && r.tripStartMin <= upper)
     .sort((a, b) => a.tripStartMin - b.tripStartMin);
 }
+
+/** Distinct route_ids that have at least one trip departing in the
+ *  given window on the given local date. Used by the /favorites
+ *  Routes tab to rank "routes running right now" to the top of the
+ *  picker without an N+1 schedule call per route.
+ *
+ *  Window semantics match getRouteSchedule: trips whose trip_start
+ *  (the first stop_time departure_time) falls in
+ *  [nowMin, nowMin + windowMin]. Both directions collapse into a
+ *  single route_id set so the caller can rank without caring about
+ *  direction. */
+export function getActiveRouteIdsInWindow(
+  db: Database,
+  localDate: string,
+  nowMin: number,
+  windowMinutes: number,
+): string[] {
+  const services = activeServicesOn(db, localDate);
+  if (services.length === 0) return [];
+
+  const placeholders = services.map(() => '?').join(',');
+  // Reuses the same trip_start_time projection as getRouteSchedule
+  // (first stop_time's departure_time, "HH:MM:SS" minutes since
+  // midnight). SUBSTR parses the string in SQL since timeToMinutes
+  // is a JS helper unavailable inside the query.
+  type Row = { route_id: string; trip_start_min: number };
+  const rows = selectAll<Row>(
+    db,
+    `SELECT t.route_id,
+            CAST(SUBSTR((SELECT departure_time FROM stop_times WHERE trip_id = t.trip_id
+                         ORDER BY stop_sequence ASC LIMIT 1), 1, 2) AS INTEGER) * 60
+          + CAST(SUBSTR((SELECT departure_time FROM stop_times WHERE trip_id = t.trip_id
+                         ORDER BY stop_sequence ASC LIMIT 1), 4, 2) AS INTEGER)
+            AS trip_start_min
+     FROM trips t
+     WHERE t.service_id IN (${placeholders})
+       AND EXISTS (
+         SELECT 1 FROM stop_times st
+         WHERE st.trip_id = t.trip_id
+           AND st.arrival_time IS NOT NULL
+           AND st.arrival_time != ''
+       );`,
+    [...services],
+  );
+
+  const upper = nowMin + windowMinutes;
+  return Array.from(new Set(
+    rows
+      .filter((r) => r.trip_start_min >= nowMin && r.trip_start_min <= upper)
+      .map((r) => r.route_id),
+  ));
+}

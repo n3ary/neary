@@ -19,6 +19,9 @@
   } from '$lib/domain/buckets';
   import type { BoardRow } from '$lib/domain/stationBoard';
   import type { ScheduleTripStop } from '$lib/data/gtfs/types';
+  import type { StationMarker } from '$lib/stores/favoritesStore.svelte';
+  import { favoritesStore } from '$lib/stores/favoritesStore.svelte';
+  import { feedsStore } from '$lib/stores/feedsStore.svelte';
   import Avatar from './Avatar.svelte';
   import Box from './Box.svelte';
   import Card from './Card.svelte';
@@ -28,9 +31,11 @@
   import IconButton from './IconButton.svelte';
   import RouteBadge from './RouteBadge.svelte';
   import Stack from './Stack.svelte';
+  import StationMarkerBadge from './StationMarkerBadge.svelte';
   import Tooltip from './Tooltip.svelte';
   import TripStopList from './TripStopList.svelte';
   import Typography from './Typography.svelte';
+  import StationMarkerBadges from './StationMarkerBadges.svelte';
   import VehicleCard from './VehicleCard.svelte';
   import { cn } from './cn';
 
@@ -64,6 +69,12 @@
     onRouteClick?: (routeId: string) => void;
     /** Optional set of route ids that are favorited. */
     favoriteRouteIds?: ReadonlySet<string>;
+    /** When set, a StationMarkerBadge renders next to the station
+     *  name. Defaults to looking up the station in favoritesStore
+     *  (the marker model — see favoritesStore.markers) so call
+     *  sites don't have to pass it explicitly. Pass undefined to
+     *  suppress the badge even when a marker exists. */
+    marker?: StationMarker | null;
     /** Route ids for which this station is the first (origin) stop. When set,
      *  the corresponding badge shows the isStart ▶ wedge. */
     originRouteIds?: ReadonlySet<string>;
@@ -83,13 +94,23 @@
     expanded,
     ontoggle,
     dropOffOnly = false,
-    selectedRouteId,
+    selectedRouteId = null,
     onRouteClick,
     favoriteRouteIds,
     originRouteIds,
     getUpcomingStops,
+    marker,
     class: className,
   }: Props = $props();
+
+  // Resolve the marker: explicit prop wins, otherwise look up in the
+  // store so the badge renders without every call site plumbing it.
+  // Callers that want to suppress (e.g. the showcase page) pass null.
+  const resolvedMarker = $derived(
+    marker === null
+      ? null
+      : (marker ?? favoritesStore.markerFor(station.id) ?? null),
+  );
 
   // Stop-list expansion state for vehicle route badge tap.
   let expandedVehicleId = $state<string | null>(null);
@@ -120,6 +141,50 @@
     if (typeof m !== 'number') return '';
     return m < 1000 ? `${Math.round(m)} m` : `${(m / 1000).toFixed(1)} km`;
   }
+
+  // Per-vehicle headsign markers: unique markers across the stops
+  // the vehicle will visit AFTER this station. Reuses the same
+  // `getUpcomingStops` helper that powers the expanded stops list,
+  // called per vehicle (N+1) - acceptable for a typical board
+  // (5-10 vehicles) and avoids introducing a parallel batched
+  // helper for one consumer. Empty for vehicles at the trip's
+  // last stop (no remaining).
+  let vehicleHeadStopIds = $state<Map<string, string[]>>(new Map());
+
+  $effect(() => {
+    const fid = feedsStore.boundFeedId;
+    if (!fid || rows.length === 0 || !getUpcomingStops) {
+      vehicleHeadStopIds = new Map();
+      return;
+    }
+    // Vehicles that have a trip and aren't at the last stop.
+    const eligible = rows
+      .map((r) => r.vehicle)
+      .filter((v) => v.schedule?.tripId && !v.schedule?.isLastStop);
+    if (eligible.length === 0) {
+      vehicleHeadStopIds = new Map();
+      return;
+    }
+    let cancelled = false;
+    (async () => {
+      try {
+        const out = new Map<string, string[]>();
+        await Promise.all(
+          eligible.map(async (v) => {
+            const stops = await getUpcomingStops!(v.schedule!.tripId!, station.id);
+            if (cancelled) return;
+            out.set(v.id, stops.map((s) => s.stopId));
+          }),
+        );
+        if (cancelled) return;
+        vehicleHeadStopIds = out;
+      } catch {
+        // Headsign markers are decorative; failures leave the previous
+        // (or empty) map in place so the row still renders.
+      }
+    })();
+    return () => { cancelled = true; };
+  });
 
   // Dedup routes from `allRoutes` if supplied (so all routes serving the
   // station show even when capped out of the 5-row board), otherwise
@@ -220,7 +285,12 @@
         )}
       >
         <Stack spacing={0.5}>
-          <Typography variant="h6" class="truncate">{station.name}</Typography>
+          <Stack direction="row" spacing={1} align="center" class="min-w-0">
+            {#if resolvedMarker}
+              <StationMarkerBadge marker={resolvedMarker} size={14} />
+            {/if}
+            <Typography variant="h6" class="truncate">{station.name}</Typography>
+          </Stack>
 
           <Stack direction="row" spacing={1} align="center" wrap>
             {#if typeof station.distance === 'number'}
@@ -330,6 +400,7 @@
                         : undefined}
                       onStopsExpand={stopsEligible ? () => toggleStops(vehicle) : undefined}
                       stopsExpanded={expandedVehicleId === vehicle.id || loadingVehicleId === vehicle.id}
+                      headsignStopIds={vehicleHeadStopIds.get(vehicle.id)}
                     />
                     {#if stopsEligible}
                       <!-- reduced=true: skip Collapsible's
@@ -346,7 +417,7 @@
                       <Collapsible in={expandedVehicleId === vehicle.id} reduced>
                         {#if vehicleStops != null && expandedVehicleId === vehicle.id}
                           <div class="rounded-md border border-[color:var(--color-border)]/60 bg-[color:var(--color-surface-raised,var(--color-surface))] overflow-hidden">
-                            <TripStopList stops={vehicleStops} class="py-1" />
+                            <TripStopList stops={vehicleStops} markers={favoritesStore.markers} class="py-1" />
                           </div>
                         {/if}
                       </Collapsible>

@@ -6,7 +6,7 @@
     Collapsible, Dialog, DialogContent, DialogTitle, FavoriteStationRow,
     IconButton, InfoCard, List, ListItem, ListItemText, SelectFeedCard,
     ProgressBar, RouteBadge, RouteChipsRow, Spinner, Stack,
-    StationCard, StatusDot, Switch, Tabs, TextField,
+    StationCard, StationMarkerBadges, StationMarkerDropdown, StatusDot, Switch, Tabs, TextField,
     ToggleGroup, Tooltip, TripStopList, Typography, TypeBadge, VehicleCard,
   } from '$lib/ui';
   import type { Route, Station, Vehicle, VehicleType } from '$lib/domain/types';
@@ -14,6 +14,7 @@
   import type { BoardRow } from '$lib/domain/stationBoard';
   import { statusBus } from '$lib/stores/statusBus.svelte';
   import { userPrefs, type Theme } from '$lib/stores/userPrefs.svelte';
+  import { favoritesStore, type StationMarker } from '$lib/stores/favoritesStore.svelte';
   import {
     Bus, Locate, MapPin, RefreshCw, Search, Sun, Moon,
   } from 'lucide-svelte';
@@ -549,10 +550,78 @@
         stop={demoSearchStop}
         routes={demoSearchRoutes}
         hasGps
-        isFav={false}
-        onToggleFavorite={() => statusBus.push({ id: 'fsr-fav', kind: 'info', message: 'Toggled favorite (demo)' })}
+        marker={undefined}
+        onChangeMarker={() => statusBus.push({ id: 'fsr-fav', kind: 'info', message: 'Would open marker dropdown' })}
         onbodyclick={() => statusBus.push({ id: 'fsr-click', kind: 'info', message: 'Would open /station/<id>' })}
       />
+
+      <Typography variant="caption" class="text-[color:var(--color-fg-muted)]">
+        Same row, each marker type. The dropdown trigger icon swaps
+        to reflect the active marker: filled red Heart for favorite,
+        outlined Home / Briefcase / Concentric Circles for the others.
+      </Typography>
+      <Stack spacing={0.5}>
+        {#each (['favorite', 'home', 'work', 'cityCenter'] as StationMarker[]) as m (m)}
+          <FavoriteStationRow
+            stop={{ ...demoSearchStop, id: `demo-${m}` }}
+            routes={demoSearchRoutes}
+            hasGps
+            marker={m}
+            onChangeMarker={() => statusBus.push({ id: `fsr-${m}`, kind: 'info', message: `Would clear ${m} marker` })}
+            onbodyclick={() => statusBus.push({ id: `fsr-click-${m}`, kind: 'info', message: 'Would open /station/<id>' })}
+          />
+        {/each}
+      </Stack>
+    </Stack>
+
+    <Stack spacing={1}>
+      <Typography variant="body2">StationMarkerDropdown — popover with Normal + 4 markers</Typography>
+      <Typography variant="caption" class="text-[color:var(--color-fg-muted)]">
+        The dropdown is opened by clicking the icon. Selected option
+        renders in its full color (favorite = danger, others = primary);
+        unselected options render muted. Tapping the active marker
+        clears it (toggle shortcut); tapping Normal always clears.
+      </Typography>
+      <Stack direction="row" spacing={2} align="center">
+        {#each (['favorite', 'home', 'work', 'cityCenter'] as StationMarker[]) as m (m)}
+          <StationMarkerDropdown
+            stationId={`demo-${m}`}
+            marker={m}
+            onChange={() => statusBus.push({ id: `smd-${m}`, kind: 'info', message: `Would clear ${m} marker` })}
+            label={`Demo ${m} station`}
+          />
+        {/each}
+      </Stack>
+    </Stack>
+
+    <Stack spacing={1}>
+      <Typography variant="body2">StationMarkerBadges — deduped marker set for any list of stop IDs</Typography>
+      <Typography variant="caption" class="text-[color:var(--color-fg-muted)]">
+        Renders each marker at most once, in canonical STATION_MARKERS
+        order (favorite, home, work, cityCenter). Same primitive used
+        by the vehicle headsign and the FavoriteRouteRow; pass any list
+        of stop IDs and the matching markers dedupe automatically.
+      </Typography>
+      <Stack direction="row" spacing={3} align="center" wrap>
+        {#each [
+          { label: '1 favorite stop', ids: ['demo-fav'] },
+          { label: 'multiple favorites (still 1 badge)', ids: ['demo-fav', 'demo-fav2', 'demo-fav3'] },
+          { label: 'home + work', ids: ['demo-home', 'demo-work'] },
+          { label: 'all four markers', ids: ['demo-fav', 'demo-home', 'demo-work', 'demo-cc'] },
+          { label: 'no markers', ids: ['demo-empty'] },
+        ] as sample (sample.label)}
+          <Stack spacing={0.5} align="center">
+            <StationMarkerBadges
+              stopIds={sample.ids}
+              markerFor={(id) => favoritesStore.markerFor(id) ?? (id === 'demo-fav' ? 'favorite' : id === 'demo-home' ? 'home' : id === 'demo-work' ? 'work' : id === 'demo-cc' ? 'cityCenter' : undefined)}
+              size={14}
+            />
+            <Typography variant="caption" class="text-[color:var(--color-fg-muted)]">
+              {sample.label}
+            </Typography>
+          </Stack>
+        {/each}
+      </Stack>
     </Stack>
 
     <Stack spacing={1}>

@@ -22,10 +22,11 @@
   import {
     dayOfWeekInTz, minSinceMidnightInTz, scheduleWindowFor,
   } from '$lib/domain/pipeline/timeUtils';
-  import { feedsStore } from '$lib/stores/feedsStore.svelte';
-  import { nowTicker } from '$lib/stores/nowTicker.svelte';
-  import { refreshBus } from '$lib/stores/refreshBus.svelte';
-  import { userPrefs } from '$lib/stores/userPrefs.svelte';
+import { feedsStore } from '$lib/stores/feedsStore.svelte';
+import { nowTicker } from '$lib/stores/nowTicker.svelte';
+import { refreshBus } from '$lib/stores/refreshBus.svelte';
+import { userPrefs } from '$lib/stores/userPrefs.svelte';
+import { favoritesStore } from '$lib/stores/favoritesStore.svelte';
 
   // ── URL params ──────────────────────────────────────────────────────
   // The `id` segment carries both route id and (optional) direction:
@@ -653,7 +654,7 @@
                               </Typography>
                             </Stack>
                           {:else}
-                            <TripStopList stops={stops} showDepartureMarker />
+                            <TripStopList stops={stops} markers={favoritesStore.markers} showDepartureMarker />
                           {/if}
                         </div>
                       {/if}

@@ -357,6 +357,8 @@
   {activeNav}
   onnav={(to) => goto(to)}
   onrefresh={startRefresh}
+  // Search icon is the global entry point to the station/route picker
+  // overlay; available on every page that has a bound feed.
   showSearch={userPrefs.feedId != null}
 >
   {@render children()}

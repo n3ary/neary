@@ -1,13 +1,13 @@
-<!-- Small badge representing a vehicle type. Shape matches RouteBadge (rounded square, similar padding + font) so it reads as a peer in the same UI surface.
+<!-- Small filter button. Originally scoped to vehicle-type mode filters
+  (Filter by Mode in /favorites), but the same visual contract - filled
+  accent + active ring + dimmed inactive - reads well for any filter row,
+  so the network and marker filters also use it. Caller passes the
+  accent color and a label; TypeBadge handles shape, active state, and
+  contrast (auto for hex colors, caller-provided for CSS-var colors).
 
-  Color is data-driven: callers pass a `color` (typically taken from
-  a route of that type in the loaded catalog). No palette and no
-  color logic in this component — whatever the feed shipped is what
-  the chip shows. When the catalog hasn't loaded yet and no color is
-  available, the chip renders against a theme-neutral surface.
-
-  Used by the /favorites view as a single-select mode filter. Active
-  = solid filled (badge "on"), inactive = outlined (badge "off").
+  Used by /favorites for the three filter rows. Active = full opacity
+  + white ring; inactive = same fill but dimmed so the unselected
+  state reads clearly.
 -->
 <script lang="ts">
   import type { VehicleType } from '$lib/domain/types';
@@ -17,12 +17,19 @@
   type Size = 'small' | 'medium' | 'large';
 
   type Props = {
-    type: VehicleType;
-    /** Per-type accent color, taken from a route of this type in the
-     *  loaded catalog. When undefined (catalog not loaded yet, or no
-     *  route of this type), the chip renders against the theme's
-     *  elevated surface. */
+    /** Vehicle type for the default mode-filter case. Optional when
+     *  `label` is provided (network / marker filters pass a custom
+     *  label). */
+    type?: VehicleType;
+    /** Override the rendered label. Defaults to `vehicleTypeLabel(type)`. */
+    label?: string;
+    /** Background color. A hex string gets auto-contrast fg; a CSS
+     *  `var(...)` string renders against the supplied `fg` (or
+     *  `var(--color-fg)` as a final fallback). */
     color?: string;
+    /** Explicit foreground color. Use when `color` is a CSS variable
+     *  and you want a theme-aware fg (e.g. `var(--color-primary-fg)`). */
+    fg?: string;
     active?: boolean;
     onclick?: () => void;
     size?: Size;
@@ -30,7 +37,7 @@
   };
 
   let {
-    type, color, active = false, onclick, size = 'medium', class: className,
+    type, label, color, fg, active = false, onclick, size = 'medium', class: className,
   }: Props = $props();
 
   const SIZE: Record<Size, string> = {
@@ -40,20 +47,24 @@
   };
 
   const bg = $derived(color ?? 'var(--color-surface-elevated)');
-  const fg = $derived(color ? pickContrastingText(color) : 'var(--color-fg)');
-  const label = $derived(vehicleTypeLabel(type));
+  const autoFg = $derived(
+    color
+      ? color.startsWith('var(') || color.startsWith('oklch') || color.startsWith('rgb')
+        ? (fg ?? 'var(--color-fg)')
+        : pickContrastingText(color)
+      : 'var(--color-fg)'
+  );
+  const computedFg = $derived(fg ?? autoFg);
+  const renderedLabel = $derived(label ?? (type ? vehicleTypeLabel(type) : ''));
 </script>
 
-<!-- Always filled (like RouteBadge in route mode) so filter chips look
-     like the route badges they filter. Active = full opacity + white ring;
-     inactive = same fill but dimmed so the unselected state reads clearly. -->
 <button
   type="button"
-  aria-label={`Filter by ${label}`}
+  aria-label={renderedLabel ? `Filter by ${renderedLabel}` : undefined}
   aria-pressed={active}
-  title={label}
+  title={renderedLabel}
   onclick={onclick}
-  style={`background:${bg};color:${fg};${!active ? 'opacity:0.6;' : ''}`}
+  style={`background:${bg};color:${computedFg};${!active ? 'opacity:0.6;' : ''}`}
   class={cn(
     'inline-flex items-center justify-center font-semibold rounded-md select-none whitespace-nowrap cursor-pointer',
     'transition-all',
@@ -63,5 +74,5 @@
     className,
   )}
 >
-  {label}
+  {renderedLabel}
 </button>

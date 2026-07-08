@@ -156,3 +156,49 @@ export function getRoutesForStops(
   }
   return grouped;
 }
+
+/** Distinct stop IDs served by the given route across all its trips
+ *  in the feed. Used by the favorites card and /favorites route rows
+ *  to surface marker badges (favorite / home / work / cityCenter) for
+ *  stops the route serves. Returns stop IDs only - call sites join
+ *  with `favoritesStore.markers` client-side to render badges. */
+export function getStopsForRoute(db: Database, routeId: string): string[] {
+  type Row = { stop_id: string };
+  const rows = selectAll<Row>(
+    db,
+    `SELECT DISTINCT st.stop_id
+     FROM stop_times st
+     JOIN trips t ON t.trip_id = st.trip_id
+     WHERE t.route_id = ?`,
+    [routeId],
+  );
+  return rows.map((r) => r.stop_id);
+}
+
+/** Batched variant of {@link getStopsForRoute} — one SQL round-trip
+ *  for many route IDs. Returns `routeId -> stopIds[]`; routes with no
+ *  stops are omitted (callers should treat missing keys as an empty
+ *  list). Used by the favorites card to render marker badges for a
+ *  full route list without N Comlink hops. */
+export function getStopsForRoutes(
+  db: Database,
+  routeIds: readonly string[],
+): Record<string, string[]> {
+  if (routeIds.length === 0) return {};
+  type Row = { route_id: string; stop_id: string };
+  const ph = routeIds.map(() => '?').join(',');
+  const rows = selectAll<Row>(
+    db,
+    `SELECT DISTINCT t.route_id, st.stop_id
+     FROM stop_times st
+     JOIN trips t ON t.trip_id = st.trip_id
+     WHERE t.route_id IN (${ph})`,
+    [...routeIds],
+  );
+  const out: Record<string, string[]> = {};
+  for (const r of rows) {
+    if (!out[r.route_id]) out[r.route_id] = [];
+    out[r.route_id].push(r.stop_id);
+  }
+  return out;
+}

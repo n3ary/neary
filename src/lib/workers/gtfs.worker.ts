@@ -36,14 +36,15 @@ import { ensureDb, state } from './gtfs/state';
 
 import { getRouteDirectionEndpoints } from './gtfs/queries/routeEndpoints';
 import { getRouteMapView } from './gtfs/queries/routeMapView';
-import { getRouteSchedule } from './gtfs/queries/routeSchedule';
+import { getActiveRouteIdsInWindow, getRouteSchedule } from './gtfs/queries/routeSchedule';
 import { getStopsAlongTrip } from './gtfs/queries/routeStops';
-import { getRouteById, getRoutes, getRoutesForStop, getRoutesForStops } from './gtfs/queries/routes';
+import { getRouteById, getRoutes, getRoutesForStop, getRoutesForStops, getStopsForRoute, getStopsForRoutes } from './gtfs/queries/routes';
 import { getNetworks } from './gtfs/queries/networks';
 import { getFeedConfig } from './gtfs/queries/feedConfig';
 import { getStationBoard, getStationBoardsNear } from './gtfs/queries/stationBoards';
 import { getDeparturesFromStop, getOriginRoutesAtStop, getStopsByIds, getStopsNear, searchStops } from './gtfs/queries/stops';
 import { getWeeklySchedule } from './gtfs/queries/weeklySchedule';
+import { getRoutesThroughStations as getRoutesThroughStationsImpl, getStationsPage as getStationsPageImpl } from './gtfs/queries/favoritesQueries';
 
 const api: GtfsRepo = {
   async setFeed(
@@ -115,6 +116,12 @@ const api: GtfsRepo = {
   async getRoutesForStops(stopIds: readonly string[]) {
     return getRoutesForStops(await ensureDb(), stopIds);
   },
+  async getStopsForRoute(routeId: string) {
+    return getStopsForRoute(await ensureDb(), routeId);
+  },
+  async getStopsForRoutes(routeIds: readonly string[]) {
+    return getStopsForRoutes(await ensureDb(), routeIds);
+  },
 
   // ── Stops ───────────────────────────────────────────────────────────
   async getStopsNear(lat, lon, radiusMeters, limit) {
@@ -135,6 +142,21 @@ const api: GtfsRepo = {
   },
   async getStopsByIds(stopIds: readonly string[]) {
     return getStopsByIds(await ensureDb(), stopIds);
+  },
+  async getRoutesThroughStations(filter) {
+    return getRoutesThroughStationsImpl(await ensureDb(), {
+      modes: filter.modes ? new Set(filter.modes) : undefined,
+      networks: filter.networks ? new Set(filter.networks) : undefined,
+    });
+  },
+  async getStationsPage(query) {
+    return getStationsPageImpl(await ensureDb(), {
+      offset: query.offset,
+      limit: query.limit,
+      sortBy: query.sortBy,
+      anchor: query.anchor,
+      scope: query.scope ? new Set(query.scope) : undefined,
+    });
   },
 
   // ── Station boards ──────────────────────────────────────────────────
@@ -169,6 +191,14 @@ const api: GtfsRepo = {
       directionId,
       localDate,
       fromMin,
+      windowMinutes,
+    );
+  },
+  async getActiveRouteIdsInWindow(localDate, nowMin, windowMinutes) {
+    return getActiveRouteIdsInWindow(
+      await ensureDb(),
+      localDate,
+      nowMin,
       windowMinutes,
     );
   },

@@ -168,6 +168,50 @@ export interface GtfsRepo {
    */
   getStopsByIds(stopIds: readonly string[]): Promise<StopWithDistance[]>;
 
+  /**
+   * Filter-cascade scope: distinct routes that serve each schedule-
+   * bearing stop in the feed, optionally narrowed by mode + network.
+   *
+   * "Serves" = at least one trip with a usable arrival_time stops
+   * there, same definition as `getRoutesForStops`. The 24-hour window
+   * the spec mentions is implicit — we consider all services
+   * (any day-of-week, any calendar window) so the result is stable
+   * across a single bound feed and doesn't refetch as the minute
+   * rolls over.
+   *
+   * Result: object keyed by stop_id; stops with zero matching
+   * routes are absent (caller treats as out-of-scope). Empty
+   * `networks` Set means "no networks match" — every station is out
+   * of scope. Empty `modes` Set is the same.
+   *
+   * Cached in the worker keyed by filter signature (4-entry LRU cap)
+   * so toggling filters back-and-forth is free after the first call.
+   * Feed switches invalidate via the db handle.
+   */
+  getRoutesThroughStations(filter: {
+    modes?: ReadonlyArray<import('$lib/domain/types').VehicleType>;
+    networks?: ReadonlyArray<string>;
+  }): Promise<Record<string, Route[]>>;
+
+  /**
+   * One page of stations for the /favorites Stations tab.
+   * `scope` is the pre-computed filter-cascade result; `undefined`
+   * means "no filter cascade, return the full feed set".
+   *
+   * Returns the page rows plus the total scope size so the caller
+   * can decide whether to prefetch the next page.
+   */
+  getStationsPage(query: {
+    offset: number;
+    limit: number;
+    sortBy: 'name' | 'distance';
+    anchor?: { lat: number; lon: number };
+    scope?: ReadonlyArray<string>;
+  }): Promise<{
+    rows: StopWithDistance[];
+    total: number;
+  }>;
+
   /** Single route by id, or null when the id isn't in the feed. */
   getRouteById(routeId: string): Promise<Route | null>;
 
@@ -197,6 +241,19 @@ export interface GtfsRepo {
    * view to render the stop strip + estimated arrival per stop.
    */
   getStopsAlongTrip(tripId: string): Promise<ScheduleTripStop[]>;
+
+  /**
+   * Distinct route_ids with at least one trip departing in
+   * [nowMin, nowMin + windowMin] on the given local date. Used by
+   * the /favorites Routes tab to rank "routes running right now"
+   * to the top without an N+1 schedule call per route. Both
+   * directions collapse to a single set.
+   */
+  getActiveRouteIdsInWindow(
+    localDate: string,
+    nowMin: number,
+    windowMinutes: number,
+  ): Promise<string[]>;
 
   /**
    * Departure times at the trip origin grouped by day-of-week
@@ -240,6 +297,10 @@ export interface GtfsRepo {
    * search overlay to render route chips on every result row.
    */
   getRoutesForStops(stopIds: readonly string[]): Promise<Record<string, Route[]>>;
+  /** Distinct stop IDs served by one route, across all trips. */
+  getStopsForRoute(routeId: string): Promise<string[]>;
+  /** Batched variant: `routeId -> stopIds[]` for many routes. */
+  getStopsForRoutes(routeIds: readonly string[]): Promise<Record<string, string[]>>;
 
   /**
    * Route ids for which `stopId` is the first stop (origin) of at least one trip.

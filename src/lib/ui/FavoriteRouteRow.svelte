@@ -6,6 +6,8 @@
   import { cn } from './cn';
   import { iconButtonClass } from './iconButtonClass';
   import RouteBadge from './RouteBadge.svelte';
+  import StationMarkerBadges from './StationMarkerBadges.svelte';
+  import { favoritesStore } from '$lib/stores/favoritesStore.svelte';
 
   type Props = {
     route: Route;
@@ -15,6 +17,11 @@
      *  (no role, no tabindex, no key handler) and only the inner
      *  controls do anything. */
     onbodyclick?: (() => void) | null;
+    /** Stop IDs the route serves. The row renders unique marker
+     *  badges inline after the route long name. Omit on rows that
+     *  don't have a stop-list (search overlay before the chip row
+     *  loads, for example). */
+    markerStopIds?: readonly string[];
     variant?: 'card' | 'inline';
     class?: string;
   };
@@ -24,6 +31,7 @@
     isFav,
     onToggleFavorite,
     onbodyclick = null,
+    markerStopIds,
     variant = 'card',
     class: className,
   }: Props = $props();
@@ -81,7 +89,17 @@
     <RouteBadge {route} size="medium" class="min-w-14" />
   </a>
   <div class="min-w-0 flex-1">
-    <div class="text-sm font-medium truncate">{primaryLabel}</div>
+    <div class="text-sm font-medium flex items-center gap-1.5">
+      <span class="truncate">{primaryLabel}</span>
+      {#if markerStopIds && markerStopIds.length > 0}
+        <StationMarkerBadges
+          stopIds={markerStopIds}
+          markerFor={favoritesStore.markerFor}
+          size={12}
+          class="shrink-0"
+        />
+      {/if}
+    </div>
     {#if route.description}
       <div class="text-xs truncate text-[color:var(--color-fg-muted)]">{route.description}</div>
     {/if}

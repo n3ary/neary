@@ -6,31 +6,38 @@
 <script lang="ts">
   import type { Snippet } from 'svelte';
   import { goto } from '$app/navigation';
-  import { Heart } from 'lucide-svelte';
   import type { Route } from '$lib/domain/types';
   import type { StopWithDistance } from '$lib/data/gtfs/types';
+  import { favoritesStore, type StationMarker } from '$lib/stores/favoritesStore.svelte';
   import { getGtfsRepo } from '$lib/data/gtfs/repo';
   import {
     Button, Card, CardContent, FavoriteRouteRow, FavoriteStationRow,
     Spinner, Stack, Typography,
   } from '$lib/ui';
-  import { favoritesStore } from '$lib/stores/favoritesStore.svelte';
 
   type Props = {
     routes: Route[];
     stations: StopWithDistance[];
-    /** Undefined = show everything. When set, truncates with the
-     *  View-all footer (only if `viewAllHref` is also set). */
-    limit?: number;
+    /** Marker assignments keyed by stop id. Omitted ids default to
+     *  undefined (unstarred). */
+    stationMarkers?: ReadonlyMap<string, StationMarker>;
+    /** Mutate a station's marker. `null` clears. */
+    onChangeStationMarker?: (stopId: string, next: StationMarker | null) => void;
+    /** Max routes to show before truncating with the View-all
+     *  footer. Undefined = show all. */
+    routeLimit?: number;
+    /** Max stations to show before truncating with the View-all
+     *  footer. Undefined = show all. */
+    stationLimit?: number;
     /** Footer only renders when truncated AND `viewAllHref` is set. */
     viewAllHref?: string;
     routesLoading?: boolean;
     /** Wins over loading + content. */
     routesError?: string | null;
-    /** Wins over content. */
-    stationsError?: string | null;
-    /** e.g. wrap with a stops-list Collapsible on /favorites. */
-    routeRow?: Snippet<[{ route: Route }]>;
+    /** e.g. wrap with a stops-list Collapsible on /favorites. The
+     *  snippet receives the route plus its stopIds so it can render
+     *  marker badges without re-fetching. */
+    routeRow?: Snippet<[{ route: Route; markerStopIds: readonly string[] }]>;
     /** e.g. wrap with a custom row on a different surface. */
     stationRow?: Snippet<[{ stop: StopWithDistance }]>;
     /** 'compact' = Heart icon + h6 (home card-in-card);
@@ -40,21 +47,31 @@
 
   let {
     routes, stations,
-    limit,
+    stationMarkers,
+    onChangeStationMarker,
+    routeLimit,
+    stationLimit,
     viewAllHref,
     routesLoading = false,
     routesError = null,
-    stationsError = null,
     routeRow,
     stationRow,
     headerStyle = 'compact',
   }: Props = $props();
 
-  const visibleRoutes = $derived(limit ? routes.slice(0, limit) : routes);
-  const visibleStations = $derived(limit ? stations.slice(0, limit) : stations);
+  const visibleRoutes = $derived(routeLimit != null ? routes.slice(0, routeLimit) : routes);
+  const visibleStations = $derived(stationLimit != null ? stations.slice(0, stationLimit) : stations);
+  // Stop IDs each visible route serves, batched in one worker call.
+  // Used to render marker badges inline on each row (unique markers
+  // for the route's marked stations). Empty when there are no routes
+  // to look up - matches the existing stopRoutes pattern.
+  let routeStopIds = $state<Record<string, string[]>>({});
   const total = $derived(routes.length + stations.length);
   const shown = $derived(visibleRoutes.length + visibleStations.length);
-  const truncated = $derived(!!limit && shown < total);
+  const truncated = $derived(
+    (routeLimit != null && visibleRoutes.length < routes.length) ||
+    (stationLimit != null && visibleStations.length < stations.length),
+  );
   // One batched worker round-trip so the home limit and /favorites
   // picker view share the same routes-per-station lookup.
   let stopRoutes = $state<Record<string, Route[]>>({});
@@ -88,6 +105,31 @@
     })();
     return () => { cancelled = true; };
   });
+
+  // Per-route stop lists for marker badges. One worker round-trip
+  // for the visible routes; tracked on `visibleRoutes` so the
+  // marker badges follow the same limit + ordering as the rows.
+  $effect(() => {
+    if (visibleRoutes.length === 0) {
+      routeStopIds = {};
+      return;
+    }
+    const ids = visibleRoutes.map((r) => r.id);
+    const currentIds = new Set(ids);
+    let cancelled = false;
+    (async () => {
+      try {
+        const repo = getGtfsRepo();
+        const result = await repo.getStopsForRoutes(ids);
+        if (cancelled) return;
+        if (visibleRoutes.some((r) => !currentIds.has(r.id))) return;
+        routeStopIds = result;
+      } catch {
+        // Marker badges are decorative; an empty map keeps the row renderable.
+      }
+    })();
+    return () => { cancelled = true; };
+  });
   // Subheaders only when both sections exist -- a single section
   // self-labels, two stacked "Routes" would just repeat.
   const showRoutesHeader = $derived(
@@ -96,16 +138,23 @@
   const showStationsHeader = $derived(
     visibleStations.length > 0 && visibleRoutes.length > 0,
   );
+
+  function defaultChangeMarker(stopId: string, next: StationMarker | null): void {
+    if (next === null) {
+      const current = favoritesStore.markerFor(stopId);
+      if (current === undefined) return;
+      favoritesStore.setMarker(stopId, null);
+    } else {
+      favoritesStore.setMarker(stopId, next);
+    }
+  }
 </script>
 
 <Card>
   <CardContent>
     <Stack spacing={1}>
       {#if headerStyle === 'compact'}
-        <Stack direction="row" spacing={1} align="center">
-          <Heart size={16} class="shrink-0 text-[color:var(--color-fg-muted)]" />
-          <Typography variant="h6">Your favorites</Typography>
-        </Stack>
+        <Typography variant="h6">Your favorites</Typography>
       {:else}
         <Typography variant="h5">Your favorites</Typography>
       {/if}
@@ -130,12 +179,13 @@
         <Stack spacing={1}>
           {#each visibleRoutes as route (route.id)}
             {#if routeRow}
-              {@render routeRow({ route })}
+              {@render routeRow({ route, markerStopIds: routeStopIds[route.id] ?? [] })}
             {:else}
               <FavoriteRouteRow
                 {route}
                 isFav={favoritesStore.hasRoute(route.id)}
                 onToggleFavorite={() => favoritesStore.toggleRoute(route.id)}
+                markerStopIds={routeStopIds[route.id]}
                 variant="card"
                 class="mt-1"
               />
@@ -145,11 +195,6 @@
       {/if}
 
       {#if visibleStations.length > 0}
-        {#if stationsError}
-          <Typography variant="caption" class="px-2 py-1 text-[color:var(--color-danger)]">
-            {stationsError}
-          </Typography>
-        {/if}
         {#if showStationsHeader}
           <Typography variant="caption" class="block pt-2 px-1 text-[color:var(--color-fg-muted)]">
             Stations
@@ -161,11 +206,14 @@
               {@render stationRow({ stop })}
             {:else}
               <FavoriteStationRow
-                {stop}
-                isFav={favoritesStore.hasStation(stop.id)}
-                onToggleFavorite={() => favoritesStore.toggleStation(stop.id)}
+                stop={stop}
+                marker={stationMarkers?.get(stop.id)}
+                onChangeMarker={(next) => onChangeStationMarker
+                  ? onChangeStationMarker(stop.id, next)
+                  : defaultChangeMarker(stop.id, next)}
                 onbodyclick={() => goto(`/station/${stop.id}`)}
                 routes={stopRoutes[stop.id]}
+                hasGps={false}
                 variant="card"
                 class="mt-1"
               />

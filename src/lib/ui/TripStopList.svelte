@@ -7,21 +7,31 @@
   showDepartureMarker: adds a departure arrow to row 0 (used by the
   schedule view where the first stop is the trip's true origin).
   Omit (or false) in station view where stops start mid-trip.
+
+  markers: optional stopId -> StationMarker map. When provided, the
+  marker badge renders next to the stop name. The caller decides which
+  markers to include (e.g. skip the same-type marker as the current
+  station on /station/[id] to avoid redundancy).
 -->
 <script lang="ts">
   import { ArrowUpRight, ExternalLink } from 'lucide-svelte';
   import type { ScheduleTripStop } from '$lib/data/gtfs/types';
   import { formatHHMM } from '$lib/domain/types';
+  import type { StationMarker } from '$lib/stores/favoritesStore.svelte';
   import Chip from './Chip.svelte';
   import Stack from './Stack.svelte';
+  import StationMarkerBadge from './StationMarkerBadge.svelte';
 
   type Props = {
     stops: ScheduleTripStop[];
     showDepartureMarker?: boolean;
+    /** When provided, a matching StationMarkerBadge renders next to
+     *  the stop name. Stops without an entry render without a badge. */
+    markers?: ReadonlyMap<string, StationMarker>;
     class?: string;
   };
 
-  let { stops, showDepartureMarker = false, class: className }: Props = $props();
+  let { stops, showDepartureMarker = false, markers, class: className }: Props = $props();
 </script>
 
 <Stack spacing={0.5} class={className}>
@@ -41,6 +51,9 @@
         class="px-2 py-1 rounded-md hover:bg-[color:var(--color-border)]/30"
       >
         <Chip size="small" class="font-mono shrink-0">{i + 1}</Chip>
+        {#if markers && markers.has(s.stopId)}
+          <StationMarkerBadge marker={markers.get(s.stopId)!} size={12} />
+        {/if}
         <span class="flex-1 min-w-0 text-xs truncate">{s.stopName}</span>
         <span class="flex items-center gap-0.5 text-[color:var(--color-fg-muted)] font-mono text-xs shrink-0">
           {#if showDepartureMarker && i === 0}

@@ -16,6 +16,7 @@
   import { compareRouteShortName } from '$lib/domain/types';
   import type { Route } from '$lib/domain/types';
   import { selectBoardsForView } from '$lib/domain/stationSelection';
+  import { sortStationsAlphabetically } from '$lib/domain/favoritesListLayout';
   import { DEFAULT_CONFIG } from '$lib/domain/config';
   import { isPositionInFeedBbox, distanceToFeedBboxKm, findNearestFeed } from '$lib/domain/feedCoverage';
   import { feedsStore } from '$lib/stores/feedsStore.svelte';
@@ -282,18 +283,13 @@
   const showNoLocationCard = $derived(denied);
   const showLocationUnsupported = $derived(gpsUnsupported);
 
-  // Render the user's favorited routes inline on the Favorites card
-  // instead of a "go to /favorites" CTA. The fetch is gated on
-  // `favoritesStore.routeIds.size` so users on the GPS-allowed path
-  // don't pay for a route catalog they never look at. Stations share
-  // the same inline list (after routes) and fetch independently: a
-  // user with only station favorites still avoids the route catalog
-  // round-trip, and vice versa.
-  const MAX_INLINE_FAVORITES = 5;
+  // No caps on home - the inline card shows the full list of favorited
+  // routes and stations. "View all in Favorites" footer is omitted
+  // because there's nothing to truncate. /favorites remains the deep
+  // surface for managing favorites.
   let allRoutesForFavorites = $state<Route[] | null>(null);
   let routesError = $state<string | null>(null);
   let favoriteStations = $state<StopWithDistance[]>([]);
-  let stationsError = $state<string | null>(null);
   $effect(() => {
     const fid = feedsStore.boundFeedId;
     if (!fid) return;
@@ -310,18 +306,18 @@
   $effect(() => {
     const fid = feedsStore.boundFeedId;
     if (!fid) return;
-    if (favoritesStore.stationIds.size === 0) {
+    if (favoritesStore.markers.size === 0) {
       favoriteStations = [];
       return;
     }
     (async () => {
       try {
         const repo = getGtfsRepo();
-        const resolved = await repo.getStopsByIds(Array.from(favoritesStore.stationIds));
-        favoriteStations = resolved.sort((a, b) => a.name.localeCompare(b.name));
-        stationsError = null;
+        const resolved = await repo.getStopsByIds(Array.from(favoritesStore.markers.keys()));
+        favoriteStations = sortStationsAlphabetically(resolved);
       } catch (e) {
-        stationsError = e instanceof Error ? e.message : String(e);
+        // Stations fetch failed; leave favoriteStations as the previous
+        // (or empty) list. The card still renders.
       }
     })();
   });
@@ -331,8 +327,9 @@
       .filter((r) => favoritesStore.hasRoute(r.id))
       .sort((a, b) => compareRouteShortName(a.shortName, b.shortName));
   });
+  // Total = routes + any station with a marker (favorite, home, work, cityCenter).
   const totalFavorites = $derived(
-    favoritesStore.routeIds.size + favoritesStore.stationIds.size,
+    favoritesStore.routeIds.size + favoritesStore.markers.size,
   );
 
   // For the "wrong feed" empty state: find the closest published feed
@@ -431,11 +428,9 @@
           <FavoritesCard
             routes={favoriteRoutes}
             stations={favoriteStations}
-            limit={MAX_INLINE_FAVORITES}
-            viewAllHref="/favorites"
+            stationMarkers={favoritesStore.markers}
             routesLoading={!allRoutesForFavorites && !routesError}
             {routesError}
-            {stationsError}
           />
         {/if}
       {/snippet}
