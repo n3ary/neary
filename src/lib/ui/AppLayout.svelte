@@ -1,4 +1,4 @@
-<!-- Page shell: Header + StatusBar + scrollable main + fixed BottomNavigation. Header+StatusBar share one sticky strip so they scroll together (StatusBar alone scrolls away); BottomNavigation is rendered outside the flex column because position: fixed inside flex is a known iOS Safari quirk. Main has bottom padding (3.5rem + safe-area-inset-bottom) so the fixed nav + iOS home-indicator inset don't cover the last content row. Top safe-area inset is added inside Header (colored band extends into the notch on iOS). -->
+<!-- Page shell: Header + StatusBar + scrollable main + fixed BottomNavigation. BottomNavigation is rendered as a sibling of the flex column (not inside it) because position: fixed inside display: flex is a known iOS Safari quirk. Header+StatusBar share one sticky strip so they scroll together (StatusBar alone would scroll away). -->
 <script lang="ts" generics="T extends string">
   import type { Snippet } from 'svelte';
   import BottomNavigation from './BottomNavigation.svelte';
@@ -45,7 +45,7 @@
     <Header {title} {health} {onrefresh} {refreshing} {showSearch} />
     <StatusBar />
   </div>
-  <!-- Bottom padding clears the fixed BottomNavigation (h-14 ≈ 56 px) plus the iOS home-indicator inset so the nav + inset don't cover the last content row. -->
+  <!-- Bottom padding clears the fixed BottomNavigation plus the iOS home-indicator inset so the nav + inset don't cover the last content row. -->
   <main class="flex-1 overflow-x-hidden pb-[calc(3.5rem+env(safe-area-inset-bottom,0px))]">
     {@render children?.()}
   </main>

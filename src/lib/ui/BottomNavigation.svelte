@@ -1,4 +1,4 @@
-<!-- Fixed bottom bar of icon + label tabs. Designed for iOS PWA: respects safe-area inset, h-14 tap targets, home-indicator compatible. Items declared via the `items` prop (data) instead of children snippets so we don't pay a slot-collection round-trip on every nav render. Position uses left-0 right-0 (not inset-inline) for max iOS Safari compatibility; safe-area inset read via env() directly so the fallback is explicit at paint time. -->
+<!-- Fixed bottom bar of icon + label tabs; position uses left-0 right-0 (not inset-inline) for max iOS Safari compatibility, safe-area inset read via env() directly so the fallback is explicit at paint time. -->
 <script lang="ts" generics="T extends string | number">
   import type { Snippet } from 'svelte';
   import { cn } from './cn';
