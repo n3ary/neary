@@ -161,6 +161,12 @@
   let favoriteStationsRoutes = $state<Record<string, Route[]>>({});
   let favoriteStationsError = $state<string | null>(null);
 
+  // Stop IDs the catalog's "All other routes" rows serve, used to
+  // render marker badges on each row. Batched in one worker round-trip
+  // for the visible catalog routes, kept separate from FavoritesCard's
+  // own routeStopIds (which covers the favorited subset).
+  let catalogRouteStopIds = $state<Record<string, string[]>>({});
+
   let stationsScope = $state<Record<string, Route[]>>({});
   let stationsScopeError = $state<string | null>(null);
 
@@ -408,6 +414,37 @@
     );
   });
 
+  // Catalog rows combined - one fetch covers both scheduled + no-schedule.
+  const catalogRouteIds = $derived([
+    ...otherRoutes.map((r) => r.id),
+    ...noScheduleRoutes.map((r) => r.id),
+  ]);
+
+  // Per-route stop lists for the catalog rows' marker badges.
+  // Batched in one worker call. Tracked on catalogRouteIds so the
+  // badges follow the same filter cascade + cap as the rows.
+  $effect(() => {
+    if (catalogRouteIds.length === 0) {
+      catalogRouteStopIds = {};
+      return;
+    }
+    const ids = catalogRouteIds;
+    const currentIds = new Set(ids);
+    let cancelled = false;
+    (async () => {
+      try {
+        const repo = getGtfsRepo();
+        const result = await repo.getStopsForRoutes(ids);
+        if (cancelled) return;
+        if (catalogRouteIds.some((id) => !currentIds.has(id))) return;
+        catalogRouteStopIds = result;
+      } catch {
+        // Marker badges are decorative; an empty map keeps the row renderable.
+      }
+    })();
+    return () => { cancelled = true; };
+  });
+
   // Favorited stations, already alphabetical from the source effect
   // (sortStationsAlphabetically). Marker type does not influence
   // order - home / work / cityCenter / favorite stations interleave
@@ -641,10 +678,10 @@
                   </Stack>
                   <Stack spacing={1}>
                     {#each otherRoutes as route (route.id)}
-                      {@render expandableRouteRow({ route })}
+                      {@render expandableRouteRow({ route, markerStopIds: catalogRouteStopIds[route.id] ?? [] })}
                     {/each}
                     {#each noScheduleRoutes as route (route.id)}
-                      {@render expandableRouteRow({ route })}
+                      {@render expandableRouteRow({ route, markerStopIds: catalogRouteStopIds[route.id] ?? [] })}
                     {/each}
                   </Stack>
                 </Stack>
@@ -735,7 +772,7 @@
      with no schedule have no representative trip, so the card is
      non-expandable. The expanded stop list picks up the markers map
      so each stop shows its badge when set. -->
-{#snippet expandableRouteRow({ route }: { route: Route })}
+{#snippet expandableRouteRow({ route, markerStopIds }: { route: Route; markerStopIds: readonly string[] })}
   {@const expandable = route.hasSchedule !== false}
   {@const expanded = expandedRouteId === route.id}
   {@const stops = routeStops.get(route.id)}
@@ -747,6 +784,7 @@
       isFav={favoritesStore.hasRoute(route.id)}
       onToggleFavorite={() => favoritesStore.toggleRoute(route.id)}
       onbodyclick={() => toggleRouteStops(route)}
+      {markerStopIds}
     />
     {#if expandable}
       <Collapsible in={expanded} reduced>
