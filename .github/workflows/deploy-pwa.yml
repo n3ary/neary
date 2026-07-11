@@ -7,7 +7,8 @@
 #
 # Trigger:     push to main, manual
 # Permissions: contents: read
-# Secrets:     NPM_TOKEN, CLOUDFLARE_API_TOKEN, CLOUDFLARE_ACCOUNT_ID
+# Secrets:     NPM_TOKEN, CLOUDFLARE_API_TOKEN, CLOUDFLARE_ACCOUNT_ID,
+#              CLOUDFLARE_ZONE_ID
 # Owner:       @ciotlosm
 # Run time:    ~3-5 min
 # ----------------------------------------------------------------------------
@@ -105,3 +106,92 @@ jobs:
           # is ephemeral (the runner is fresh per deploy) and never
           # touches the real repo, so just acknowledge it.
           command: pages deploy build --project-name=neary --branch=main --commit-dirty=true
+
+      # Purge the Cloudflare edge cache for `/_app/immutable/*` and
+      # the SW entrypoint. The static `_headers` file is read at
+      # deploy time; the headers (including the CSP) get baked into
+      # the response and CACHED at the edge on first request. Any
+      # subsequent change to `_headers` does NOT reach files that
+      # are already in the edge cache -- they keep serving the old
+      # response headers (with the old CSP) until the cache TTL
+      # expires (`max-age=14400` = 4h for hashed immutable assets).
+      #
+      # Concretely: PR #291 added `gtfs-rt.n3ary.com` to the
+      # `connect-src` directive. The next deploy reached the
+      # document and most chunks (whose hashes had changed), but
+      # `gtfs.worker-C9WVoLDT.js` kept the old CSP because the
+      # worker source didn't change between deploys. Workers
+      # inherit their CSP from the response that loaded them
+      # (verified in WebKit 26.5 / Safari 17+), so the live feed
+      # call was blocked by the old CSP.
+      #
+      # The purge runs AFTER the deploy so the new files are in
+      # place. The API token needs the `Zone: Purge` scope on
+      # n3ary.com (or `Zone: Edit`); if the existing
+      # CLOUDFLARE_API_TOKEN is `Pages: Edit`-only, rotate it to
+      # add the zone permission.
+      - name: Purge Cloudflare edge cache for static assets
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ZONE_ID: ${{ secrets.CLOUDFLARE_ZONE_ID }}
+        run: |
+          set -euo pipefail
+          echo "Purging cache for zone ${CLOUDFLARE_ZONE_ID}…"
+          response=$(curl -sf -X POST \
+            "https://api.cloudflare.com/client/v4/zones/${CLOUDFLARE_ZONE_ID}/purge_cache" \
+            -H "Authorization: Bearer ${CLOUDFLARE_API_TOKEN}" \
+            -H "Content-Type: application/json" \
+            --data '{
+              "prefixes": [
+                "https://app.n3ary.com/_app/immutable/workers/",
+                "https://app.n3ary.com/_app/immutable/chunks/",
+                "https://app.n3ary.com/_app/immutable/assets/",
+                "https://app.n3ary.com/_app/immutable/nodes/",
+                "https://app.n3ary.com/_app/immutable/entry/",
+                "https://app.n3ary.com/service-worker.js",
+                "https://app.n3ary.com/registerSW.js",
+                "https://app.n3ary.com/manifest.webmanifest"
+              ]
+            }')
+          echo "$response" | python3 -c "
+          import json, sys
+          d = json.load(sys.stdin)
+          if not d.get('success'):
+            print('::error::cache purge failed:', d.get('errors', d))
+            sys.exit(1)
+          print('Cache purged:', d.get('result', {}).get('id', 'ok'))
+          "
+
+      # Smoke test: fetch a worker file from the edge and assert
+      # the CSP includes the latest connect-src origin. Catches
+      # the case where the purge step above silently failed (e.g.
+      # token scope changed) and a future `_headers` change is
+      # masked by a still-cached old response. Runs against the
+      # production origin, not the SW or any local cache.
+      - name: Verify CSP on a worker file
+        env:
+          EXPECTED_ORIGIN: 'gtfs-rt.n3ary.com'
+        run: |
+          # Find a hashed worker file URL from the precache manifest
+          # emitted by the build. Falls back to a known path if the
+          # manifest is unavailable.
+          worker_url=$(python3 -c "
+          import json, glob, os
+          files = glob.glob('build/_app/immutable/workers/*.js')
+          if not files:
+            print('https://app.n3ary.com/_app/immutable/workers/')
+          else:
+            print('https://app.n3ary.com/_app/immutable/workers/' + os.path.basename(files[0]))
+          ")
+          echo "Checking CSP on: ${worker_url}"
+          csp=$(curl -sI "${worker_url}" | awk -F': ' 'tolower($1)=="content-security-policy"{print $2}' | tr -d '\r')
+          if [ -z "${csp}" ]; then
+            echo "::error::no Content-Security-Policy header on ${worker_url}"
+            exit 1
+          fi
+          if ! echo "${csp}" | grep -q "${EXPECTED_ORIGIN}"; then
+            echo "::error::CSP on ${worker_url} does not include ${EXPECTED_ORIGIN}"
+            echo "Got: ${csp}"
+            exit 1
+          fi
+          echo "CSP on ${worker_url} includes ${EXPECTED_ORIGIN} ✓"
