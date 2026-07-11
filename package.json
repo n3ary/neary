@@ -8,11 +8,13 @@
     "dev": "vite dev",
     "build": "vite build --config vite.config.ts",
     "preview": "vite preview",
+    "test:e2e": "playwright test",
     "check": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json",
     "test": "vitest run --config vitest.config.ts --passWithNoTests",
     "test:watch": "vitest --config vitest.config.ts"
   },
   "devDependencies": {
+    "@playwright/test": "^1.61.1",
     "@sveltejs/adapter-static": "^3.0.10",
     "@sveltejs/kit": "2.69.1",
     "@sveltejs/vite-plugin-svelte": "^7.1.2",

@@ -33,6 +33,31 @@
     }
   });
 
+  // PWA service worker registration. Prod only — in dev the SW
+  // would interfere with Vite HMR and the rebuild-on-save loop.
+  // The SW itself lives at src/service-worker.ts; @vite-pwa/sveltekit
+  // bundles it and emits it at /service-worker.js (vite.config.ts
+  // config). The SW's `skipWaiting` + `clients.claim` make the
+  // new shell take over the next paint, which is what fixes the
+  // "saved PWA crashes on first open after a deploy" regression.
+  $effect(() => {
+    if (typeof window === 'undefined') return;
+    if (!import.meta.env.PROD) return;
+    if (!('serviceWorker' in navigator)) return;
+    // Defer registration so it doesn't compete with the initial
+    // route hydration. The SW will pick up the page on the next
+    // navigation if it installs faster than the first paint.
+    const handle = window.setTimeout(() => {
+      void navigator.serviceWorker.register('/service-worker.js', {
+        scope: '/',
+        type: 'module',
+      }).catch((err) => {
+        console.warn('[pwa] service worker registration failed', err);
+      });
+    }, 0);
+    return () => window.clearTimeout(handle);
+  });
+
 // Dev/debug console hooks. Lets the user pin a fake GPS location from
   // the browser console - useful in Safari where DevTools doesn't have a
   // built-in location override. Always installed (cheap, no harm in
