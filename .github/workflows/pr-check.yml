@@ -24,8 +24,8 @@ permissions:
   contents: read
 
 jobs:
-  shared:
-    uses: n3ary/actions/.github/workflows/pr-validation.yml@55e3606351c523d4716d28819577816ddb818a0f
+  pr-check:
+    uses: n3ary/actions/.github/workflows/pr-validation.yml@v23
 
   validate:
     runs-on: ubuntu-latest
