@@ -40,6 +40,13 @@
   // config). The SW's `skipWaiting` + `clients.claim` make the
   // new shell take over the next paint, which is what fixes the
   // "saved PWA crashes on first open after a deploy" regression.
+  //
+  // `updateViaCache: 'none'` tells the browser to bypass its own
+  // HTTP cache for the SW file itself. Without this the browser
+  // can serve a 24h-cached sw.js and a new deploy is invisible
+  // for a day. With it, the browser re-fetches sw.js on every
+  // page load; the SW's own cache strategy then decides what
+  // happens.
   $effect(() => {
     if (typeof window === 'undefined') return;
     if (!import.meta.env.PROD) return;
@@ -51,6 +58,7 @@
       void navigator.serviceWorker.register('/service-worker.js', {
         scope: '/',
         type: 'module',
+        updateViaCache: 'none',
       }).catch((err) => {
         console.warn('[pwa] service worker registration failed', err);
       });
