@@ -29,6 +29,21 @@ class StationsViewStore {
     this.userHasExpandedChoice = true;
   }
 
+  /** Tap a route badge on a station card: toggles the per-stop filter
+   *  and, when the tap sets a new filter on a stop that isn't the
+   *  currently expanded one, also expands it. Issue #278 — collapsed
+   *  card now expands on badge tap so the user sees the filter result
+   *  in one gesture instead of having to discover the chevron.
+   *  On the always-expanded /station/[id] view the expand branch is a
+   *  no-op (the card is already expanded by the caller), so wiring
+   *  this view through the same method is safe. */
+  applyRouteBadgeTap(stopId: string, routeId: string): void {
+    this.toggleRouteFilter(stopId, routeId);
+    if (this.routeFilterByStop[stopId] != null && this.expandedStopId !== stopId) {
+      this.expandedStopId = stopId;
+    }
+  }
+
   /** Set the route filter for one stop (or clear with `null`). Used by Station-detail's single-route view. */
   setRouteFilter(stopId: string, routeId: string | null): void {
     this.routeFilterByStop[stopId] = routeId;

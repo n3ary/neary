@@ -153,3 +153,59 @@ describe('stationsViewStore selection persistence (issue #203)', () => {
     expect(stationsViewStore.lastBoards).toBeNull();
   });
 });
+
+describe('stationsViewStore route badge tap expansion (issue #278)', () => {
+  beforeEach(() => {
+    stationsViewStore.reset();
+  });
+
+  it('expands the card when a badge is tapped on a collapsed stop', () => {
+    // Initial: two stations in the list, the closest (stop-1) is
+    // auto-expanded via the selector. stop-2 is the one the user
+    // taps - currently collapsed. Single tap should both apply the
+    // filter and flip expansion to stop-2.
+    expect(stationsViewStore.expandedStopId).toBeNull();
+    expect(stationsViewStore.userHasExpandedChoice).toBe(false);
+    stationsViewStore.applyRouteBadgeTap('stop-2', 'route-24');
+    expect(stationsViewStore.routeFilterByStop['stop-2']).toBe('route-24');
+    expect(stationsViewStore.expandedStopId).toBe('stop-2');
+    expect(stationsViewStore.userHasExpandedChoice).toBe(true);
+  });
+
+  it('does not flip expansion when a badge is tapped on the currently expanded stop', () => {
+    // User already has stop-1 expanded (either via prior tap or chevron).
+    // Tapping a badge on stop-1 should set the filter but leave the
+    // expansion pick alone - the page's effective-expansion derived
+    // already returns stop-1, so a re-write would be a no-op but
+    // we still want to assert the no-op shape.
+    stationsViewStore.pickExpand('stop-1');
+    stationsViewStore.applyRouteBadgeTap('stop-1', 'route-24');
+    expect(stationsViewStore.routeFilterByStop['stop-1']).toBe('route-24');
+    expect(stationsViewStore.expandedStopId).toBe('stop-1');
+  });
+
+  it('switches the expansion to the tapped stop when the user has picked a different one', () => {
+    // User previously expanded stop-1, then taps a badge on stop-2.
+    // Expansion should follow the tap: stop-2 becomes the expanded
+    // stop, the old pick (stop-1) drops. The page's effective-expansion
+    // then returns stop-2 and the card for stop-1 collapses.
+    stationsViewStore.pickExpand('stop-1');
+    stationsViewStore.applyRouteBadgeTap('stop-2', 'route-35');
+    expect(stationsViewStore.routeFilterByStop['stop-2']).toBe('route-35');
+    expect(stationsViewStore.expandedStopId).toBe('stop-2');
+  });
+
+  it('clears the filter on a re-tap but leaves the card expanded (issue #278 design choice)', () => {
+    // The issue's text suggested "second tap clears the filter AND
+    // collapses", but collapsing strands the user in a state they
+    // didn't ask for when they had the card open from a different
+    // gesture. We keep the card expanded: the user just moved from
+    // "filtered" to "all routes at this stop" - both are valid
+    // exploration states and the chevron owns the collapse intent.
+    stationsViewStore.applyRouteBadgeTap('stop-2', 'route-24');
+    expect(stationsViewStore.expandedStopId).toBe('stop-2');
+    stationsViewStore.applyRouteBadgeTap('stop-2', 'route-24');
+    expect(stationsViewStore.routeFilterByStop['stop-2']).toBeNull();
+    expect(stationsViewStore.expandedStopId).toBe('stop-2');
+  });
+});
