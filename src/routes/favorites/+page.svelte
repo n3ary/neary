@@ -622,90 +622,53 @@
       {#if presentTypes.length > 1 || allNetworks.length > 0}
         <Card>
           <CardContent>
+            <!--
+              Three filter rows, no titles or captions -- the chip labels
+              (Bus/Tram/..., network name, All/Favorite/...) are self-evident.
+              Hairlines separate the rows. See #257.
+            -->
             <Stack spacing={1.5}>
               {#if presentTypes.length > 1}
-                <Stack spacing={0.5}>
-                  <Typography variant="h5">Filter by mode</Typography>
-                  <Typography variant="caption" class="text-[color:var(--color-fg-muted)]">
-                    {typeFilter === null
-                      ? `Showing all ${allRoutes.length} routes. Tap a mode to narrow down.`
-                      : `${filteredRoutes.length} of ${allRoutes.length} routes match.`}
-                  </Typography>
-                  <Stack direction="row" spacing={1} align="center" wrap>
-                    {#each presentTypes as t (t)}
-                      <TypeBadge type={t} color={colorByType.get(t)} active={typeFilter === t} onclick={() => toggleType(t)} />
-                    {/each}
-                  </Stack>
+                <Stack direction="row" spacing={1} align="center" wrap>
+                  {#each presentTypes as t (t)}
+                    <TypeBadge type={t} color={colorByType.get(t)} active={typeFilter === t} onclick={() => toggleType(t)} />
+                  {/each}
                 </Stack>
               {/if}
 
               {#if allNetworks.length > 0}
-                <Stack spacing={0.5}>
-                  <Typography variant="h5">Filter by network</Typography>
-                  <Typography variant="caption" class="text-[color:var(--color-fg-muted)]">
-                    {networkFilter === null
-                      ? 'Tap a network to narrow down.'
-                      : activeTab === 'stations'
-                        ? `Showing stations served by ${filteredRoutes.length} route${filteredRoutes.length !== 1 ? 's' : ''} in this network.`
-                        : `Showing ${filteredRoutes.length} route${filteredRoutes.length !== 1 ? 's' : ''} in this network.`}
-                  </Typography>
-                  <Stack direction="row" spacing={1} align="center" wrap>
-                    {#each allNetworks as net (net.id)}
-                      {@const active = networkFilter === net.id}
-                      <TypeBadge
-                        size="small"
-                        label={net.name}
-                        color={net.color}
-                        {active}
-                        onclick={() => toggleNetwork(net.id)}
-                      />
-                    {/each}
-                  </Stack>
-                </Stack>
-              {/if}
-
-              <Stack spacing={0.5}>
-                <Typography variant="h5">Filter by marker</Typography>
-                <Typography variant="caption" class="text-[color:var(--color-fg-muted)]">
-                  {#if activeMarkerFilter.size === 0}
-                    {#if activeTab === 'routes'}
-                      Showing every route. Tap a marker to narrow down to routes that stop at a marked station.
-                    {:else}
-                      Showing every station. Tap a marker to narrow down.
-                    {/if}
-                  {:else if activeTab === 'routes'}
-                    Routes that serve at least one {Array.from(activeMarkerFilter).map((m) => MARKER_LABELS[m]).join(' or ')} station.
-                  {:else}
-                    Stations marked as {Array.from(activeMarkerFilter).map((m) => MARKER_LABELS[m]).join(' or ')}.
-                  {/if}
-                </Typography>
-                <Stack direction="row" spacing={1} align="center" wrap>
-                  <TypeBadge
-                    size="small"
-                    label="All"
-                    active={activeMarkerFilter.size === 0}
-                    onclick={clearMarkerFilter}
-                  />
-                  {#each STATION_MARKERS as m (m)}
+                <Stack direction="row" spacing={1} align="center" wrap class="pt-2 border-t border-[color:var(--color-border)]">
+                  {#each allNetworks as net (net.id)}
+                    {@const active = networkFilter === net.id}
                     <TypeBadge
                       size="small"
-                      label={MARKER_LABELS[m]}
-                      color={MARKER_COLORS[m].bg}
-                      fg={MARKER_COLORS[m].fg}
-                      active={activeMarkerFilter.has(m)}
-                      onclick={() => toggleMarkerFilter(m)}
+                      label={net.name}
+                      color={net.color}
+                      {active}
+                      onclick={() => toggleNetwork(net.id)}
                     />
                   {/each}
                 </Stack>
-              </Stack>
-
-              {#if filtersActive || activeMarkerFilter.size > 0}
-                <Typography variant="caption" class="text-[color:var(--color-fg-muted)]">
-                  Stations below the tabs are filtered to those served by at least one matching route,
-                  and (if a marker is selected) routes that stop at a marked station.
-                  Your favorited stations are always shown regardless.
-                </Typography>
               {/if}
+
+              <Stack direction="row" spacing={1} align="center" wrap class="pt-2 border-t border-[color:var(--color-border)]">
+                <TypeBadge
+                  size="small"
+                  label="All"
+                  active={activeMarkerFilter.size === 0}
+                  onclick={clearMarkerFilter}
+                />
+                {#each STATION_MARKERS as m (m)}
+                  <TypeBadge
+                    size="small"
+                    label={MARKER_LABELS[m]}
+                    color={MARKER_COLORS[m].bg}
+                    fg={MARKER_COLORS[m].fg}
+                    active={activeMarkerFilter.has(m)}
+                    onclick={() => toggleMarkerFilter(m)}
+                  />
+                {/each}
+              </Stack>
             </Stack>
           </CardContent>
         </Card>
