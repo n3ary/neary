@@ -12,7 +12,7 @@
   import { ArrowRight, Calendar, Map as MapIcon } from 'lucide-svelte';
   import type { Vehicle } from '$lib/domain/types';
   import { formatHHMM, formatRelativeMin } from '$lib/domain/types';
-  import type { Urgency } from '$lib/domain/buckets';
+  import type { AtStationLabel, Urgency } from '$lib/domain/buckets';
   import RouteBadge from './RouteBadge.svelte';
   import StationMarkerBadges from './StationMarkerBadges.svelte';
   import { urgencyClass } from './urgencyClass';
@@ -27,6 +27,12 @@
     /** ETA urgency, computed in the domain (see `etaUrgency`). When
      *  omitted (map popup, standalone), the secondary line stays muted. */
     urgency?: Urgency;
+    /** When set, overrides the secondary line text and color with a
+     *  label from the combined "At station" section (e.g. "now",
+     *  "departing now", "at station"). Used by StationCard so the
+     *  rider sees the time + color that matches the live state, not
+     *  a generic ETA. */
+    atStationLabel?: AtStationLabel;
     onclick?: () => void;
     /** When set, the schedule icon button is shown and links here.
      *  Used by StationCard to deep-link into /schedule/route/[id]. */
@@ -50,7 +56,7 @@
   };
 
   let {
-    vehicle, urgency, onclick, scheduleHref, mapHref,
+    vehicle, urgency, atStationLabel, onclick, scheduleHref, mapHref,
     onStopsExpand, stopsExpanded = false,
     headsignStopIds,
     class: className,
@@ -80,7 +86,12 @@
   // time itself), we append the scheduled HH:MM here. Close trips
   // stay on the relative form alone — 'in 5 min' beats 'at 16:50'
   // when the action window is now.
+  //
+  // When `atStationLabel` is set, it takes precedence — the rider in
+  // the at-station section wants the live state ("now", "departing
+  // now", "at station"), not an ETA they could read off a clock.
   const secondaryLine = $derived.by(() => {
+    if (atStationLabel) return atStationLabel.text;
     if (vehicle.eta) {
       const rel = formatRelativeMin(vehicle.eta.minutes);
       const sched = vehicle.schedule?.scheduledDeparture;
@@ -97,8 +108,10 @@
     return 'En route';
   });
 
-  // CSS for the time column — mechanical lookup from a domain decision.
-  const etaClass = $derived(urgencyClass(urgency));
+  // CSS for the time column — mechanical lookup from a domain
+  // decision. The at-station label brings its own urgency so the
+  // color matches the live state ("now" red, "at station" green).
+  const etaClass = $derived(urgencyClass(atStationLabel?.urgency ?? urgency));
 
   const headsign = $derived(
     vehicle.headsign ?? vehicle.schedule?.headsign ?? '—',

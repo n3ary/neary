@@ -2,50 +2,49 @@
  * Station-view arrival buckets — pure functions, no DOM, no stores.
  * Spec: docs/specs/vehicles-and-views.md.
  *
- * Seven buckets in display order:
+ * Five buckets in display order:
  *
- *   departing    about to leave / picking up speed at the stop
- *   at-station   physically at the stop (or scheduled to be dwelling mid-stop)
- *   arriving     close to arrival (eta ≤ arrivingThresholdMin OR within
- *                minDwellGapMin of scheduled arrival)
- *   incoming     future, eta above arrivingThresholdMin
- *   drop-off     drop-off-only vehicles (cannot board). Shown as a dedicated
- *                section after incoming when showDropOffOnly is enabled.
- *   departed     already passed (within 5 min recency window). Hidden from
- *                station boards unless `userPrefs.showDepartedVehicles` is on;
- *                map view always shows them.
+ *   at-station   vehicle is at the stop, or within ARRIVING_THRESHOLD_MIN
+ *                of it (close enough to board imminently). The actual
+ *                sub-state (about-to-leave / just-arrived / mid-dwell /
+ *                close) is derived separately — see AtStationSubState.
+ *   incoming     future, eta above the at-station window
+ *   drop-off     drop-off-only vehicles (cannot board). Shown as a
+ *                dedicated section after incoming when showDropOffOnly
+ *                is enabled.
+ *   departed     already passed. Hidden from station boards unless
+ *                userPrefs.showDepartedVehicles is on; map view always
+ *                shows them.
  *   off-route    sanity bucket — surfaces only in debug view
+ *
+ * The at-station group is internally split into four sub-states (see
+ * `AtStationSubState`) that drive per-row label, color, and sort order.
  */
 
-import type { Vehicle } from './types';
+import { formatRelativeMin, type Vehicle } from './types';
 
 export type ArrivalBucket =
-  | 'departing'
   | 'at-station'
-  | 'arriving'
   | 'incoming'
   | 'drop-off'
   | 'departed'
   | 'off-route';
 
-/** Display order (lower = earlier). Tie-break by ascending eta minutes. */
+/** Display order (lower = earlier). Tie-break by sub-state (at-station),
+ *  then by eta, then by vehicle id. */
 export const BUCKET_ORDER: Record<ArrivalBucket, number> = {
-  departing: 0,
-  'at-station': 1,
-  arriving: 2,
-  incoming: 3,
-  'drop-off': 4,
-  departed: 5,
-  'off-route': 6,
+  'at-station': 0,
+  incoming: 1,
+  'drop-off': 2,
+  departed: 3,
+  'off-route': 4,
 };
 
 /** Human-readable label for each bucket. Used by section headers on the
- *  StationCard. Lives in the domain because the bucket name is a UX
- *  concept, not a CSS one. */
+ *  StationCard. The at-station group has a fixed label — the per-row
+ *  state is conveyed by the row's own label, not the section header. */
 export const BUCKET_LABEL: Record<ArrivalBucket, string> = {
-  departing: 'Departing',
   'at-station': 'At station',
-  arriving: 'Arriving',
   incoming: 'Incoming',
   'drop-off': 'Drop off only',
   departed: 'Departed',
@@ -53,25 +52,21 @@ export const BUCKET_LABEL: Record<ArrivalBucket, string> = {
 };
 
 /** Context-aware label for a bucket given the rows that fell into it.
- *  Origin-stop rows (`schedule.isFirstStop`) aren't really 'arriving
+ *  Origin-stop rows (`schedule.isFirstStop`) aren't really 'incoming
  *  from somewhere' — the bus is being prepared to start the trip — so
  *  we swap the verb to match what the rider sees on the curb:
  *
- *    arriving:  all origin → 'Preparing'
- *               mixed      → 'Arriving & Preparing'
- *               none       → 'Arriving'
  *    incoming:  all origin → 'Scheduled'
  *               mixed      → 'Incoming & Scheduled'
  *               none       → 'Incoming'
  *
- *  Other buckets are unaffected: a vehicle that is 'departing' from
- *  its origin or 'at-station' at its origin reads correctly either
- *  way. */
+ *  The at-station section uses a fixed label; per-row state lives on
+ *  the BoardRow. */
 export function bucketLabel(
   bucket: ArrivalBucket,
   vehicles: readonly Vehicle[],
 ): string {
-  if (bucket !== 'arriving' && bucket !== 'incoming') {
+  if (bucket !== 'incoming') {
     return BUCKET_LABEL[bucket];
   }
   let hasOrigin = false;
@@ -81,9 +76,8 @@ export function bucketLabel(
     else hasOther = true;
     if (hasOrigin && hasOther) break;
   }
-  const originWord = bucket === 'arriving' ? 'Preparing' : 'Scheduled';
-  if (hasOrigin && !hasOther) return originWord;
-  if (hasOrigin && hasOther) return `${BUCKET_LABEL[bucket]} & ${originWord}`;
+  if (hasOrigin && !hasOther) return 'Scheduled';
+  if (hasOrigin && hasOther) return 'Incoming & Scheduled';
   return BUCKET_LABEL[bucket];
 }
 
@@ -106,6 +100,10 @@ export const SCHEDULED_DWELL_GAP_MIN = DEFAULT_CONFIG.minDwellGapMin;
  *    'stop'    — vehicle is leaving / has left the boarding window. UI: bold danger.
  *    'neutral' — nothing time-critical. UI: muted.
  *
+ *  For at-station rows, urgency comes from `AtStationLabel.urgency` (the
+ *  per-row label function already encodes red/green for the sub-state).
+ *  This function is the source of truth for the other buckets.
+ *
  *  Map view doesn't compute urgency — it consumes raw vehicles. */
 export type Urgency = 'go' | 'stop' | 'neutral';
 
@@ -115,11 +113,6 @@ export function etaUrgency(
   config: NearyConfig = DEFAULT_CONFIG,
 ): Urgency {
   switch (bucket) {
-    case 'departing':
-      return 'stop';
-    case 'at-station':
-    case 'arriving':
-      return 'go';
     case 'incoming':
       return etaMinutes <= config.imminentEtaThresholdMin ? 'go' : 'neutral';
     default:
@@ -129,15 +122,7 @@ export function etaUrgency(
 
 /** Schedule-only equivalent of `etaUrgency`. Used by views that have a
  *  scheduled departure time but no live vehicle (e.g. the route
- *  schedule list before live data is wired in). Mirrors the bucket
- *  rules from `etaUrgency`:
- *
- *    delta < -1 min  → 'neutral' (already departed; not actionable)
- *    -1 ≤ delta < 1  → 'stop'    (about to leave; render bold red,
- *                                 caller typically labels it 'Departing')
- *    1 ≤ delta ≤ imminentEtaThresholdMin → 'go' (bold accent)
- *    delta > imminentEtaThresholdMin     → 'neutral'
- */
+ *  schedule list before live data is wired in). */
 export function scheduleUrgency(
   deltaMin: number,
   config: NearyConfig = DEFAULT_CONFIG,
@@ -146,6 +131,113 @@ export function scheduleUrgency(
   if (deltaMin < 1) return 'stop';
   if (deltaMin <= config.imminentEtaThresholdMin) return 'go';
   return 'neutral';
+}
+
+/** Sub-state for a vehicle in the at-station section. Drives per-row
+ *  label, color, and sort order. The at-station section is internally
+ *  split into four sub-states:
+ *
+ *    about-to-leave  vehicle is at the stop, in the last minute of
+ *                    scheduled dwell, or already picking up speed.
+ *                    UI label: 'now' (if moving) or 'departing now'.
+ *    just-arrived    first minute of scheduled dwell. UI: 'arriving now'.
+ *    mid-dwell       at the stop, between just-arrived and about-to-leave.
+ *                    UI: 'at station'.
+ *    close           not at the stop yet, but within ARRIVING_THRESHOLD_MIN.
+ *                    UI: relative ETA ('in N min'). */
+export type AtStationSubState = 'about-to-leave' | 'just-arrived' | 'mid-dwell' | 'close';
+
+export const AT_STATION_SUB_STATE_ORDER: Record<AtStationSubState, number> = {
+  'about-to-leave': 0,  // most urgent — show first
+  close: 1,
+  'mid-dwell': 2,
+  'just-arrived': 3,
+};
+
+/** Per-row label and urgency for a vehicle in the at-station section.
+ *  Computed once at board assembly time and stored on the BoardRow,
+ *  so the UI doesn't have to re-derive from schedule inputs. */
+export interface AtStationLabel {
+  text: string;
+  urgency: Urgency;
+}
+
+/** Derive the at-station sub-state for a vehicle in the at-station
+ *  bucket. Returns undefined for any other bucket. */
+export function atStationSubState(
+  bucket: ArrivalBucket,
+  inputs: {
+    distanceToStopMeters: number;
+    vehicleSpeedKmh?: number;
+    scheduledArrivalMin?: number;
+    scheduledDepartureMin?: number;
+    nowMin: number;
+  },
+): AtStationSubState | undefined {
+  if (bucket !== 'at-station') return undefined;
+
+  // "At the stop" matches `bucketOf`'s at-stop branch: live vehicle
+  // within proximity, OR a schedule-only row inside the dwell window.
+  // Schedule-only rows have no GPS so the proximity check is always
+  // false for them; the schedule window is the only signal.
+  const atTheStopByProximity = inputs.distanceToStopMeters <= PROXIMITY_AT_STATION_M;
+  const atTheStopBySchedule =
+    inputs.scheduledArrivalMin != null &&
+    inputs.scheduledDepartureMin != null &&
+    inputs.nowMin >= inputs.scheduledArrivalMin &&
+    inputs.nowMin <= inputs.scheduledDepartureMin;
+  const atTheStop = atTheStopByProximity || atTheStopBySchedule;
+  if (!atTheStop) return 'close';
+
+  // (a) Live vehicle picking up speed → about-to-leave.
+  if (inputs.vehicleSpeedKmh != null && inputs.vehicleSpeedKmh >= DEPARTING_SPEED_KMH) {
+    return 'about-to-leave';
+  }
+  // (b) Last minute of scheduled dwell → about-to-leave.
+  if (
+    inputs.scheduledDepartureMin != null &&
+    inputs.nowMin >= inputs.scheduledDepartureMin - 1 &&
+    inputs.nowMin <= inputs.scheduledDepartureMin + 1
+  ) {
+    return 'about-to-leave';
+  }
+  // (c) First minute of scheduled dwell → just-arrived.
+  if (
+    inputs.scheduledArrivalMin != null &&
+    inputs.nowMin >= inputs.scheduledArrivalMin - 1 &&
+    inputs.nowMin <= inputs.scheduledArrivalMin + 1
+  ) {
+    return 'just-arrived';
+  }
+  // (d) Mid-dwell (at the stop, not in either window) → mid-dwell.
+  return 'mid-dwell';
+}
+
+/** Compute the per-row label and urgency for a vehicle in the
+ *  at-station section. Pure: same sub-state + same eta/speed always
+ *  yields the same label. */
+export function atStationLabel(
+  subState: AtStationSubState,
+  inputs: {
+    etaMinutes: number;
+    vehicleSpeedKmh?: number;
+  },
+): AtStationLabel {
+  switch (subState) {
+    case 'about-to-leave':
+      // Distinguish moving (vehicle is gone — 'now' red) from scheduled
+      // last-minute (vehicle is still at the stop — 'departing now' red).
+      if (inputs.vehicleSpeedKmh != null && inputs.vehicleSpeedKmh >= DEPARTING_SPEED_KMH) {
+        return { text: 'now', urgency: 'stop' };
+      }
+      return { text: 'departing now', urgency: 'stop' };
+    case 'just-arrived':
+      return { text: 'arriving now', urgency: 'go' };
+    case 'mid-dwell':
+      return { text: 'at station', urgency: 'go' };
+    case 'close':
+      return { text: formatRelativeMin(inputs.etaMinutes), urgency: 'go' };
+  }
 }
 
 export interface BucketInputs {
@@ -165,13 +257,6 @@ export interface BucketInputs {
   onRouteShape?: boolean;
 }
 
-/**
- * Determine the bucket for a single vehicle at a single target stop.
- * Pure function — only reads inputs, no side effects.
- *
- * The `kind` is taken from the vehicle so we can decide whether speed-based
- * heuristics apply (they do for live-backed kinds, not for scheduled).
- */
 export function bucketOf(
   kind: Vehicle['kind'],
   inputs: BucketInputs,
@@ -179,7 +264,6 @@ export function bucketOf(
   const {
     etaMinutes,
     distanceToStopMeters,
-    vehicleSpeedKmh,
     scheduledArrivalMin,
     scheduledDepartureMin,
     nowMin,
@@ -193,81 +277,66 @@ export function bucketOf(
     return 'off-route';
   }
 
-  // 2. At station — physical proximity is only meaningful for live vehicles
-  //    (we trust GPS). For schedule-only rows we instead use the schedule's
-  //    own arrival ≤ now ≤ departure window. Otherwise a scheduled future
-  //    arrival with no real distance (we pass 0 by default) would always
-  //    fall into the at-stop branch.
+  // 2. At station — physical proximity is only meaningful for live
+  //    vehicles (we trust GPS). For schedule-only rows we instead use
+  //    the schedule's own arrival ≤ now ≤ departure window. Otherwise
+  //    a scheduled future arrival with no real distance (we pass 0 by
+  //    default) would always fall into the at-stop branch.
   const inDwellWindow =
     scheduledArrivalMin != null &&
     scheduledDepartureMin != null &&
     nowMin >= scheduledArrivalMin &&
     nowMin <= scheduledDepartureMin;
-
   const physicallyAtStation = distanceToStopMeters <= PROXIMITY_AT_STATION_M;
 
   if ((isLive && physicallyAtStation) || (!isLive && inDwellWindow)) {
-    // Split the at-stop period into arriving / at-station / departing using
-    // the scheduled dwell gap and any live motion signal.
-    const dwellMin =
-      scheduledDepartureMin != null && scheduledArrivalMin != null
-        ? scheduledDepartureMin - scheduledArrivalMin
-        : 0;
-
-    // (a) Live vehicle picking up speed → departing.
-    if (vehicleSpeedKmh != null && vehicleSpeedKmh >= DEPARTING_SPEED_KMH) {
-      return 'departing';
-    }
-    // (b) Within last minute of scheduled dwell → departing.
-    if (
-      scheduledDepartureMin != null &&
-      nowMin >= scheduledDepartureMin - 1 &&
-      nowMin <= scheduledDepartureMin + 1
-    ) {
-      return 'departing';
-    }
-    // (c) Within first minute of scheduled dwell → arriving.
-    if (
-      scheduledArrivalMin != null &&
-      nowMin >= scheduledArrivalMin - 1 &&
-      nowMin <= scheduledArrivalMin + 1
-    ) {
-      return 'arriving';
-    }
-    // (d) Mid-dwell on a route with a meaningful gap → at-station.
-    if (dwellMin >= SCHEDULED_DWELL_GAP_MIN) return 'at-station';
-    // (e) Fallback:
-    //     - Live vehicle: GPS says it's physically at the stop right now.
-    //       It IS at the station (the user can board). Return 'at-station'
-    //       regardless of what the schedule says about future timing —
-    //       trust the GPS. This includes the start-station case where the
-    //       bus is dwelling and waiting for its scheduled departure.
-    //     - Non-live: we got here via the dwell window but dwell < 1 min,
-    //       so the trip is just passing through — return 'arriving'.
-    return isLive ? 'at-station' : 'arriving';
+    return 'at-station';
   }
 
-  // 3. Future.
+  // 3. Future, within the at-station ETA window.
+  if (etaMinutes >= 0 && etaMinutes <= ARRIVING_THRESHOLD_MIN) {
+    return 'at-station'; // sub-state 'close'
+  }
+
+  // 4. Future, outside the at-station window.
   if (etaMinutes >= 0) {
-    return etaMinutes <= ARRIVING_THRESHOLD_MIN ? 'arriving' : 'incoming';
+    return 'incoming';
   }
 
-  // 4. Past. The scheduleScanner already excluded trips that have
+  // 5. Past. The scheduleScanner already excluded trips that have
   //    completed (terminus time < now), so anything past here is still
   //    en route and belongs in 'departed'. No artificial recency cap.
   return 'departed';
 }
 
-/** Sort comparator: bucket display order, then by eta. Within the
- *  `departed` bucket eta is inverted (most-recent first, e.g. -1 before
- *  -10), which is what a transit user expects to read. For every other
- *  bucket eta is ascending (nearest first). Final tie-break by id. */
+/** Sort comparator: bucket display order, then by sub-state (at-station
+ *  rows), then by eta, then by id. Within the `departed` bucket eta is
+ *  inverted (most-recent first). */
 export function compareForBoard(
-  a: { vehicle: Vehicle; bucket: ArrivalBucket; etaMinutes: number },
-  b: { vehicle: Vehicle; bucket: ArrivalBucket; etaMinutes: number },
+  a: {
+    vehicle: Vehicle;
+    bucket: ArrivalBucket;
+    etaMinutes: number;
+    atStationSubState?: AtStationSubState;
+  },
+  b: {
+    vehicle: Vehicle;
+    bucket: ArrivalBucket;
+    etaMinutes: number;
+    atStationSubState?: AtStationSubState;
+  },
 ): number {
   const byBucket = BUCKET_ORDER[a.bucket] - BUCKET_ORDER[b.bucket];
   if (byBucket !== 0) return byBucket;
+
+  // Within at-station, sort by sub-state priority.
+  if (a.bucket === 'at-station' && b.bucket === 'at-station') {
+    const aSub = a.atStationSubState != null ? AT_STATION_SUB_STATE_ORDER[a.atStationSubState] : 99;
+    const bSub = b.atStationSubState != null ? AT_STATION_SUB_STATE_ORDER[b.atStationSubState] : 99;
+    const bySub = aSub - bSub;
+    if (bySub !== 0) return bySub;
+  }
+
   const aEta = a.bucket === 'departed' ? -a.etaMinutes : a.etaMinutes;
   const bEta = b.bucket === 'departed' ? -b.etaMinutes : b.etaMinutes;
   const byEta = aEta - bEta;
@@ -279,9 +348,7 @@ export function compareForBoard(
  *  the station card's count chips. */
 export function bucketCounts(buckets: ArrivalBucket[]): Record<ArrivalBucket, number> {
   const counts: Record<ArrivalBucket, number> = {
-    departing: 0,
     'at-station': 0,
-    arriving: 0,
     incoming: 0,
     'drop-off': 0,
     departed: 0,
