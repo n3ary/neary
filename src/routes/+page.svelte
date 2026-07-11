@@ -553,7 +553,7 @@
             rows={rows}
             allRoutes={allRoutes}
             selectedRouteId={stationsViewStore.routeFilterByStop[stop.id] ?? null}
-            onRouteClick={(rid) => stationsViewStore.toggleRouteFilter(stop.id, rid)}
+            onRouteClick={(rid) => stationsViewStore.applyRouteBadgeTap(stop.id, rid)}
             favoriteRouteIds={favoritesStore.routeIds}
             getUpcomingStops={getUpcomingStops}
             expanded={effectiveExpandedStopId === stop.id}

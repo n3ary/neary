@@ -110,7 +110,7 @@
     rawVehicleCount={assembled?.vehicles.length}
     allRoutes={assembled?.allRoutes ?? []}
     selectedRouteId={stationsViewStore.routeFilterByStop[stopKey] ?? null}
-      onRouteClick={(rid) => stationsViewStore.toggleRouteFilter(stopKey, rid)}
+      onRouteClick={(rid) => stationsViewStore.applyRouteBadgeTap(stopKey, rid)}
       favoriteRouteIds={favoritesStore.routeIds}
       originRouteIds={originRouteIds}
       getUpcomingStops={getUpcomingStops}
