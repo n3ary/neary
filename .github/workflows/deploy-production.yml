@@ -60,8 +60,14 @@ jobs:
 
       - name: Setup pnpm
         uses: pnpm/action-setup@v6.0.9
-        with:
-          version: 11
+        # No explicit `version:` - pnpm/action-setup would conflict with
+        # the `packageManager: pnpm@<X.Y.Z>` field in package.json
+        # (the action errors with "Multiple versions of pnpm specified"
+        # when both are present). Auto-detect from packageManager instead;
+        # that is the org-wide source of truth per the pr-validation
+        # workflow and the n3ary/actions v22 shared action.
+        # The pnpm cache key in setup-node derives from the same
+        # auto-detected version, so cache hits still work.
 
       - name: Install dependencies
         # The @n3ary scope maps to GitHub Packages (see .npmrc).
