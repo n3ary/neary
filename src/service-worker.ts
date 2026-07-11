@@ -2,29 +2,49 @@
  * service-worker.ts — PWA shell + version-aware cache invalidation.
  *
  * The hand-rolled bits: why not workbox? Because the only runtime
- * strategy we need is "NetworkFirst, 5s timeout, fall back to cache
- * for feeds.json" — and a ~100-line SW is easier to audit than a
- * workbox build that imports its own router.
+ * strategies we need are NetworkFirst for navigations + NetworkFirst
+ * for feeds.json, plus CacheFirst for the content-addressed shell --
+ * and a ~120-line SW is easier to audit than a workbox build that
+ * imports its own router.
  *
  *   - Precache: app shell + manifest (injected by @vite-pwa/sveltekit
- *     via self.__WB_MANIFEST at build time).
- *   - Runtime cache: gtfs.n3ary.com/feeds.json only. SQLite bootstrap
- *     and the live GTFS-RT feed (gtfs-rt.n3ary.com/rt/*) are
- *     intentionally NOT cached here — the OPFS bootstrap already
- *     short-circuits when the file is local, and the live pipeline
- *     already keeps the last good snapshot when the network fails.
- *     Caching them at the SW layer would serve stale vehicles,
- *     which is wrong.
+ *     via self.__WB_MANIFEST at build time). Used for offline
+ *     shell + first-paint assets.
+ *   - Runtime cache: gtfs.n3ary.com/feeds.json (NetworkFirst) AND
+ *     a runtime HTML cache (NetworkFirst, separate bucket). The
+ *     runtime HTML cache holds the most recent online HTML, so
+ *     offline reads serve what the user had online last.
  *   - Versioning: precache bucket name is `precache-v<version>`. On
  *     activate, any other `precache-v*` cache is deleted so an
  *     outdated shell never gets served from cache.
  *   - skipWaiting + clientsClaim: take over immediately. Stale
  *     shell = 500/white screen, so the trade-off is "existing tabs
  *     may reload mid-interaction" vs "app is broken". We pick the
- *     reload. Belt-and-suspenders: the SvelteKit version polling
- *     (svelte.config.js `kit.version`) also reloads on version
- *     mismatch, so even if the SW fails to claim, the app
- *     eventually self-heals.
+ *     reload.
+ *   - Navigation requests (req.mode === 'navigate') are
+ *     NetworkFirst, with the precache bucket as a fallback. This
+ *     bypasses the browser's HTTP cache for HTML -- the staleness
+ *     class of bug we just shipped (cached old HTML pointing at
+ *     asset hashes that no longer exist) is gone because the SW
+ *     is the gatekeeper for HTML, not the browser.
+ *
+ *   - The precache install uses Promise.allSettled + individual
+ *     cache.add() calls instead of cache.addAll(). addAll() aborts
+ *     the whole batch on a single failure (deploy race, partial
+ *     R2 upload), which would leave the new SW un-activatable and
+ *     the user stuck on the old shell. allSettled means a single
+ *     bad entry logs a warning but doesn't fail the install.
+ *
+ *   - SW registration is manual (in src/routes/+layout.svelte)
+ *     with `updateViaCache: 'none'` so the browser re-checks the
+ *     SW itself on every visit instead of caching it for 24h.
+ *     One less staleness vector.
+ *
+ *   - SQLite: stored in OPFS (Origin Private File System), NOT in
+ *     any SW cache. OPFS persists across SW versions, so an
+ *     already-downloaded feed survives deploys. The SW's job is
+ *     to get the shell to the OPFS bootstrap; the bootstrap
+ *     itself decides what to do based on what's in OPFS.
  */
 
 /// <reference lib="webworker" />
@@ -42,7 +62,14 @@ declare const __APP_VERSION__: string;
 
 const VERSION: string = __APP_VERSION__;
 const PRECACHE_NAME = `precache-v${VERSION}`;
-const RUNTIME_FEEDS_CACHE = 'runtime-feeds-json-v1';
+const RUNTIME_FEEDS_CACHE = 'runtime-feeds-json-v1' as const;
+const RUNTIME_HTML_CACHE = `runtime-html-v${VERSION}-v1` as const;
+
+import {
+  networkFirstNavigation,
+  serveFromPrecache,
+  networkFirstFeedsJson,
+} from './lib/sw/handlers.js';
 
 /** Precache the shell entries the plugin injected. */
 const manifest = self.__WB_MANIFEST ?? [];
@@ -60,7 +87,23 @@ self.addEventListener('install', (event) => {
       const sameOrigin = manifest
         .map((m) => new URL(m.url, swOrigin).href)
         .filter((url) => new URL(url).origin === swOrigin);
-      await cache.addAll(sameOrigin);
+      // Promise.allSettled so a single failed entry doesn't fail
+      // the whole install. cache.addAll would abort the batch on
+      // any one failure, leaving the new SW un-activatable and
+      // the user stuck on the old shell.
+      const results = await Promise.allSettled(
+        sameOrigin.map((url) => cache.add(new Request(url, { cache: 'reload' }))),
+      );
+      for (let i = 0; i < results.length; i++) {
+        if (results[i]!.status === 'rejected') {
+          const reason = (results[i] as PromiseRejectedResult).reason;
+          console.warn(
+            `[sw] precache add failed for ${sameOrigin[i]}: ${
+              reason?.message ?? String(reason)
+            }`,
+          );
+        }
+      }
       // skipWaiting so the new SW activates immediately when the
       // user reopens the PWA. Without it, the user keeps running
       // the old SW (and the old shell) until all tabs close.
@@ -75,7 +118,16 @@ self.addEventListener('activate', (event) => {
       const keys = await caches.keys();
       await Promise.all(
         keys
+          // Old precache buckets from previous SW versions.
           .filter((k) => k.startsWith('precache-v') && k !== PRECACHE_NAME)
+          // Old runtime HTML cache buckets (versioned by the SW
+          // version, so a new SW version can drop the old). The
+          // runtime FEEDS cache is intentionally NOT pruned here
+          // because it has a fixed name (not versioned) -- it's
+          // feed data, not shell code.
+          .concat(
+            keys.filter((k) => k.startsWith('runtime-html-v') && k !== RUNTIME_HTML_CACHE),
+          )
           .map((k) => caches.delete(k)),
       );
       // Take over existing clients so the new SW is in effect
@@ -90,10 +142,17 @@ self.addEventListener('fetch', (event) => {
   if (req.method !== 'GET') return;
   const url = new URL(req.url);
 
-  // NetworkFirst for feeds.json — fresh on every online visit,
-  // cached on cold-start offline.
+  // Navigations: NetworkFirst with cache fallback. The SW is
+  // the gatekeeper for HTML so the browser's HTTP cache can
+  // never serve a stale shell.
+  if (req.mode === 'navigate') {
+    event.respondWith(networkFirstNavigation(req, PRECACHE_NAME, RUNTIME_HTML_CACHE));
+    return;
+  }
+
+  // feeds.json: NetworkFirst with cache fallback.
   if (url.origin === 'https://gtfs.n3ary.com' && url.pathname === '/feeds.json') {
-    event.respondWith(networkFirstFeedsJson(req));
+    event.respondWith(networkFirstFeedsJson(req, RUNTIME_FEEDS_CACHE));
     return;
   }
 
@@ -104,44 +163,13 @@ self.addEventListener('fetch', (event) => {
     !url.search &&
     manifest.some((m) => m.url === url.pathname)
   ) {
-    event.respondWith(serveFromPrecache(url.pathname));
+    event.respondWith(serveFromPrecache(url.pathname, PRECACHE_NAME));
     return;
   }
 
   // Everything else: pass through. The OPFS bootstrap reads its
   // own sqlite via its own fetch (which falls through here, so the
   // SW doesn't double-cache large files). gtfs-rt.n3ary.com/rt/*
-  // is also pass-through — the live pipeline handles its own
+  // is also pass-through -- the live pipeline handles its own
   // offline fallback to the last good snapshot.
 });
-
-async function serveFromPrecache(pathname: string): Promise<Response> {
-  const cache = await caches.open(PRECACHE_NAME);
-  const hit = await cache.match(pathname);
-  if (hit) return hit;
-  // Shouldn't happen — we cache.addAll'd it on install. But the
-  // browser cache might evict between install and fetch; fall
-  // through to the network so the page still loads.
-  return fetch(pathname);
-}
-
-async function networkFirstFeedsJson(req: Request): Promise<Response> {
-  const cache = await caches.open(RUNTIME_FEEDS_CACHE);
-  try {
-    const res = await fetch(req, { cache: 'no-cache' });
-    if (res.ok) {
-      // Background update — don't await so the response returns
-      // as fast as possible. If cache.put throws (quota), the
-      // next visit will still fetch from network and try again.
-      void cache.put(req, res.clone());
-    }
-    return res;
-  } catch {
-    const cached = await cache.match(req);
-    if (cached) return cached;
-    // No cached copy AND no network — let the original fetch
-    // failure bubble up to the app. StatusBar shows "Refresh
-    // failed" and the user picks a feed once they're back online.
-    throw new Error('feeds.json: no network and no cached copy');
-  }
-}
