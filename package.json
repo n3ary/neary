@@ -1,7 +1,7 @@
 {
   "name": "neary",
   "private": true,
-  "version": "26.7.11-4",
+  "version": "26.7.11-5",
   "packageManager": "pnpm@11.5.2",
   "type": "module",
   "scripts": {
