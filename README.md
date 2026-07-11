@@ -8,11 +8,16 @@ separate [gtfs](https://github.com/n3ary/gtfs) data pipeline.
 | Path | What |
 |---|---|
 | [src/](src/) | App source — Svelte 5 + SvelteKit + Tailwind v4 + SQLite-WASM |
-| [functions/](functions/) | Cloudflare Pages Functions (‘/api/rt/*’ GTFS-RT proxy) |
 | [static/](static/) | Static assets + Pages routing files (`_headers`, `_redirects`) |
 | [docs/](docs/) | Architecture, concepts, standards, specs, plan, investigation |
 | [scripts/](scripts/) | Local maintenance scripts |
 | [.github/](.github/) | CI workflows — see [docs/specs/ci-and-versioning.md](docs/specs/ci-and-versioning.md) |
+
+Live GTFS-RT data is served by the separate
+[gtfs-publisher](https://github.com/n3ary/gtfs-publisher) repo
+(gtfs-rt.n3ary.com). The app calls
+`feeds.json.realtime.vehicle_positions` directly — no same-origin
+proxy.
 
 ## Quick start
 

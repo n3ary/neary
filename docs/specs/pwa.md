@@ -87,7 +87,8 @@ workbox). It's ~100 lines and easy to audit. Two strategies:
 - Cross-origin assets (brand icons at `branding.n3ary.com`) are NOT
   precached — they're served from the brand CDN, which has its own
   cache headers.
-- The sqlite_gz and /api/rt/* are NOT precached — the OPFS bootstrap
+- The sqlite_gz and the live GTFS-RT feed
+  (`gtfs-rt.n3ary.com/rt/*`) are NOT precached — the OPFS bootstrap
   and the live pipeline handle their own offline behavior (see
   [data-lifecycle.md](multi-feed-data-lifecycle.md)).
 
@@ -96,7 +97,11 @@ workbox). It's ~100 lines and easy to audit. Two strategies:
 - `https://gtfs.n3ary.com/feeds.json` is served NetworkFirst with a
   background cache update. Cold-start offline (no network, no SW
   cache yet) then falls back to the cached copy from a prior visit.
-- /api/rt/* and `*.sqlite3.gz` are explicitly NOT cached at the SW
+- /api/rt/* was a same-origin Pages Function in the old
+  architecture; now removed. The app calls
+  `gtfs-rt.n3ary.com/rt/<feed>/vehicle_positions` directly from
+  `feeds.json.realtime.vehicle_positions`. The new proxy host
+  is explicitly NOT cached at the SW
   layer. The live pipeline (see [live-pipeline.md](live-data-pipeline.md))
   already keeps the last good vehicle snapshot when the network
   fails, and the OPFS bootstrap already short-circuits when the
@@ -148,8 +153,9 @@ from the home screen.
 - No custom install prompt UI — rely on the browser's native install affordance.
 - No background sync — re-fetch on focus instead.
 - No push notifications — out of scope.
-- No SW-level cache for live data (`/api/rt/*`). Caching would serve
-  stale vehicles, which is wrong.
+- No SW-level cache for live data
+  (`gtfs-rt.n3ary.com/rt/*`). Caching would serve stale vehicles,
+  which is wrong.
 - No SW-level cache for the sqlite. The OPFS layer is the durable
   store; the SW doesn't need to duplicate it.
 

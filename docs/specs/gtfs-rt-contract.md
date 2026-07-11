@@ -168,10 +168,14 @@ The producer's RT adapter (`gtfs/packages/gtfs-rt/`):
    upstream publishes `direction_id=0` for every vehicle and an empty
    `start_time`. Each quirk module is small (~50–100 lines) and only
    loaded for the feeds it targets.
-4. Publishes the clean `FeedMessage` to the URL declared in
-   `feeds.json.realtime.vehicle_positions`. The CF Pages Function (or
-   Worker) caches the response on the edge so the consumer sees the
-   same `max-age` cache semantics as it does today.
+4. Publishes the clean `FeedMessage` at the canonical URL
+   `https://gtfs-rt.n3ary.com/rt/<feed_id>/vehicle_positions`. The
+   static pipeline writes this URL into
+   `feeds.json.realtime.vehicle_positions` whenever a feed has a
+   `feeds/<id>/config.json` (so the app can call it directly with
+   no same-origin proxy). Cloudflare's edge caches the response
+   in front via a 5s Cache Rule on the `/rt/*` path so consumers
+   see the same `max-age` semantics.
 
 The producer's per-feed quirks are the **only** place where per-feed
 RT knowledge lives. Adding a quirk is a new module in the producer's

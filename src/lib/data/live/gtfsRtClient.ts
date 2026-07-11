@@ -2,10 +2,11 @@
  * gtfsRtClient — fetch & parse GTFS-RT VehiclePositions for a feed.
  *
  * GTFS-RT is a protobuf format ([spec](https://gtfs.org/realtime/reference/)).
- * Upstream endpoints don't return CORS headers, so the client hits a
- * same-origin proxy at `/api/rt/<feedId>/<endpoint>` — wired up in
- *   - vite.config.ts                         (dev, via Vite proxy)
- *   - functions/api/rt/[feed]/[[endpoint]].js (prod, Cloudflare Pages Function)
+ * The URL to call comes from `feed.realtime.vehicle_positions` in
+ * feeds.json -- in production this is the canonical gtfs-rt.n3ary.com
+ * proxy URL (the static pipeline rewrites it whenever the feed has a
+ * per-feed config). The proxy sets Access-Control-Allow-Origin: *,
+ * so the browser calls it directly with no same-origin intermediary.
  *
  * This module is "the I/O layer for live data". It returns a thin
  * shape (`LiveVehicleObservation`) that the reconciler can consume.
@@ -76,20 +77,21 @@ export class RtUnavailableError extends Error {
   }
 }
 
-/** Fetch + parse the latest VehiclePositions for a feed. The parser
- *  is intentionally I/O only — direction + start_time enrichment
- *  (per-feed quirks, SQL fallback) lives in
- *  `domain/enrichObservations.ts` so it can prefer authoritative
- *  static-feed data when available. */
-export async function fetchVehiclePositions(feedId: string): Promise<VehiclePositionsSnapshot> {
-  const url = `/api/rt/${encodeURIComponent(feedId)}/vehiclePositions`;
+/** Fetch + parse the latest VehiclePositions for a feed. The caller
+ *  passes the absolute URL straight from `feed.realtime.vehicle_positions`
+ *  in feeds.json — no same-origin proxy needed because the new
+ *  gtfs-rt server has CORS `*` enabled. The parser is intentionally
+ *  I/O only — direction + start_time enrichment (per-feed quirks,
+ *  SQL fallback) lives in `domain/enrichObservations.ts` so it can
+ *  prefer authoritative static-feed data when available. */
+export async function fetchVehiclePositions(feedId: string, url: string): Promise<VehiclePositionsSnapshot> {
   const res = await fetch(url, { cache: 'no-store' });
-  // 404 from the Pages Function means the proxy explicitly doesn't
-  // route this feed (e.g. an upstream whose RT endpoint needs auth
-  // we can't forward). Treat as "no RT" — the caller stops polling
-  // for the session rather than showing a persistent error.
+  // 404 from the proxy means the new gtfs-rt server has no snapshot
+  // for this feed yet (e.g. upstream unreachable, or feed has no
+  // realtime configured). Treat as "no RT" — the caller stops
+  // polling for the session rather than showing a persistent error.
   if (res.status === 404) {
-    throw new RtUnavailableError(`No live-data proxy configured for feed "${feedId}"`);
+    throw new RtUnavailableError(`No live-data available for feed "${feedId}"`);
   }
   if (!res.ok) {
     throw new Error(`GTFS-RT fetch failed for ${feedId}: HTTP ${res.status}`);

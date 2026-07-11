@@ -9,11 +9,12 @@
  *   - Precache: app shell + manifest (injected by @vite-pwa/sveltekit
  *     via self.__WB_MANIFEST at build time).
  *   - Runtime cache: gtfs.n3ary.com/feeds.json only. SQLite bootstrap
- *     and /api/rt/* are intentionally NOT cached here — the OPFS
- *     bootstrap already short-circuits when the file is local, and
- *     the live pipeline already keeps the last good snapshot when
- *     the network fails. Caching them at the SW layer would serve
- *     stale vehicles, which is wrong.
+ *     and the live GTFS-RT feed (gtfs-rt.n3ary.com/rt/*) are
+ *     intentionally NOT cached here — the OPFS bootstrap already
+ *     short-circuits when the file is local, and the live pipeline
+ *     already keeps the last good snapshot when the network fails.
+ *     Caching them at the SW layer would serve stale vehicles,
+ *     which is wrong.
  *   - Versioning: precache bucket name is `precache-v<version>`. On
  *     activate, any other `precache-v*` cache is deleted so an
  *     outdated shell never gets served from cache.
@@ -109,9 +110,9 @@ self.addEventListener('fetch', (event) => {
 
   // Everything else: pass through. The OPFS bootstrap reads its
   // own sqlite via its own fetch (which falls through here, so the
-  // SW doesn't double-cache large files). /api/rt/* is also
-  // pass-through — the live pipeline handles its own offline
-  // fallback to the last good snapshot.
+  // SW doesn't double-cache large files). gtfs-rt.n3ary.com/rt/*
+  // is also pass-through — the live pipeline handles its own
+  // offline fallback to the last good snapshot.
 });
 
 async function serveFromPrecache(pathname: string): Promise<Response> {

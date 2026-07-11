@@ -153,14 +153,18 @@ in system-local tz and compared to feed-local scheduled times. In Cluj
 
 ## CORS
 
-GTFS-RT feeds don't set CORS headers on their responses, so the
-worker can't fetch them directly. A Cloudflare Pages Function at
-`/api/rt/<feed>/<endpoint>` (see
-[functions/api/rt/[feed]/[[endpoint]].js](../../functions/api/rt/[feed]/[[endpoint]].js))
-resolves the upstream URL from [feeds.json](feeds-json.md) and
-proxies the response on the app's own origin. Vite dev server
-mirrors the same proxy paths in [vite.config.ts](../../vite.config.ts)
-so the same client code works in both environments.
+The new gtfs-rt server (`gtfs-rt.n3ary.com`) sets
+`Access-Control-Allow-Origin: *` on every response, so the worker
+calls the URL from `feeds.json.realtime.vehicle_positions` directly
+with no same-origin proxy. The previous Cloudflare Pages Function
+path (`/api/rt/<feed>/<endpoint>`) was removed when the proxy moved
+to the publisher monorepo — see
+[n3ary/gtfs-publisher](https://github.com/n3ary/gtfs-publisher) for
+the operator side.
+
+A `feeds.json.realtime.vehicle_positions` of `https://gtfs-rt.n3ary.com/rt/<id>/vehicle_positions`
+is the canonical shape the static pipeline publishes for any feed
+with a `feeds/<id>/config.json`.
 
 ## Freshness rules
 
@@ -182,12 +186,12 @@ actually emits — catches regressions in `gtfs-realtime-bindings`
 upgrades and upstream schema drift that a hand-built `FeedMessage`
 wouldn't.
 
-To regenerate after an upstream change (with `npm run dev` running so
-the same-origin proxy is up):
+To regenerate after an upstream change, fetch directly from the
+canonical proxy (no Vite dev proxy required any more):
 
 ```bash
 curl -o src/lib/data/live/__fixtures__/cluj-vehicle-positions.bin \
-  http://localhost:5173/api/rt/cluj-napoca/vehiclePositions
+  https://gtfs-rt.n3ary.com/rt/cluj-napoca/vehicle_positions
 ```
 
 The snapshot is intentionally pinned — bumping it should be a deliberate

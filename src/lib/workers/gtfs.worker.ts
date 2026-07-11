@@ -72,6 +72,12 @@ const api: GtfsRepo = {
     state.currentFeedId = feed.id;
     state.currentFeedHash = feed.hash ?? null;
     state.currentFeedTz = feed.timezone || 'UTC';
+    // The static pipeline rewrites realtime.vehicle_positions to the
+    // canonical gtfs-rt.n3ary.com proxy URL whenever the feed has a
+    // per-feed config -- so the app can call it directly with no
+    // same-origin proxy. null when the feed has no realtime (e.g.
+    // Tursib today).
+    state.currentFeedRtUrl = feed.realtime?.vehicle_positions ?? null;
     state.bootstrapping = bootstrap(feed, onProgress);
     try {
       state.currentDb = await state.bootstrapping;

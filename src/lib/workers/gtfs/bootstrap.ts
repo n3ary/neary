@@ -440,6 +440,7 @@ export function closeCurrent(): void {
     state.currentDb = null;
   }
   state.currentFeedTz = null;
+  state.currentFeedRtUrl = null;
   state.bootstrapping = null;
   // Shape polylines are feed-scoped — invalidate so the next feed
   // can't see stale entries from this one.

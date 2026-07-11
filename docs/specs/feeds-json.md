@@ -39,7 +39,14 @@ This doc captures the contract from the app's perspective.
   "size_bytes": { "sqlite_gz": 5716840 },
   "hash": "sha256-…",                           // used for freshness check
   "realtime": {
-    "vehicle_positions": "https://cluj-rt-feed.gtfs.ro/vehiclePositions",
+    // The URL the APP calls. For any feed with a feeds/<id>/config.json
+    // in the publisher monorepo, the static pipeline rewrites this to
+    // the canonical gtfs-rt.n3ary.com/rt/<id>/vehicle_positions proxy.
+    "vehicle_positions":           "https://gtfs-rt.n3ary.com/rt/cluj-napoca/vehicle_positions",
+    // The URL the gtfs-rt server polls (the operator's upstream). The
+    // app ignores this; it's there for the publisher/server side.
+    "upstream_vehicle_positions": "https://cluj-rt-feed.gtfs.ro/vehiclePositions",
+    "extra_vehicle_positions":    [],
     "trip_updates":      "https://cluj-rt-feed.gtfs.ro/tripUpdates",
     "service_alerts":    "https://cluj-rt-feed.gtfs.ro/serviceAlerts"
   },

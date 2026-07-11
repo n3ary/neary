@@ -18,6 +18,12 @@ class WorkerState {
   /** IANA timezone for the current feed (e.g. 'Europe/Bucharest').
    *  Required for every minute-since-midnight conversion the queries do. */
   currentFeedTz: string | null = null;
+  /** URL the live pipeline polls for cleaned GTFS-RT vehicle_positions.
+   *  Comes from `feed.realtime.vehicle_positions` -- in production this
+   *  is the canonical gtfs-rt.n3ary.com proxy URL (the static pipeline
+   *  rewrites it when the feed has a per-feed config). null when the
+   *  feed has no realtime configured. */
+  currentFeedRtUrl: string | null = null;
   currentDb: Database | null = null;
   /** Dwell seconds per stop from the feed's _neary_config timing block.
    *  Used by assembleLiveBoards to thread feed-specific dwell into ETA. */

@@ -2,7 +2,10 @@
  * Live-reconciliation pipeline — owned entirely by the worker.
  *
  * Every `livePollMs` (15 s today) the worker:
- *   1. Fetches GTFS-RT vehicle positions via the same-origin proxy.
+ *   1. Fetches GTFS-RT vehicle positions from the URL stored on
+ *      `state.currentFeedRtUrl` (the canonical gtfs-rt.n3ary.com
+ *      proxy URL from feeds.json; CORS `*` so direct browser calls
+ *      work).
  *   2. Queries `getActiveTrips` against the open feed DB.
  *   3. Runs `reconcileWithLive` to produce a global Vehicle[] mix of
  *      `kind: 'scheduled' | 'tracked' | 'verified' | 'gps-only'`.
@@ -93,12 +96,17 @@ function broadcast(snap: ReconciledSnapshot): void {
  *  swap mid-fetch (`feedId !== currentFeedId` guard). */
 export async function tickLive(): Promise<void> {
   const feedId = state.currentFeedId;
+  const rtUrl = state.currentFeedRtUrl;
   if (!feedId || !state.currentDb) return;
+  // No realtime configured for this feed -- nothing to poll. Skip
+  // silently; the UI already shows schedule-only data when there's
+  // no live update.
+  if (!rtUrl) return;
   if (rtUnavailableFeeds.has(feedId)) return;
   if (liveInFlight) return;
   liveInFlight = true;
   try {
-    const snap = await fetchVehiclePositions(feedId);
+    const snap = await fetchVehiclePositions(feedId, rtUrl);
     if (feedId !== state.currentFeedId) return;
     const nowMs = Date.now();
     const tz = state.currentFeedTz ?? 'UTC';
@@ -135,12 +143,12 @@ export async function tickLive(): Promise<void> {
     // in the same tick — keeps station UI in lockstep with map UI.
     pushAllStationSubscribers(payload);
   } catch (e) {
-    // RtUnavailableError = the feed doesn't have a working RT proxy
-    // (either the Pages Function 404s for this feed id, or the
-    // response wasn't protobuf). Suppress from the UI, mark the feed
-    // as no-RT for this session so we don't keep hammering the same
-    // endpoint every 15 s, and broadcast a clean snapshot so any
-    // "Live feed error" toast disappears.
+    // RtUnavailableError = the feed's gtfs-rt proxy has no snapshot
+    // yet (404 from the new server, or a non-protobuf response
+    // from a misconfigured proxy). Suppress from the UI, mark the
+    // feed as no-RT for this session so we don't keep hammering
+    // the same endpoint every 15 s, and broadcast a clean snapshot
+    // so any "Live feed error" toast disappears.
     if (e instanceof RtUnavailableError) {
       rtUnavailableFeeds.add(feedId);
       console.info(`[gtfs.worker] ${feedId}: ${e.message} — schedule-only from now on`);

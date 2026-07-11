@@ -58,7 +58,17 @@ export interface Feed {
   valid_from?: string | null;
   valid_until?: string | null;
   realtime?: {
+    /** URL the app calls for cleaned vehicle_positions. In production
+     *  this is the canonical gtfs-rt.n3ary.com proxy URL (the static
+     *  pipeline rewrites it whenever the feed has a feeds/<id>/config.json).
+     *  null/undefined when the feed has no realtime configured. */
     vehicle_positions?: string;
+    /** URL the gtfs-rt server polls (i.e. the operator's upstream).
+     *  App code does NOT use this -- it's for the server-side proxy.
+     *  Documented here so the consumer of this type knows it exists
+     *  and can ignore it. */
+    upstream_vehicle_positions?: string;
+    extra_vehicle_positions?: string[];
     trip_updates?: string;
     service_alerts?: string;
   } | null;
