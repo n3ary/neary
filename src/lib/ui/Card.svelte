@@ -22,10 +22,14 @@
     vehicle: 'border-l-4 border-l-[color:var(--color-warning)]',
   };
   const TONE: Record<Tone, string> = {
-    plain: 'bg-[color:var(--color-surface)]',
-    // 'elevated' = the anchor card (currently "Your favorites"). Subtle,
-    // token-driven, doesn't fight the AppLayout shell.
-    elevated: 'bg-[color:var(--color-surface-elevated)]',
+    // plain = the default card frame: surface bg + gray border.
+    plain: 'bg-[color:var(--color-surface)] border-[color:var(--color-border)]',
+    // 'elevated' = the anchor card (currently "Your favorites"). A
+    // different surface (--color-surface-elevated) PLUS a 1px primary
+    // border so the card reads as the focus without leaning on color
+    // blocks or thick accents. Border color is owned by TONE (not the
+    // base) so plain vs elevated don't compete via CSS cascade.
+    elevated: 'bg-[color:var(--color-surface-elevated)] border-[color:var(--color-primary)]',
   };
 </script>
 
@@ -33,7 +37,7 @@
   class={cn(
     TONE[tone],
     'text-[color:var(--color-fg)]',
-    'rounded-[var(--radius-card)] border border-[color:var(--color-border)] shadow-sm',
+    'rounded-[var(--radius-card)] border shadow-sm',
     ACCENT[variant],
     className,
   )}
