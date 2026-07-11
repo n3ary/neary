@@ -21,7 +21,7 @@
  * `AtStationSubState`) that drive per-row label, color, and sort order.
  */
 
-import { type Vehicle } from './types';
+import { formatRelativeMin, type Vehicle } from './types';
 
 export type ArrivalBucket =
   | 'at-station'
@@ -245,15 +245,16 @@ export function atStationLabel(
   }
 }
 
-/** Format an ETA as "arriving in N min" (or "arriving in Hh", "arriving in Hh Mm").
- *  Eta rounds to whole minutes — fractional minutes from a live
- *  position aren't actionable for the rider's planning. */
+/** Render an ETA in [1, inf) minutes as "arriving in N min" (or the
+ *  long form). Wraps `formatRelativeMin` with a fixed "arriving "
+ *  prefix and rounds the input to whole minutes so live positions
+ *  don't flicker between e.g. "in 1 min" and "in 2 min" on a
+ *  fractional eta. Caller is responsible for the eta < 1 case
+ *  ("arriving now") — this function is only entered for eta >= 1,
+ *  so `formatRelativeMin` will always return a string starting
+ *  with "in " (never the "<= -1" "N min ago" or "< 1" "now" branches). */
 function arrivingIn(etaMin: number): string {
-  const m = Math.round(etaMin);
-  if (m < 60) return `arriving in ${m} min`;
-  const h = Math.floor(m / 60);
-  const rem = m % 60;
-  return rem === 0 ? `arriving in ${h}h` : `arriving in ${h}h ${rem}m`;
+  return `arriving ${formatRelativeMin(Math.round(etaMin))}`;
 }
 
 export interface BucketInputs {
