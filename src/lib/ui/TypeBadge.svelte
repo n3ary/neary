@@ -8,6 +8,15 @@
   Used by /favorites for the three filter rows. Active = full opacity
   + white ring; inactive = same fill but dimmed so the unselected
   state reads clearly.
+
+  `onmousedown` calls preventDefault to suppress the focus shift that
+  a mouse/touch click would otherwise apply. A real <button> focuses
+  on click, and the browser then scrolls the focused element into
+  view - on a long /favorites catalog the user is often scrolled past
+  the filter row, so the auto-scroll yanks the page back to the top
+  on every tap. Suppressing the focus keeps scroll position stable.
+  Keyboard activation (Tab + Enter/Space) is unaffected because
+  mousedown only fires for pointer input.
 -->
 <script lang="ts">
   import type { VehicleType } from '$lib/domain/types';
@@ -64,6 +73,7 @@
   aria-pressed={active}
   title={renderedLabel}
   onclick={onclick}
+  onmousedown={(e) => e.preventDefault()}
   style={`background:${bg};color:${computedFg};${!active ? 'opacity:0.6;' : ''}`}
   class={cn(
     'inline-flex items-center justify-center font-semibold rounded-md select-none whitespace-nowrap cursor-pointer',

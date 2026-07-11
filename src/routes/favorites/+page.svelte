@@ -19,6 +19,23 @@
   same surface. Scroll position is preserved per tab (stash on
   leave, restore on re-entry) so a tab swap doesn't yank the user
   to the top of the new tab.
+
+  The "Your favorites" card ALWAYS renders all of the user's
+  favorites regardless of the active tab or the filter cascade.
+  Filters (mode / network / marker) only narrow the "All other
+  routes" / "All other stations" catalog below the tabs — they
+  never hide or trim a favorited item from the pinned card. A
+  favorited route also never reappears in the "All other routes"
+  catalog: the catalog subtracts the favorites set before
+  rendering.
+
+  The marker filter (All / Favorite / Home / Work / City center)
+  is the first row in the filter card, but only on the Routes tab.
+  On the Stations tab the row is hidden: the "All other stations"
+  catalog already excludes marked stations (they're in Your
+  favorites), so the filter would have nothing to act on. On the
+  Routes tab the filter narrows the catalog to routes serving at
+  least one marked station of the active type.
 -->
 <script lang="ts">
   import { goto } from '$app/navigation';
@@ -180,9 +197,11 @@
   let otherStationsLoading = $state<boolean>(false);
   let otherStationsError = $state<string | null>(null);
 
-  // Marker-type filter for the Stations tab. Multi-select: a station
-  // is shown if it matches any active marker in the set. The All chip
-  // deselects everything. Client-side only - the marker map is small.
+  // Marker-type filter for the Routes tab. Multi-select: a route
+  // is shown if it serves at least one station carrying a marker in
+  // the set. The All chip deselects everything. Client-side only -
+  // the marker map is small. State persists across tab switches; on
+  // the Stations tab the chips are hidden and the filter is dormant.
   let activeMarkerFilter = $state<ReadonlySet<StationMarker>>(new Set());
 
   function toggleMarkerFilter(m: StationMarker) {
@@ -491,18 +510,15 @@
   const favStationsSorted = $derived<StopWithDistance[]>(favoriteStations);
 
   // "All other stations": the stations that AREN'T in the favorites
-  // card above. Filter cascade (mode + network) trims the page; the
-  // marker filter further trims the visible page. Stations with any
-  // marker are always excluded - they already appear in the
-  // "Your favorites" card, so duplicating them here is noise.
+  // card above. Filter cascade (mode + network) trims the page at
+  // the worker via stationsScope. Stations with any marker are
+  // always excluded - they already appear in the "Your favorites"
+  // card, so duplicating them here is noise. The marker filter no
+  // longer applies here: its chips live on the Routes tab only, so
+  // on this tab the filter is always empty and the old "look up
+  // marker match" pass was always a no-op anyway.
   const otherStationsSorted = $derived.by<StopWithDistance[]>(() => {
-    let list = otherStationsPage.filter((s) => favoritesStore.markerFor(s.id) === undefined);
-    if (activeMarkerFilter.size > 0) {
-      list = list.filter((s) => {
-        const m = favoritesStore.markerFor(s.id);
-        return m !== undefined && activeMarkerFilter.has(m);
-      });
-    }
+    const list = otherStationsPage.filter((s) => favoritesStore.markerFor(s.id) === undefined);
     return sortStationsForPicker(list, stationAnchor);
   });
 
@@ -620,7 +636,14 @@
            active tab. Lists favorited routes AND marked stations, with
            their marker badges. The routeRow snippet wraps each row in
            expandableRouteRow so a tap on the row expands to show the
-           station list (TripStopList) — same as the catalog rows below. -->
+           station list (TripStopList) — same as the catalog rows below.
+
+           Invariant: this card is the user's pinned surface and is
+           NEVER affected by the filter cascade. `favRoutes` and
+           `favStationsSorted` read from the unfiltered allRoutes /
+           favoritesStore, so a mode / network / marker filter
+           applied below cannot hide or trim a pinned item. If you
+           add a new filter, double-check it stays out of this card. -->
       {#if favRoutes.length > 0 || favStationsSorted.length > 0}
         <FavoritesCard
           routes={favRoutes}
@@ -640,17 +663,53 @@
            catalog shown below. Sits between the favorites card and the
            catalog so the user's pinned items render first, keeping
            catalog controls out of the way until they scroll. -->
-      {#if presentTypes.length > 1 || allNetworks.length > 0}
+      {#if presentTypes.length > 1 || allNetworks.length > 0 || activeTab === 'routes'}
         <Card>
           <CardContent>
             <!--
-              Three filter rows, no titles or captions -- the chip labels
-              (Bus/Tram/..., network name, All/Favorite/...) are self-evident.
-              Hairlines separate the rows. See #257.
+              Filter rows, no titles or captions -- the chip labels
+              (All/Favorite/Home/Work/City center, Bus/Tram/...,
+              network name) are self-evident. Hairlines separate the
+              rows. See #257.
+
+              Order: marker filter is first when on the Routes tab --
+              it's the most specific ("which stations do you care
+              about") and narrows the route catalog to routes serving
+              those stations. On the Stations tab the marker row is
+              hidden because the catalog already excludes marked
+              stations (they're in Your favorites), so the filter
+              would have nothing to act on.
             -->
             <Stack spacing={1.5}>
-              {#if presentTypes.length > 1}
+              {#if activeTab === 'routes'}
                 <Stack direction="row" spacing={1} align="center" wrap>
+                  <TypeBadge
+                    size="small"
+                    label="All"
+                    active={activeMarkerFilter.size === 0}
+                    onclick={clearMarkerFilter}
+                  />
+                  {#each STATION_MARKERS as m (m)}
+                    <TypeBadge
+                      size="small"
+                      label={MARKER_LABELS[m]}
+                      color={MARKER_COLORS[m].bg}
+                      fg={MARKER_COLORS[m].fg}
+                      active={activeMarkerFilter.has(m)}
+                      onclick={() => toggleMarkerFilter(m)}
+                    />
+                  {/each}
+                </Stack>
+              {/if}
+
+              {#if presentTypes.length > 1}
+                <Stack
+                  direction="row"
+                  spacing={1}
+                  align="center"
+                  wrap
+                  class={activeTab === 'routes' ? 'pt-2 border-t border-[color:var(--color-border)]' : ''}
+                >
                   {#each presentTypes as t (t)}
                     <TypeBadge type={t} color={colorByType.get(t)} active={typeFilter === t} onclick={() => toggleType(t)} />
                   {/each}
@@ -671,25 +730,6 @@
                   {/each}
                 </Stack>
               {/if}
-
-              <Stack direction="row" spacing={1} align="center" wrap class="pt-2 border-t border-[color:var(--color-border)]">
-                <TypeBadge
-                  size="small"
-                  label="All"
-                  active={activeMarkerFilter.size === 0}
-                  onclick={clearMarkerFilter}
-                />
-                {#each STATION_MARKERS as m (m)}
-                  <TypeBadge
-                    size="small"
-                    label={MARKER_LABELS[m]}
-                    color={MARKER_COLORS[m].bg}
-                    fg={MARKER_COLORS[m].fg}
-                    active={activeMarkerFilter.has(m)}
-                    onclick={() => toggleMarkerFilter(m)}
-                  />
-                {/each}
-              </Stack>
             </Stack>
           </CardContent>
         </Card>
@@ -753,9 +793,7 @@
                       {:else if otherStationsError}
                         {otherStationsError}
                       {:else if otherStationsTotal > 0}
-                        {#if activeMarkerFilter.size > 0}
-                          Showing {otherStationsSorted.length} of {otherStationsTotal} stations.
-                        {:else if filtersActive}
+                        {#if filtersActive}
                           Showing {otherStationsPage.length} of {otherStationsTotal} stations matching the filter.
                         {:else}
                           Showing {otherStationsPage.length} of {otherStationsTotal} stations.
