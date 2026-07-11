@@ -616,9 +616,30 @@
     </Card>
   {:else}
     <Stack spacing={2}>
+      <!-- Combined "Your favorites" card. Always visible regardless of
+           active tab. Lists favorited routes AND marked stations, with
+           their marker badges. The routeRow snippet wraps each row in
+           expandableRouteRow so a tap on the row expands to show the
+           station list (TripStopList) — same as the catalog rows below. -->
+      {#if favRoutes.length > 0 || favStationsSorted.length > 0}
+        <FavoritesCard
+          routes={favRoutes}
+          stations={favStationsSorted}
+          stationMarkers={favoritesStore.markers}
+          onChangeStationMarker={changeStationMarker}
+          headerStyle="standalone"
+        >
+          {#snippet routeRow(args: { route: Route; markerStopIds: readonly string[] })}
+            {@render expandableRouteRow(args)}
+          {/snippet}
+        </FavoritesCard>
+      {/if}
+
       <!-- Filter card: shared across both tabs. Mode + network cascade
            to the Stations tab; on the Routes tab they just narrow the
-           catalog shown below the favorites. -->
+           catalog shown below. Sits between the favorites card and the
+           catalog so the user's pinned items render first, keeping
+           catalog controls out of the way until they scroll. -->
       {#if presentTypes.length > 1 || allNetworks.length > 0}
         <Card>
           <CardContent>
@@ -672,25 +693,6 @@
             </Stack>
           </CardContent>
         </Card>
-      {/if}
-
-      <!-- Combined "Your favorites" card. Always visible regardless of
-           active tab. Lists favorited routes AND marked stations, with
-           their marker badges. The routeRow snippet wraps each row in
-           expandableRouteRow so a tap on the row expands to show the
-           station list (TripStopList) — same as the catalog rows below. -->
-      {#if favRoutes.length > 0 || favStationsSorted.length > 0}
-        <FavoritesCard
-          routes={favRoutes}
-          stations={favStationsSorted}
-          stationMarkers={favoritesStore.markers}
-          onChangeStationMarker={changeStationMarker}
-          headerStyle="standalone"
-        >
-          {#snippet routeRow(args: { route: Route; markerStopIds: readonly string[] })}
-            {@render expandableRouteRow(args)}
-          {/snippet}
-        </FavoritesCard>
       {/if}
 
       <!-- Page-width tabs sit BELOW the combined Your favorites card.
