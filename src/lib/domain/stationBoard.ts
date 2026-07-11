@@ -2,11 +2,13 @@
 
 import {
   atStationLabel,
+  atStationSubState,
   bucketOf,
   compareForBoard,
   filterForStationView,
   type ArrivalBucket,
   type AtStationLabel,
+  type AtStationSubState,
 } from './buckets';
 import { haversineMeters } from '@n3ary/gtfs-spec/shape';
 import { minSinceMidnightInTz } from './pipeline/timeUtils';
@@ -24,10 +26,13 @@ export interface BoardRow {
   bucket: ArrivalBucket;
   /** Signed minutes (negative = past). Cached so the sort doesn't redo math. */
   etaMinutes: number;
-  /** Per-row label and urgency for the combined "At station" section.
-   *  Undefined for rows that don't belong in that section (incoming,
-   *  drop-off, departed, off-route) — those keep their existing
-   *  per-bucket rendering. */
+  /** Sub-state for at-station rows. Drives the per-row label, color,
+   *  and sort order within the at-station section. Undefined for any
+   *  other bucket. */
+  atStationSubState?: AtStationSubState;
+  /** Per-row label and urgency for the at-station section. Undefined
+   *  for any other bucket (incoming, drop-off, departed, off-route) —
+   *  those keep their per-bucket rendering. */
   atStationLabel?: AtStationLabel;
 }
 
@@ -55,31 +60,34 @@ export function assembleStationBoard(
         ? haversineMeters(v.position.lat, v.position.lon, stop.lat, stop.lon)
         : Number.POSITIVE_INFINITY;
     const etaMinutes = v.eta?.minutes ?? 0;
+    const vehicleSpeedKmh =
+      v.position?.speedMs != null ? v.position.speedMs * 3.6 : undefined;
     const rawBucket = bucketOf(v.kind, {
       etaMinutes,
       distanceToStopMeters,
-      vehicleSpeedKmh:
-        v.position?.speedMs != null ? v.position.speedMs * 3.6 : undefined,
+      vehicleSpeedKmh,
       scheduledArrivalMin: v.schedule?.scheduledArrival,
       scheduledDepartureMin: v.schedule?.scheduledDeparture,
       nowMin,
     });
     // Drop-off-only vehicles can't be boarded — segregate into their own bucket; departed ones keep 'departed' (the flag is moot post-departure).
     const bucket = v.dropOffOnly && rawBucket !== 'departed' ? 'drop-off' : rawBucket;
-    const atStationLabelResult = atStationLabel(bucket, {
-      etaMinutes,
+    const atStationSubStateValue = atStationSubState(bucket, {
       distanceToStopMeters,
-      vehicleSpeedKmh:
-        v.position?.speedMs != null ? v.position.speedMs * 3.6 : undefined,
+      vehicleSpeedKmh,
       scheduledArrivalMin: v.schedule?.scheduledArrival,
       scheduledDepartureMin: v.schedule?.scheduledDeparture,
       nowMin,
     });
+    const atStationLabelValue = atStationSubStateValue
+      ? atStationLabel(atStationSubStateValue, { etaMinutes, vehicleSpeedKmh })
+      : undefined;
     return {
       vehicle: v,
       bucket,
       etaMinutes,
-      ...(atStationLabelResult ? { atStationLabel: atStationLabelResult } : {}),
+      ...(atStationSubStateValue ? { atStationSubState: atStationSubStateValue } : {}),
+      ...(atStationLabelValue ? { atStationLabel: atStationLabelValue } : {}),
     };
   });
   const sorted = filterForStationView(rows, prefs).sort(compareForBoard);
@@ -89,14 +97,9 @@ export function assembleStationBoard(
 /** Default cap applied to context buckets when the user hasn't picked a value. Now-group + off-route are always uncapped. */
 export const DEFAULT_CONTEXT_BUCKET_CAP = 3;
 
-// Now-group (departing/at-station/arriving) and off-route are uncapped; context buckets (incoming/drop-off/departed) share the setting-driven cap.
+// At-station and off-route are uncapped; context buckets (incoming/drop-off/departed) share the setting-driven cap.
 function bucketCap(bucket: ArrivalBucket, maxRows: number): number | null {
-  if (
-    bucket === 'departing' ||
-    bucket === 'at-station' ||
-    bucket === 'arriving' ||
-    bucket === 'off-route'
-  ) {
+  if (bucket === 'at-station' || bucket === 'off-route') {
     return null;
   }
   return maxRows;

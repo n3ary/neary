@@ -513,7 +513,7 @@
         rows={(demoVehicles
           .map((v, i) => ({
             vehicle: v,
-            bucket: (['arriving', 'at-station', 'incoming', 'incoming', 'incoming'] as const)[i] ?? 'incoming',
+            bucket: (['at-station', 'at-station', 'incoming', 'incoming', 'incoming'] as const)[i] ?? 'incoming',
             etaMinutes: v.eta?.minutes ?? 0,
           })) as BoardRow[])
           .filter((r) => selectedRouteId == null || r.vehicle.route.id === selectedRouteId)}

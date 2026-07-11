@@ -61,8 +61,10 @@ describe('assembleStationBoard', () => {
 
   it('single-route board skips dedup (cap still applies)', () => {
     // Same route+direction everywhere: dedup is a no-op (the board
-    // already represents the rider's chosen view). 1 at-station +
-    // 1 arriving uncapped + 4 incoming capped at the default of 3 = 5 rows.
+    // already represents the rider's chosen view). 1 at-station
+    // (close sub-state: eta=1) + 1 at-station (mid-dwell sub-state:
+    // scheduled dwell covers now) + 4 incoming capped at the default
+    // of 3 = 5 rows.
     const vehicles: Vehicle[] = [
       scheduled('arr', r24, 1),
       {
@@ -83,8 +85,14 @@ describe('assembleStationBoard', () => {
     const board = assembleStationBoard(vehicles, { lat: 46.7712, lon: 23.6236 }, allowAll, nowMs, 'UTC');
     expect(board).toHaveLength(5);
     expect(board.map((r) => r.bucket)).toEqual([
-      'at-station', 'arriving', 'incoming', 'incoming', 'incoming',
+      'at-station', 'at-station', 'incoming', 'incoming', 'incoming',
     ]);
+    // Sub-state sort: 'close' (eta=1, no schedule) beats 'mid-dwell'
+    // (scheduled dwell covering now, eta=0). Both at-station, but
+    // 'close' is the higher-priority sub-state.
+    const subStates = board.map((r) => r.atStationSubState);
+    expect(subStates[0]).toBe('close');
+    expect(subStates[1]).toBe('mid-dwell');
   });
 
   it('respects showDepartedVehicles=false', () => {
@@ -393,14 +401,16 @@ describe('capStationBoard', () => {
     expect(capStationBoard([])).toEqual([]);
   });
 
-  it('now-group is uncapped — every (route, dir) survives in arriving/at-station/departing', () => {
-    // 5 different routes, each with one arriving row. All must survive.
+  it('now-group is uncapped — every (route, dir) survives in the at-station bucket', () => {
+    // 5 different routes, each with one at-station row. All must survive
+    // (the at-station bucket is uncapped; the cap only applies to
+    // context buckets like incoming / drop-off / departed).
     const rows: BoardRow[] = [
-      { vehicle: scheduled('a1', r24, 1), bucket: 'arriving', etaMinutes: 1 },
-      { vehicle: scheduled('a2', r35, 1), bucket: 'arriving', etaMinutes: 1 },
-      { vehicle: scheduled('a3', r9, 2), bucket: 'arriving', etaMinutes: 2 },
-      { vehicle: scheduled('d1', r24, 0), bucket: 'departing', etaMinutes: 0 },
-      { vehicle: scheduled('s1', r35, 0), bucket: 'at-station', etaMinutes: 0 },
+      { vehicle: scheduled('a1', { id: 'A1', shortName: 'A1', color: '#fff' }, 1), bucket: 'at-station', etaMinutes: 1 },
+      { vehicle: scheduled('a2', { id: 'A2', shortName: 'A2', color: '#fff' }, 1), bucket: 'at-station', etaMinutes: 1 },
+      { vehicle: scheduled('a3', { id: 'A3', shortName: 'A3', color: '#fff' }, 2), bucket: 'at-station', etaMinutes: 2 },
+      { vehicle: scheduled('d1', { id: 'D1', shortName: 'D1', color: '#fff' }, 0), bucket: 'at-station', etaMinutes: 0, atStationSubState: 'about-to-leave' },
+      { vehicle: scheduled('s1', { id: 'S1', shortName: 'S1', color: '#fff' }, 0), bucket: 'at-station', etaMinutes: 0 },
     ];
     const out = capStationBoard(rows, 3);
     expect(out).toHaveLength(5);
@@ -610,14 +620,15 @@ describe('capStationBoard', () => {
   });
 
   it('preserves compareForBoard order in the output', () => {
-    // Departing should come first, then at-station, then arriving, etc.
+    // at-station should come first (sub-state sorted inside), then
+    // incoming.
     const rows: BoardRow[] = [
       { vehicle: scheduled('inc', r9, 5), bucket: 'incoming', etaMinutes: 5 },
-      { vehicle: scheduled('dep', r24, 0), bucket: 'departing', etaMinutes: 0 },
-      { vehicle: scheduled('at', r35, 0), bucket: 'at-station', etaMinutes: 0 },
+      { vehicle: scheduled('dep', r24, 0), bucket: 'at-station', etaMinutes: 0, atStationSubState: 'about-to-leave' },
+      { vehicle: scheduled('at', r35, 0), bucket: 'at-station', etaMinutes: 0, atStationSubState: 'mid-dwell' },
     ];
     const out = capStationBoard(rows, DEFAULT_CONTEXT_BUCKET_CAP);
-    expect(out.map((r) => r.bucket)).toEqual(['departing', 'at-station', 'incoming']);
+    expect(out.map((r) => r.vehicle.schedule?.tripId)).toEqual(['dep', 'at', 'inc']);
   });
 });
 

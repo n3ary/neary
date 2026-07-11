@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   atStationLabel,
+  atStationSubState,
   bucketOf,
   compareForBoard,
   bucketCounts,
@@ -39,22 +40,22 @@ describe('bucketOf', () => {
     expect(bucketOf('scheduled', inputs({ nowMin: now, etaMinutes: 10 }))).toBe('incoming');
   });
 
-  it('returns arriving when within 1 min', () => {
-    expect(bucketOf('scheduled', inputs({ nowMin: now, etaMinutes: 1 }))).toBe('arriving');
-    expect(bucketOf('scheduled', inputs({ nowMin: now, etaMinutes: 0 }))).toBe('arriving');
+  it('returns at-station (close sub-state) when within 1 min', () => {
+    expect(bucketOf('scheduled', inputs({ nowMin: now, etaMinutes: 1 }))).toBe('at-station');
+    expect(bucketOf('scheduled', inputs({ nowMin: now, etaMinutes: 0 }))).toBe('at-station');
   });
 
   it('returns incoming when 2 min away (above the threshold)', () => {
-    // Riders consistently saw 'in 2 min' rows inside the arriving
-    // section because the old threshold was ≤ 2. Dropped to ≤ 1 so a
-    // bus that's two minutes out reads as 'incoming' — not 'arriving'.
+    // The at-station window is `eta <= ARRIVING_THRESHOLD_MIN` (1 min by
+    // default). A bus 2 minutes out is still incoming — the rider
+    // has time, no need to start the urgency styling yet.
     expect(bucketOf('scheduled', inputs({ nowMin: now, etaMinutes: 2 }))).toBe('incoming');
   });
 
   it('returns departed when in the past (scanner gates trip-end)', () => {
-    // Bucketer now trusts the scheduleScanner to drop trips whose terminus
-    // has already passed; anything past that reaches the bucketer is still
-    // en route and belongs in 'departed', no recency cap.
+    // Bucketer trusts the scheduleScanner to drop trips whose terminus
+    // has already passed; anything past that reaches the bucketer is
+    // still en route and belongs in 'departed', no recency cap.
     expect(bucketOf('scheduled', inputs({ nowMin: now, etaMinutes: -3 }))).toBe('departed');
     expect(bucketOf('scheduled', inputs({ nowMin: now, etaMinutes: -30 }))).toBe('departed');
   });
@@ -82,14 +83,14 @@ describe('bucketOf', () => {
           etaMinutes: 0,
           distanceToStopMeters: 20,
           vehicleSpeedKmh: 0,
-          scheduledArrivalMin: now - 2,  // outside arriving window (-1..+1)
-          scheduledDepartureMin: now + 3, // outside departing window (-1..+1), dwell gap = 5
+          scheduledArrivalMin: now - 2,
+          scheduledDepartureMin: now + 3,
         }),
       ),
     ).toBe('at-station');
   });
 
-  it('departing when live vehicle picks up speed at stop', () => {
+  it('at-station when live vehicle picks up speed at stop (about-to-leave sub-state)', () => {
     expect(
       bucketOf(
         'gps-only',
@@ -98,14 +99,14 @@ describe('bucketOf', () => {
           etaMinutes: 0,
           distanceToStopMeters: 20,
           vehicleSpeedKmh: 10,
-          scheduledArrivalMin: now - 3, // outside arriving window
-          scheduledDepartureMin: now + 3, // outside departing window
+          scheduledArrivalMin: now - 3,
+          scheduledDepartureMin: now + 3,
         }),
       ),
-    ).toBe('departing');
+    ).toBe('at-station');
   });
 
-  it('departing in last minute of scheduled dwell (scheduled vehicle)', () => {
+  it('at-station in last minute of scheduled dwell (about-to-leave sub-state)', () => {
     expect(
       bucketOf(
         'scheduled',
@@ -114,13 +115,13 @@ describe('bucketOf', () => {
           etaMinutes: 0,
           distanceToStopMeters: 0,
           scheduledArrivalMin: now - 3,
-          scheduledDepartureMin: now, // last-minute window covers now..now+1
+          scheduledDepartureMin: now,
         }),
       ),
-    ).toBe('departing');
+    ).toBe('at-station');
   });
 
-  it('arriving in first minute of scheduled dwell (scheduled vehicle)', () => {
+  it('at-station in first minute of scheduled dwell (just-arrived sub-state)', () => {
     expect(
       bucketOf(
         'scheduled',
@@ -128,14 +129,16 @@ describe('bucketOf', () => {
           nowMin: now,
           etaMinutes: 0,
           distanceToStopMeters: 0,
-          scheduledArrivalMin: now, // first-minute window covers now-1..now+1 -> picks arriving since (c) checks before (d)
+          scheduledArrivalMin: now,
           scheduledDepartureMin: now + 3,
         }),
       ),
-    ).toBe('arriving');
+    ).toBe('at-station');
   });
 
-  it('arriving on short dwell (gap < 1 min) treated as just passing', () => {
+  it('at-station on short dwell (gap < 1 min, mid-dwell sub-state)', () => {
+    // dwell gap = 0 (arrival = departure = past) — vehicle is at the
+    // stop but not in either window. The sub-state is mid-dwell.
     expect(
       bucketOf(
         'scheduled',
@@ -143,17 +146,17 @@ describe('bucketOf', () => {
           nowMin: now,
           etaMinutes: 0,
           distanceToStopMeters: 0,
-          scheduledArrivalMin: now - 2, // past arriving window
-          scheduledDepartureMin: now - 2, // past departing window, dwell gap = 0
+          scheduledArrivalMin: now - 2,
+          scheduledDepartureMin: now - 2,
         }),
       ),
-    ).toBe('arriving');
+    ).toBe('at-station');
   });
 
-  it('live vehicle physically at the stop, no timing match → at-station', () => {
-    // The bus is right there (GPS within 50 m), schedule says depart later
-    // (4 min). User can board it now — bucket should be 'at-station', not
-    // 'arriving'. Covers the start-station dwell case.
+  it('live vehicle physically at the stop, no timing match -> at-station', () => {
+    // The bus is right there (GPS within 50 m), schedule says depart
+    // later (4 min). User can board it now - bucket should be
+    // 'at-station' (mid-dwell sub-state).
     expect(
       bucketOf(
         'tracked',
@@ -168,7 +171,7 @@ describe('bucketOf', () => {
     ).toBe('at-station');
   });
 
-  it('live vehicle physically at stop near scheduled departure → departing', () => {
+  it('live vehicle physically at stop near scheduled departure -> at-station', () => {
     expect(
       bucketOf(
         'tracked',
@@ -180,20 +183,21 @@ describe('bucketOf', () => {
           scheduledDepartureMin: now,
         }),
       ),
-    ).toBe('departing');
+    ).toBe('at-station');
   });
 });
 
 describe('compareForBoard', () => {
-  it('orders by bucket (departing first, at-station, arriving, incoming, departed) then by eta then by id', () => {
+  it('orders by bucket (at-station first, incoming, dropped off, departed) then by sub-state, eta, id', () => {
     const items = [
       { vehicle: v('z'), bucket: 'incoming' as ArrivalBucket, etaMinutes: 5 },
       { vehicle: v('a'), bucket: 'at-station' as ArrivalBucket, etaMinutes: 0 },
       { vehicle: v('b'), bucket: 'incoming' as ArrivalBucket, etaMinutes: 3 },
       { vehicle: v('c'), bucket: 'incoming' as ArrivalBucket, etaMinutes: 3 },
-      { vehicle: v('d'), bucket: 'departing' as ArrivalBucket, etaMinutes: 0 },
+      { vehicle: v('d'), bucket: 'at-station' as ArrivalBucket, etaMinutes: 0, atStationSubState: 'about-to-leave' as const },
     ];
     items.sort(compareForBoard);
+    // 'd' is about-to-leave (priority 0), 'a' is mid-dwell (priority 2), both at-station.
     expect(items.map((i) => i.vehicle.id)).toEqual(['d', 'a', 'b', 'c', 'z']);
   });
 
@@ -209,14 +213,6 @@ describe('compareForBoard', () => {
 });
 
 describe('etaUrgency', () => {
-  it("returns 'stop' for the departing bucket", () => {
-    expect(etaUrgency('departing', 0)).toBe('stop');
-  });
-
-  it("returns 'go' for at-station and arriving", () => {
-    expect(etaUrgency('at-station', 0)).toBe('go');
-    expect(etaUrgency('arriving', 1)).toBe('go');
-  });
   it("returns 'go' for incoming within the imminent threshold", () => {
     expect(etaUrgency('incoming', 5)).toBe('go');
     expect(etaUrgency('incoming', 3)).toBe('go');
@@ -227,98 +223,133 @@ describe('etaUrgency', () => {
     expect(etaUrgency('incoming', 20)).toBe('neutral');
   });
 
-  it("returns 'neutral' for departed and off-route", () => {
+  it("returns 'neutral' for at-station, drop-off, departed, off-route", () => {
+    // The at-station group carries its own urgency via atStationLabel;
+    // etaUrgency is only meaningful for non-at-station rows.
+    expect(etaUrgency('at-station', 0)).toBe('neutral');
+    expect(etaUrgency('drop-off', 1)).toBe('neutral');
     expect(etaUrgency('departed', -3)).toBe('neutral');
     expect(etaUrgency('off-route', 99)).toBe('neutral');
   });
 });
 
-describe('atStationLabel', () => {
-  const atStop = (o: Partial<Parameters<typeof atStationLabel>[1]>) => ({
-    etaMinutes: 0,
+describe('atStationSubState', () => {
+  const baseInputs = (o: Partial<Parameters<typeof atStationSubState>[1]>) => ({
     distanceToStopMeters: 20,
     nowMin: 9 * 60,
     ...o,
   });
 
   it('returns undefined for buckets outside the at-station section', () => {
-    expect(atStationLabel('incoming', atStop({ etaMinutes: 5 }))).toBeUndefined();
-    expect(atStationLabel('drop-off', atStop({ etaMinutes: 1 }))).toBeUndefined();
-    expect(atStationLabel('departed', atStop({ etaMinutes: -1 }))).toBeUndefined();
-    expect(atStationLabel('off-route', atStop({ etaMinutes: 1 }))).toBeUndefined();
+    expect(atStationSubState('incoming', baseInputs({}))).toBeUndefined();
+    expect(atStationSubState('drop-off', baseInputs({}))).toBeUndefined();
+    expect(atStationSubState('departed', baseInputs({}))).toBeUndefined();
+    expect(atStationSubState('off-route', baseInputs({}))).toBeUndefined();
   });
 
-  it('"now" red when a live vehicle at the stop is picking up speed', () => {
+  it('returns "close" when not at the stop but in the at-station bucket', () => {
     expect(
-      atStationLabel('departing', atStop({ vehicleSpeedKmh: 10 })),
-    ).toEqual({ text: 'now', urgency: 'stop' });
+      atStationSubState('at-station', baseInputs({ distanceToStopMeters: 500 })),
+    ).toBe('close');
   });
 
-  it('"departing now" red when at the stop, last minute of scheduled dwell', () => {
+  it('returns "about-to-leave" when a live vehicle at the stop is picking up speed', () => {
+    expect(
+      atStationSubState('at-station', baseInputs({ vehicleSpeedKmh: 10 })),
+    ).toBe('about-to-leave');
+  });
+
+  it('returns "about-to-leave" when at the stop, last minute of scheduled dwell', () => {
     const nowMin = 9 * 60;
     expect(
-      atStationLabel('departing', atStop({
+      atStationSubState('at-station', baseInputs({
         nowMin,
         scheduledArrivalMin: nowMin - 4,
         scheduledDepartureMin: nowMin,
       })),
-    ).toEqual({ text: 'departing now', urgency: 'stop' });
+    ).toBe('about-to-leave');
   });
 
-  it('"arriving now" green when at the stop, first minute of scheduled dwell', () => {
+  it('returns "just-arrived" when at the stop, first minute of scheduled dwell', () => {
     const nowMin = 9 * 60;
     expect(
-      atStationLabel('arriving', atStop({
+      atStationSubState('at-station', baseInputs({
         nowMin,
         scheduledArrivalMin: nowMin,
         scheduledDepartureMin: nowMin + 3,
       })),
-    ).toEqual({ text: 'arriving now', urgency: 'go' });
+    ).toBe('just-arrived');
   });
 
-  it('"at station" green when at the stop mid-dwell', () => {
+  it('returns "mid-dwell" when at the stop mid-dwell', () => {
     const nowMin = 9 * 60;
     expect(
-      atStationLabel('at-station', atStop({
+      atStationSubState('at-station', baseInputs({
         nowMin,
         scheduledArrivalMin: nowMin - 2,
         scheduledDepartureMin: nowMin + 3,
       })),
+    ).toBe('mid-dwell');
+  });
+
+  it('returns "mid-dwell" when at the stop with no schedule anchor', () => {
+    expect(
+      atStationSubState('at-station', baseInputs({})),
+    ).toBe('mid-dwell');
+  });
+});
+
+describe('atStationLabel', () => {
+  const baseInputs = (o: { etaMinutes?: number; vehicleSpeedKmh?: number }) => ({
+    etaMinutes: 0,
+    ...o,
+  });
+
+  it('"now" red when about-to-leave and moving', () => {
+    expect(
+      atStationLabel('about-to-leave', baseInputs({ vehicleSpeedKmh: 10 })),
+    ).toEqual({ text: 'now', urgency: 'stop' });
+  });
+
+  it('"departing now" red when about-to-leave but stationary (scheduled last minute)', () => {
+    expect(
+      atStationLabel('about-to-leave', baseInputs({})),
+    ).toEqual({ text: 'departing now', urgency: 'stop' });
+  });
+
+  it('"arriving now" green when just-arrived', () => {
+    expect(
+      atStationLabel('just-arrived', baseInputs({})),
+    ).toEqual({ text: 'arriving now', urgency: 'go' });
+  });
+
+  it('"at station" green when mid-dwell', () => {
+    expect(
+      atStationLabel('mid-dwell', baseInputs({})),
     ).toEqual({ text: 'at station', urgency: 'go' });
   });
 
-  it('"at station" green when at the stop with no schedule anchor', () => {
-    // Live vehicle, GPS at the stop, no scheduled arrival/departure —
-    // dwell gap is unknown, but the vehicle is at the stop, so render
-    // the default mid-dwell label.
+  it('relative ETA when close (not at the stop)', () => {
     expect(
-      atStationLabel('at-station', atStop({})),
-    ).toEqual({ text: 'at station', urgency: 'go' });
-  });
-
-  it('relative ETA when arriving (close but not at the stop)', () => {
-    expect(
-      atStationLabel('arriving', atStop({ etaMinutes: 2, distanceToStopMeters: 200 })),
+      atStationLabel('close', baseInputs({ etaMinutes: 2 })),
     ).toEqual({ text: 'in 2 min', urgency: 'go' });
   });
 
-  it('"now" red for a moving vehicle in the departing bucket', () => {
-    // Defensive: if a moving vehicle ever reaches the bucketer
-    // without the proximity test firing, fall back to "now" red so
-    // the row still reads as "this one's gone".
+  it('"now" when close sub-state has eta=0 (vehicle is at the stop by eta)', () => {
     expect(
-      atStationLabel('departing', atStop({ distanceToStopMeters: 500, etaMinutes: 0 })),
-    ).toEqual({ text: 'now', urgency: 'stop' });
+      atStationLabel('close', baseInputs({ etaMinutes: 0 })),
+    ).toEqual({ text: 'now', urgency: 'go' });
   });
 });
 
 describe('bucketCounts', () => {
   it('counts buckets', () => {
-    const counts = bucketCounts(['incoming', 'incoming', 'arriving', 'departed']);
+    const counts = bucketCounts(['incoming', 'incoming', 'at-station', 'departed']);
     expect(counts.incoming).toBe(2);
-    expect(counts.arriving).toBe(1);
+    expect(counts['at-station']).toBe(1);
     expect(counts.departed).toBe(1);
-    expect(counts['at-station']).toBe(0);
+    expect(counts['drop-off']).toBe(0);
+    expect(counts['off-route']).toBe(0);
   });
 });
 
@@ -367,7 +398,7 @@ describe('filterForStationView', () => {
 
   it('drops drop-off-only vehicles when showDropOffOnly is off', () => {
     const out = filterForStationView(
-      [base('drop-off', true), base('arriving', false)],
+      [base('drop-off', true), base('at-station', false)],
       { ...allowAll, showDropOffOnly: false },
     );
     expect(out).toHaveLength(1);

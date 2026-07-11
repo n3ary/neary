@@ -228,7 +228,7 @@
       'off-route': [],
     };
     for (const r of rows) {
-      if (r.bucket === 'departing' || r.bucket === 'at-station' || r.bucket === 'arriving') {
+      if (r.bucket === 'at-station') {
         atStation.push(r);
       } else {
         others[r.bucket].push(r);
@@ -253,15 +253,13 @@
   const isEmpty = $derived(groups.length === 0);
 
   // Per-bucket section header styling. The icon mirrors the bucket
-  // verb (incoming → clock, departing → outbound arrow, etc.) and
-  // the accent color matches the urgency band the VehicleCards in
-  // that section already render with, so the eye reads them as one.
-  // Lives here because it's purely visual mapping; the bucket itself
-  // and its human-readable label are still the domain's call.
+  // verb (incoming → clock, at-station → map pin, etc.) and the
+  // accent color matches the urgency band the VehicleCards in that
+  // section render with, so the eye reads them as one. Lives here
+  // because it's purely visual mapping; the bucket itself and its
+  // human-readable label are still the domain's call.
   const BUCKET_META: Record<ArrivalBucket, { icon: typeof LucideIcon; accent: 'success' | 'danger' | 'warning' | 'muted' }> = {
-    departing:    { icon: ArrowUpRight,   accent: 'danger' },
     'at-station': { icon: MapPin,         accent: 'success' },
-    arriving:     { icon: ArrowDownLeft,  accent: 'success' },
     incoming:     { icon: Clock,          accent: 'success' },
     'drop-off':   { icon: ArrowDownLeft,  accent: 'danger' },
     departed:     { icon: ArrowUpRight,   accent: 'danger' },
