@@ -392,7 +392,7 @@
                 direction="row"
                 spacing={1}
                 align="center"
-                class="px-1 py-1 border-b border-[color:var(--color-border)]/60"
+                class="px-1 py-1 border-b border-[color:var(--color-border)]/40"
               >
                 <HeaderIcon size={14} class={`shrink-0 ${ACCENT_FG[meta.accent]}`} />
                 <Typography
@@ -452,7 +452,7 @@
                            the slide adds little, costs a lot. -->
                       <Collapsible in={expandedVehicleId === vehicle.id} reduced>
                         {#if vehicleStops != null && expandedVehicleId === vehicle.id}
-                          <div class="rounded-md border border-[color:var(--color-border)]/60 bg-[color:var(--color-surface-raised,var(--color-surface))] overflow-hidden">
+                          <div class="rounded-md border border-[color:var(--color-border)]/40 bg-[color:var(--color-surface-raised,var(--color-surface))] overflow-hidden">
                             <TripStopList stops={vehicleStops} markers={favoritesStore.markers} class="py-1" />
                           </div>
                         {/if}

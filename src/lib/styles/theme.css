@@ -55,14 +55,23 @@
 /* Manual dark override
  *
  * The dark-mode --color-bg / --color-surface gap is intentionally
- * WIDE (10% vs 35% oklch ≈ sRGB 6% vs 25%) so the two tokens
+ * WIDE (10% vs 25% oklch ≈ sRGB 6% vs 16%) so the two tokens
  * survive the oklch->sRGB compression that small 5%-step pairs
- * collapse into. The previous 15% / 20% pair landed at the same
+ * collapse into. The original 15% / 20% pair landed at the same
  * sRGB value (~#161616) in iOS PWA native screenshots, making
  * the body bg and the AppLayout shell surface visually identical.
  * The AppLayout shell paints --color-surface, so widening the
  * gap gives the shell band below the fixed nav and the body
  * background two distinct layers instead of one continuous black.
+ *
+ * Why surface 25% (not 35%+): the first pass at this fix went to
+ * 35% to push well past the floor, but the resulting UI read as
+ * "less dark mode" -- the shell got too light and section
+ * dividers that use --color-border at /60 opacity became
+ * visible "extra lines" below At station / Incoming bucket
+ * titles. 25% is past the floor (15% gap from bg), keeps the
+ * dark feel, and pairs with the divider-opacity tweak in
+ * StationCard.svelte to keep those lines subtle.
  *
  * --color-surface-elevated and --color-border keep the same ~5%
  * oklch step they had before, so the elevation hierarchy is
@@ -71,11 +80,11 @@
  * reads as a highlight line on cards. */
   [data-theme='dark'] {
     --color-bg: oklch(10% 0 0);
-    --color-surface: oklch(35% 0 0);
-    --color-surface-elevated: oklch(40% 0 0);
+    --color-surface: oklch(25% 0 0);
+    --color-surface-elevated: oklch(30% 0 0);
     --color-fg: oklch(96% 0 0);
     --color-fg-muted: oklch(70% 0 0);
-    --color-border: oklch(45% 0 0);
+    --color-border: oklch(35% 0 0);
     --color-primary: oklch(70% 0.16 255);
     --color-primary-fg: oklch(15% 0 0);
     --color-favorite: oklch(78% 0.18 50);
@@ -85,11 +94,11 @@
 @media (prefers-color-scheme: dark) {
   [data-theme='auto'] {
     --color-bg: oklch(10% 0 0);
-    --color-surface: oklch(35% 0 0);
-    --color-surface-elevated: oklch(40% 0 0);
+    --color-surface: oklch(25% 0 0);
+    --color-surface-elevated: oklch(30% 0 0);
     --color-fg: oklch(96% 0 0);
     --color-fg-muted: oklch(70% 0 0);
-    --color-border: oklch(45% 0 0);
+    --color-border: oklch(35% 0 0);
     --color-primary: oklch(70% 0.16 255);
     --color-primary-fg: oklch(15% 0 0);
     --color-favorite: oklch(78% 0.18 50);
