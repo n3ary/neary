@@ -191,7 +191,7 @@
   });
 </script>
 
-<div class="mx-auto max-w-3xl w-full px-4 py-6 space-y-6">
+<div class="mx-auto max-w-3xl px-4 py-6 space-y-6">
   <!-- ===== Display ===== -->
   <Card>
     <CardContent>

@@ -647,7 +647,7 @@
   </div>
 {/snippet}
 
-<div class="mx-auto max-w-3xl w-full px-4 py-6">
+<div class="mx-auto max-w-3xl px-4 py-6">
   {#if userPrefs.feedId == null}
     <SelectFeedCard fallbackBody="Pick a feed in Settings to star routes here." />
   {:else if error}
