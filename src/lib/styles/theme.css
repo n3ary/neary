@@ -54,37 +54,41 @@
 
 /* Manual dark override
  *
- * The dark-mode --color-bg / --color-surface gap is intentionally
- * WIDE (10% vs 25% oklch ≈ sRGB 6% vs 16%) so the two tokens
- * survive the oklch->sRGB compression that small 5%-step pairs
- * collapse into. The original 15% / 20% pair landed at the same
- * sRGB value (~#161616) in iOS PWA native screenshots, making
- * the body bg and the AppLayout shell surface visually identical.
- * The AppLayout shell paints --color-surface, so widening the
- * gap gives the shell band below the fixed nav and the body
- * background two distinct layers instead of one continuous black.
+ * The dark-mode hierarchy is INVERTED relative to light mode: the
+ * page canvas (--color-bg) is the LIGHTER layer, and the card /
+ * interactive surface (--color-surface) is the DARKER layer, so
+ * cards read as darker blocks popping against a lighter ground.
+ * The AppLayout shell paints --color-bg, so the page background
+ * is a distinct lighter shade from the cards. The nav and header
+ * paint --color-surface (same as cards), framing the lighter
+ * canvas with a top / bottom border in --color-border.
  *
- * Why surface 25% (not 35%+): the first pass at this fix went to
- * 35% to push well past the floor, but the resulting UI read as
- * "less dark mode" -- the shell got too light and section
- * dividers that use --color-border at /60 opacity became
- * visible "extra lines" below At station / Incoming bucket
- * titles. 25% is past the floor (15% gap from bg), keeps the
- * dark feel, and pairs with the divider-opacity tweak in
- * StationCard.svelte to keep those lines subtle.
+ * Token relationships (dark):
+ *   --color-surface-elevated (5%)  <  --color-surface (9%)  <  --color-bg (15%)  <  --color-border (28%)
+ *   anchor card recedes        default card pops      canvas (lighter)    subtle frame
  *
- * --color-surface-elevated and --color-border keep the same ~5%
- * oklch step they had before, so the elevation hierarchy is
- * unchanged: surface-elevated reads as "raised" against surface
- * (mode-relative: lighter in dark, darker in light), and border
- * reads as a highlight line on cards. */
+ * --color-surface-elevated stays "settles into the page" in both
+ * modes (96% in light = darker than surface 100%; 5% in dark =
+ * darker than surface 9%) — the anchor semantic is preserved
+ * across the inversion, just visually expressed as "deeper well"
+ * in dark mode instead of "raised" in light mode.
+ *
+ * The bg / surface gap (6% oklch) is a TIGHT inversion: cards
+ * are darker than the canvas but the absolute values sit close
+ * to the pre-inversion bg (10%), so the whole design stays in
+ * the original's deep-black band instead of drifting toward
+ * mid-gray. The 6% gap is past the oklch->sRGB compression
+ * floor that the original 15%/20% pair collapsed through (both
+ * landed at ~#161616 in iOS PWA native screenshots). The border
+ * sits 13% above the canvas — well clear of the fill — so the
+ * frame does most of the "pop" work. */
   [data-theme='dark'] {
-    --color-bg: oklch(10% 0 0);
-    --color-surface: oklch(25% 0 0);
-    --color-surface-elevated: oklch(30% 0 0);
+    --color-bg: oklch(15% 0 0);
+    --color-surface: oklch(9% 0 0);
+    --color-surface-elevated: oklch(5% 0 0);
     --color-fg: oklch(96% 0 0);
     --color-fg-muted: oklch(70% 0 0);
-    --color-border: oklch(35% 0 0);
+    --color-border: oklch(28% 0 0);
     --color-primary: oklch(70% 0.16 255);
     --color-primary-fg: oklch(15% 0 0);
     --color-favorite: oklch(78% 0.18 50);
@@ -93,12 +97,12 @@
 /* System-preference dark when user hasn't pinned */
 @media (prefers-color-scheme: dark) {
   [data-theme='auto'] {
-    --color-bg: oklch(10% 0 0);
-    --color-surface: oklch(25% 0 0);
-    --color-surface-elevated: oklch(30% 0 0);
+    --color-bg: oklch(15% 0 0);
+    --color-surface: oklch(9% 0 0);
+    --color-surface-elevated: oklch(5% 0 0);
     --color-fg: oklch(96% 0 0);
     --color-fg-muted: oklch(70% 0 0);
-    --color-border: oklch(35% 0 0);
+    --color-border: oklch(28% 0 0);
     --color-primary: oklch(70% 0.16 255);
     --color-primary-fg: oklch(15% 0 0);
     --color-favorite: oklch(78% 0.18 50);
