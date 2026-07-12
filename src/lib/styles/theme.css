@@ -27,7 +27,7 @@
   --color-primary: oklch(55% 0.18 255);
   --color-primary-fg: oklch(98% 0 0);
   --color-danger: oklch(60% 0.21 25);
-  /* Favorite marker: warm amber — avoids the alarm red of danger while
+  /* Favorite marker: warm amber - avoids the alarm red of danger while
    * keeping the "this is special" celebratory feel. */
   --color-favorite: oklch(65% 0.20 50);
   --color-warning: oklch(75% 0.16 80);
