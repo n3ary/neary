@@ -19,6 +19,7 @@
   mousedown only fires for pointer input.
 -->
 <script lang="ts">
+  import type { Snippet } from 'svelte';
   import type { VehicleType } from '$lib/domain/types';
   import { pickContrastingText, vehicleTypeLabel } from '$lib/domain/types';
   import { cn } from './cn';
@@ -32,6 +33,9 @@
     type?: VehicleType;
     /** Override the rendered label. Defaults to `vehicleTypeLabel(type)`. */
     label?: string;
+    /** Optional icon rendered before the label. Used by the marker
+     *  filter chips so each marker type shows its icon. */
+    icon?: Snippet;
     /** Background color. A hex string gets auto-contrast fg; a CSS
      *  `var(...)` string renders against the supplied `fg` (or
      *  `var(--color-fg)` as a final fallback). */
@@ -46,7 +50,7 @@
   };
 
   let {
-    type, label, color, fg, active = false, onclick, size = 'medium', class: className,
+    type, label, icon, color, fg, active = false, onclick, size = 'medium', class: className,
   }: Props = $props();
 
   const SIZE: Record<Size, string> = {
@@ -83,6 +87,9 @@
     SIZE[size],
     className,
   )}
->
+  >
+  {#if icon}
+    {@render icon()}
+  {/if}
   {renderedLabel}
 </button>

@@ -59,7 +59,7 @@
   } from '$lib/domain/favoritesListLayout';
   import { scheduleWindowFor } from '$lib/domain/pipeline/timeUtils';
   import { feedsStore } from '$lib/stores/feedsStore.svelte';
-  import { favoritesStore, STATION_MARKERS } from '$lib/stores/favoritesStore.svelte';
+  import { favoritesStore, STATION_MARKERS, STATION_MARKER_ICONS } from '$lib/stores/favoritesStore.svelte';
   import { locationStore } from '$lib/stores/gps/locationStore.svelte';
   import { nowTicker } from '$lib/stores/nowTicker.svelte';
   import { userPrefs } from '$lib/stores/userPrefs.svelte';
@@ -706,6 +706,7 @@
                     onclick={clearMarkerFilter}
                   />
                   {#each STATION_MARKERS as m (m)}
+                    {@const MarkerIcon = STATION_MARKER_ICONS[m]}
                     <TypeBadge
                       size="small"
                       label={MARKER_LABELS[m]}
@@ -713,7 +714,11 @@
                       fg={MARKER_COLORS[m].fg}
                       active={activeMarkerFilter.has(m)}
                       onclick={() => toggleMarkerFilter(m)}
-                    />
+                    >
+                      {#snippet icon()}
+                        <MarkerIcon size={12} strokeWidth={2.25} class="shrink-0" />
+                      {/snippet}
+                    </TypeBadge>
                   {/each}
                 </Stack>
               {/if}
