@@ -324,6 +324,7 @@
                   {stop}
                   onbodyclick={() => selectStop(stop.id)}
                   routes={stopRoutes[stop.id]}
+                  marker={favoritesStore.markerFor(stop.id) ?? undefined}
                 />
               {/each}
             {/if}
@@ -338,6 +339,7 @@
                   routes={stopRoutes[stop.id] ?? []}
                   {hasGps}
                   onbodyclick={() => selectStop(stop.id)}
+                  marker={favoritesStore.markerFor(stop.id) ?? undefined}
                 />
               {/each}
             {/if}
@@ -352,6 +354,7 @@
                   routes={stopRoutes[stop.id] ?? []}
                   {hasGps}
                   onbodyclick={() => selectStop(stop.id)}
+                  marker={favoritesStore.markerFor(stop.id) ?? undefined}
                 />
               {/each}
             {/if}

@@ -10,14 +10,19 @@
     /** Pixel size. Omit and use `class` utilities (e.g. "w-10 h-10") for responsive sizing. */
     size?: number;
     class?: string;
+    /** Optional inline style, e.g. for a custom background color. */
+    style?: string;
     children?: Snippet;
   };
 
-  let { variant = 'circular', size, class: className, children }: Props = $props();
+  let { variant = 'circular', size, class: className, style, children }: Props = $props();
 </script>
 
-<div
-  style={typeof size === 'number' ? `width:${size}px;height:${size}px;` : undefined}
+  <div
+  style={[
+    typeof size === 'number' ? `width:${size}px;height:${size}px;` : '',
+    style ?? '',
+  ].join(' ').trim() || undefined}
   class={cn(
     'inline-flex items-center justify-center shrink-0 font-medium',
     'bg-[color:var(--color-primary)] text-[color:var(--color-primary-fg)]',

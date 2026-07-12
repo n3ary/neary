@@ -3,6 +3,8 @@
   import { Bus } from 'lucide-svelte';
   import type { Route } from '$lib/domain/types';
   import type { StopWithDistance } from '$lib/data/gtfs/types';
+  import type { StationMarker } from '$lib/stores/favoritesStore.svelte';
+  import { STATION_MARKER_ICONS, STATION_MARKER_ACCENT } from '$lib/stores/favoritesStore.svelte';
   import Avatar from './Avatar.svelte';
   import RouteChipsRow from './RouteChipsRow.svelte';
   import { cn } from './cn';
@@ -25,6 +27,10 @@
      *  favorites surfaces pass false (no distance to show). */
     hasGps?: boolean;
     variant?: 'card' | 'inline';
+    /** Marker for this station. Drives the avatar background colour
+     *  (amber for favorite, blue for home/work/cityCenter, blue for normal).
+     *  When omitted the Avatar uses the default blue. */
+    marker?: StationMarker | null;
     class?: string;
   };
 
@@ -34,6 +40,7 @@
     routes,
     hasGps = false,
     variant = 'card',
+    marker,
     class: className,
   }: Props = $props();
 
@@ -44,6 +51,11 @@
   // includes it; older callers might not). 'in' is a type-narrowing
   // operator that needs to run reactively.
   const distance = $derived('distance' in stop ? stop.distance : undefined);
+
+  // Avatar icon: marker icon when the station has a marker, Bus otherwise.
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const AvatarIcon = $derived(marker != null ? STATION_MARKER_ICONS[marker] as any : Bus);
+  const avatarAccent = $derived(marker != null ? STATION_MARKER_ACCENT[marker] : 'var(--color-primary)');
 
   function formatDistance(m: number): string {
     if (m < 1000) return `${Math.round(m)} m`;
@@ -81,8 +93,8 @@
     className,
   )}
 >
-  <Avatar variant="square" class="w-10 h-10 shrink-0">
-    <Bus size={20} />
+  <Avatar variant="square" class="w-10 h-10 shrink-0" style={`background-color: ${avatarAccent}; color: var(--color-fg);`}>
+    <AvatarIcon size={20} />
   </Avatar>
   <div class="min-w-0 flex-1 flex flex-col gap-1">
     <div class="flex items-center gap-2">

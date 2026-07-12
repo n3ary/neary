@@ -196,6 +196,7 @@
                 routes={stopRoutes[stop.id]}
                 hasGps={false}
                 variant="card"
+                marker={favoritesStore.markerFor(stop.id) ?? undefined}
                 class="mt-1"
               />
             {/if}

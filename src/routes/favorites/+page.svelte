@@ -835,6 +835,7 @@
                         routes={stationsScope[stop.id]}
                         hasGps={!!locationStore.position && stop.distance != null}
                         variant="card"
+                        marker={favoritesStore.markerFor(stop.id) ?? undefined}
                         class="mt-1"
                       />
                     {/each}

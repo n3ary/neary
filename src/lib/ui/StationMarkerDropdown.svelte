@@ -71,12 +71,14 @@
     : marker === undefined ? 'none'
     : STATION_MARKER_FILL[marker],
   );
-  const triggerColor = $derived(
-    iconColor ?? (
-      marker === 'favorite'
-        ? 'var(--color-favorite)'
-        : 'var(--color-primary)'
-    ),
+
+  // Background color for the trigger. Like the old Avatar: the marker's
+  // accent colour as the background, black icon on top. Normal (null/
+  // undefined marker) uses --color-primary (blue).
+  const triggerBg = $derived(
+    marker === 'favorite' ? 'var(--color-favorite)'
+    : marker === undefined ? 'var(--color-primary)'
+    : 'var(--color-primary)',
   );
 
   function pick(next: StationMarker | null) {
@@ -123,9 +125,10 @@
       ? `Change marker for ${label ?? stationId} (currently ${marker})`
       : `Add a marker for ${label ?? stationId}`}
     class={cn(
-      'inline-flex items-center justify-center rounded-md p-1 hover:bg-[color:var(--color-border)]/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--color-primary)]',
+      'inline-flex items-center justify-center rounded-md p-1 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--color-primary)]',
       className,
     )}
+    style={`background-color: ${triggerBg};`}
   >
     {#if children}
       {@render children()}
@@ -134,14 +137,7 @@
         {size}
         strokeWidth={2.25}
         fill={triggerFill}
-        class={cn(
-          'shrink-0',
-          iconColor ? '' : (
-          marker === 'favorite'
-            ? 'text-[color:var(--color-favorite)]'
-            : 'text-[color:var(--color-primary)]'
-          )
-        )}
+        class="shrink-0 text-[color:var(--color-fg)]"
         style={iconColor ? `color: ${iconColor}` : undefined}
       />
     {/if}
