@@ -28,11 +28,10 @@
    reappears in the "All routes" catalog: the catalog subtracts the
    favorites set before rendering.
 
-   The marker filter (All / Favorite / Home / Work / City center)
-   lives in the shared filter card above the tabs, so it applies to
-   both the Routes and Stations tab. On Routes it narrows the catalog
-   to routes serving at least one marked station of the active type.
-   On Stations it filters to stations with the active marker type.
+   All chips start active (everything visible). Deselecting a chip
+   removes those items from the catalog. Deselecting all chips of a
+   filter means nothing matches that filter. The marker filter applies
+   to both Routes (routes serving marked stations) and Stations tabs.
 -->
 <script lang="ts">
   import { goto } from '$app/navigation';
@@ -133,26 +132,20 @@
   let allRoutes = $state<Route[] | null>(null);
   let allNetworks = $state<Network[]>([]);
   let error = $state<string | null>(null);
-  // Collapse state: when all options are selected, the row collapses into
-  // a single "All" chip. Tapping it expands back to individual chips with
-  // nothing selected (full view). Tapping individual chips toggles them;
-  // when all become selected again the row collapses back to "All".
-  let markersCollapsed = $state(true);
+  // All chips start selected (everything visible). Deselecting removes those
+  // items. Deselecting all = empty catalog. No "All" button.
+  let activeMarkerFilter = $state<ReadonlySet<StationMarker>>(new Set(STATION_MARKERS));
   let typeFilter = $state<ReadonlySet<VehicleType>>(new Set());
-  let typesCollapsed = $state(true);
   let networkFilter = $state<ReadonlySet<string>>(new Set());
-  let networksCollapsed = $state(true);
 
-  function toggleMarker(m: StationMarker) {
-    toggleMarkerFilter(m);
-    // Collapse to "All" when all markers are selected
-    if (activeMarkerFilter.size === STATION_MARKERS.length) {
-      markersCollapsed = true;
-    }
+  function toggleMarkerFilter(m: StationMarker) {
+    const next = new Set(activeMarkerFilter);
+    if (next.has(m)) next.delete(m);
+    else next.add(m);
+    activeMarkerFilter = next;
   }
-  function expandMarkers() {
-    markersCollapsed = false;
-    clearMarkerFilter();
+  function clearMarkerFilter() {
+    activeMarkerFilter = new Set(STATION_MARKERS);
   }
 
   function toggleType(t: VehicleType) {
@@ -160,14 +153,9 @@
     if (next.has(t)) next.delete(t);
     else next.add(t);
     typeFilter = next;
-    // Collapse to "All" when all types are selected
-    if (typeFilter.size === presentTypes.length) {
-      typesCollapsed = true;
-    }
   }
-  function expandTypes() {
-    typesCollapsed = false;
-    typeFilter = new Set();
+  function clearTypeFilter() {
+    typeFilter = new Set(presentTypes);
   }
 
   function toggleNetwork(id: string) {
@@ -175,14 +163,9 @@
     if (next.has(id)) next.delete(id);
     else next.add(id);
     networkFilter = next;
-    // Collapse to "All" when all networks are selected
-    if (networkFilter.size === allNetworks.length) {
-      networksCollapsed = true;
-    }
   }
-  function expandNetworks() {
-    networksCollapsed = false;
-    networkFilter = new Set();
+  function clearNetworkFilter() {
+    networkFilter = new Set(allNetworks.map((n) => n.id));
   }
 
   const tz = $derived(feedsStore.activeTimezone);
@@ -261,30 +244,17 @@
   let otherStationsLoading = $state<boolean>(false);
   let otherStationsError = $state<string | null>(null);
 
-  // Marker-type filter for the Routes tab. Multi-select: a route
-  // is shown if it serves at least one station carrying a marker in
-  // the set. The All chip deselects everything. Client-side only -
-  // the marker map is small. State persists across tab switches; on
-  // the Stations tab the chips are hidden and the filter is dormant.
-  let activeMarkerFilter = $state<ReadonlySet<StationMarker>>(new Set());
+  // Marker-type filter for the Routes and Stations tabs. All markers
+  // start selected (everything visible). Deselecting a marker hides
+  // routes/stations with that marker. Deselecting all = empty catalog.
+  // Client-side only - the marker map is small.
 
-  function toggleMarkerFilter(m: StationMarker) {
-    const next = new Set(activeMarkerFilter);
-    if (next.has(m)) next.delete(m);
-    else next.add(m);
-    activeMarkerFilter = next;
-  }
-  function clearMarkerFilter() {
-    activeMarkerFilter = new Set();
-  }
-
-  // Route filter cascade marker pass: when the marker filter is set,
-  // fetch the routes serving each marker-bearing stop and intersect.
-  // `null` (no filter) skips the worker round-trip; `Set` (filter set)
-  // narrows the route list. Filters by mode + network apply first
-  // (in `filteredRoutes`); this marker pass applies on top.
+  // Route filter cascade marker pass: when all markers are selected the
+  // filter is dormant (null = no constraint). When fewer are selected,
+  // fetch the routes serving those marker-bearing stops and intersect.
   $effect(() => {
-    if (activeMarkerFilter.size === 0) {
+    // All markers selected = no filter applied
+    if (activeMarkerFilter.size === STATION_MARKERS.length) {
       routeIdsForMarker = null;
       return;
     }
@@ -378,8 +348,8 @@
   $effect(() => {
     const fid = feedsStore.boundFeedId;
     if (!fid) return;
-    const modes = typeFilter.size === 0 ? undefined : Array.from(typeFilter);
-    const networks = networkFilter.size === 0 ? undefined : Array.from(networkFilter);
+    const modes = typeFilter.size < presentTypes.length ? Array.from(typeFilter) : undefined;
+    const networks = networkFilter.size < allNetworks.length ? Array.from(networkFilter) : undefined;
     (async () => {
       try {
         const repo = getGtfsRepo();
@@ -515,8 +485,8 @@
   const filteredRoutes = $derived.by<Route[]>(() => {
     if (!allRoutes) return [];
     return allRoutes.filter((r) => {
-      if (typeFilter.size > 0 && !typeFilter.has(r.type ?? 'unknown')) return false;
-      if (networkFilter.size > 0 && !(r.networks?.some((n) => networkFilter.has(n)) ?? false)) return false;
+      if (typeFilter.size < presentTypes.length && !typeFilter.has(r.type ?? 'unknown')) return false;
+      if (networkFilter.size < allNetworks.length && !(r.networks?.some((n) => networkFilter.has(n)) ?? false)) return false;
       // Marker filter: route qualifies iff it serves at least one
       // station carrying a marker in the active filter set. Routes
       // with no overlap are excluded. Skipped entirely when no
@@ -583,22 +553,23 @@
   const favStationsSorted = $derived<StopWithDistance[]>(favoriteStations);
 
   // "All stations": stations that AREN'T in the favorites card above.
-  // Filter cascade (marker + mode + network) trims the page at the
-  // worker via stationsScope. Marker filter is applied here by
-  // checking each station's marker against the active filter set.
+  // All chips start selected (everything visible). Deselecting a marker
+  // hides stations with that marker. Deselecting all = empty catalog.
   const otherStationsSorted = $derived.by<StopWithDistance[]>(() => {
     let list = otherStationsPage;
-    if (activeMarkerFilter.size > 0) {
+    if (activeMarkerFilter.size < STATION_MARKERS.length) {
       list = list.filter((s) => {
         const marker = favoritesStore.markerFor(s.id);
-        return marker != null && activeMarkerFilter.has(marker);
+        // Show station if it has no marker, or its marker is in the active set.
+        // Hide stations whose marker is deselected.
+        return marker == null || activeMarkerFilter.has(marker);
       });
     }
     return sortStationsForPicker(list, stationAnchor);
   });
 
   const stationsScopeCount = $derived(Object.keys(stationsScope).length);
-  const filtersActive = $derived(typeFilter.size > 0 || networkFilter.size > 0 || activeMarkerFilter.size > 0);
+  const filtersActive = $derived(typeFilter.size < presentTypes.length || networkFilter.size < allNetworks.length || activeMarkerFilter.size < STATION_MARKERS.length);
   const otherStationsHasMore = $derived(
     otherStationsTotal === 0 || otherStationsPage.length < otherStationsTotal,
   );
@@ -741,38 +712,21 @@
             <Stack spacing={1.5}>
               {#if favoritesStore.markers.size > 0}
                 <Stack direction="row" spacing={1} align="center" wrap class="pt-2">
-                  {#if markersCollapsed}
-                    <!-- "All" shows the full list as active; tapping expands to individual chips -->
+                  {#each STATION_MARKERS as m (m)}
+                    {@const MarkerIcon = STATION_MARKER_ICONS[m]}
                     <TypeBadge
                       size="small"
-                      label="All"
-                      active
-                      onclick={expandMarkers}
+                      label={MARKER_LABELS[m]}
+                      color={MARKER_COLORS[m].bg}
+                      fg={MARKER_COLORS[m].fg}
+                      active={activeMarkerFilter.has(m)}
+                      onclick={() => toggleMarkerFilter(m)}
                     >
                       {#snippet icon()}
-                        {#each STATION_MARKERS as m (m)}
-                          {@const MarkerIcon = STATION_MARKER_ICONS[m]}
-                          <MarkerIcon size={10} strokeWidth={2.25} class="shrink-0" />
-                        {/each}
+                        <MarkerIcon size={12} strokeWidth={2.25} class="shrink-0" />
                       {/snippet}
                     </TypeBadge>
-                  {:else}
-                    {#each STATION_MARKERS as m (m)}
-                      {@const MarkerIcon = STATION_MARKER_ICONS[m]}
-                      <TypeBadge
-                        size="small"
-                        label={MARKER_LABELS[m]}
-                        color={MARKER_COLORS[m].bg}
-                        fg={MARKER_COLORS[m].fg}
-                        active={activeMarkerFilter.has(m)}
-                        onclick={() => toggleMarker(m)}
-                      >
-                        {#snippet icon()}
-                          <MarkerIcon size={12} strokeWidth={2.25} class="shrink-0" />
-                        {/snippet}
-                      </TypeBadge>
-                    {/each}
-                  {/if}
+                  {/each}
                 </Stack>
               {/if}
 
@@ -784,41 +738,23 @@
                   wrap
                   class="pt-2"
                 >
-                  {#if typesCollapsed}
-                    <TypeBadge
-                      size="small"
-                      label="All"
-                      active
-                      onclick={expandTypes}
-                    />
-                  {:else}
-                    {#each presentTypes as t (t)}
-                      <TypeBadge type={t} color={colorByType.get(t)} active={typeFilter.has(t)} onclick={() => toggleType(t)} />
-                    {/each}
-                  {/if}
+                  {#each presentTypes as t (t)}
+                    <TypeBadge type={t} color={colorByType.get(t)} active={typeFilter.has(t)} onclick={() => toggleType(t)} />
+                  {/each}
                 </Stack>
               {/if}
 
               {#if allNetworks.length > 0}
                 <Stack direction="row" spacing={1} align="center" wrap class="pt-2">
-                  {#if networksCollapsed}
+                  {#each allNetworks as net (net.id)}
                     <TypeBadge
                       size="small"
-                      label="All"
-                      active
-                      onclick={expandNetworks}
+                      label={net.name}
+                      color={net.color}
+                      active={networkFilter.has(net.id)}
+                      onclick={() => toggleNetwork(net.id)}
                     />
-                  {:else}
-                    {#each allNetworks as net (net.id)}
-                      <TypeBadge
-                        size="small"
-                        label={net.name}
-                        color={net.color}
-                        active={networkFilter.has(net.id)}
-                        onclick={() => toggleNetwork(net.id)}
-                      />
-                    {/each}
-                  {/if}
+                  {/each}
                 </Stack>
               {/if}
             </Stack>
