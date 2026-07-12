@@ -80,7 +80,7 @@
   onmousedown={(e) => e.preventDefault()}
   style={`background:${bg};color:${computedFg};${!active ? 'opacity:0.6;' : ''}`}
   class={cn(
-    'inline-flex items-center justify-center font-semibold rounded-md select-none whitespace-nowrap cursor-pointer',
+    'inline-flex items-center gap-1 justify-center font-semibold rounded-md select-none whitespace-nowrap cursor-pointer',
     'transition-all',
     'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--color-primary)]',
     active && 'ring-2 ring-white ring-offset-1 ring-offset-[color:var(--color-surface)]',
