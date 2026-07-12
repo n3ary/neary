@@ -696,7 +696,7 @@
               Order: marker filter first, then mode (Bus/Tram/...), then
               network. Applied to both Routes and Stations tabs.
             -->
-            <Stack spacing={1.5} class="border-t border-[color:var(--color-border)]">
+            <Stack spacing={1.5}>
               {#if favoritesStore.markers.size > 0}
                 <Stack direction="row" spacing={1} align="center" wrap class="pt-2">
                   <TypeBadge
