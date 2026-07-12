@@ -39,16 +39,15 @@
   }: Props = $props();
 </script>
 
-<!-- Shell bg is --color-surface (not --color-bg) so the band immediately below the fixed BottomNavigation matches the nav; with --color-bg the band's --bg shows through and reads as a dark stripe between the last card and the screen bottom on short views. -->
-<div class="min-h-svh flex flex-col bg-[color:var(--color-surface)] text-[color:var(--color-fg)]">
-  <!-- Sticky strip so Header and StatusBar scroll together (StatusBar alone would scroll away); wrapper's surface background hides the gap between an active Header and an inactive StatusBar. -->
-  <div class="sticky top-0 z-40 bg-[color:var(--color-surface)]">
+<!-- Shell bg is --color-bg (not --color-surface) so the page canvas is the LIGHTER layer in dark mode and the cards (--color-surface) read as darker blocks popping against it. The nav and header paint --color-surface (same as cards), framing the lighter canvas with a top / bottom border in --color-border. -->
+<div class="min-h-svh flex flex-col bg-[color:var(--color-bg)] text-[color:var(--color-fg)]">
+  <!-- Sticky strip so Header and StatusBar scroll together (StatusBar alone would scroll away). Header paints --color-surface; the bg here matches the body so the strip's top edge blends with the canvas. -->
+  <div class="sticky top-0 z-40 bg-[color:var(--color-bg)]">
     <Header {title} {health} {onrefresh} {refreshing} {showSearch} />
     <StatusBar />
   </div>
-  <!-- Surface bg hides the --bg shell showing through flex-1's slack area on short views (Stations with one card, Schedule, empty Favs/Settings) where that slack read as a stripe between the last card and the fixed nav. -->
-  <!-- Bottom padding clears the fixed BottomNavigation plus the iOS home-indicator inset so the nav + inset don't cover the last content row. -->
-  <main class="flex-1 overflow-x-hidden bg-[color:var(--color-surface)] pb-[calc(3.5rem+env(safe-area-inset-bottom,0px))]">
+  <!-- Canvas bg (--color-bg) keeps the page background continuous into flex-1's slack area on short views (Stations with one card, Schedule, empty Favs/Settings). Bottom padding clears the fixed BottomNavigation plus the iOS home-indicator inset. -->
+  <main class="flex-1 overflow-x-hidden bg-[color:var(--color-bg)] pb-[calc(3.5rem+env(safe-area-inset-bottom,0px))]">
     {@render children?.()}
   </main>
 </div>
