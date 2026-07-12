@@ -133,14 +133,26 @@
   let allRoutes = $state<Route[] | null>(null);
   let allNetworks = $state<Network[]>([]);
   let error = $state<string | null>(null);
-  let typeFilter = $state<VehicleType | null>(null);
-  let networkFilter = $state<string | null>(null);
+  let typeFilter = $state<ReadonlySet<VehicleType>>(new Set());
+  let networkFilter = $state<ReadonlySet<string>>(new Set());
 
   function toggleType(t: VehicleType) {
-    typeFilter = typeFilter === t ? null : t;
+    const next = new Set(typeFilter);
+    if (next.has(t)) next.delete(t);
+    else next.add(t);
+    typeFilter = next;
+  }
+  function clearTypeFilter() {
+    typeFilter = new Set();
   }
   function toggleNetwork(id: string) {
-    networkFilter = networkFilter === id ? null : id;
+    const next = new Set(networkFilter);
+    if (next.has(id)) next.delete(id);
+    else next.add(id);
+    networkFilter = next;
+  }
+  function clearNetworkFilter() {
+    networkFilter = new Set();
   }
 
   const tz = $derived(feedsStore.activeTimezone);
@@ -336,8 +348,8 @@
   $effect(() => {
     const fid = feedsStore.boundFeedId;
     if (!fid) return;
-    const modes = typeFilter === null ? undefined : [typeFilter];
-    const networks = networkFilter === null ? undefined : [networkFilter];
+    const modes = typeFilter.size === 0 ? undefined : Array.from(typeFilter);
+    const networks = networkFilter.size === 0 ? undefined : Array.from(networkFilter);
     (async () => {
       try {
         const repo = getGtfsRepo();
@@ -473,8 +485,8 @@
   const filteredRoutes = $derived.by<Route[]>(() => {
     if (!allRoutes) return [];
     return allRoutes.filter((r) => {
-      if (typeFilter !== null && (r.type ?? 'unknown') !== typeFilter) return false;
-      if (networkFilter !== null && !(r.networks?.includes(networkFilter) ?? false)) return false;
+      if (typeFilter.size > 0 && !typeFilter.has(r.type ?? 'unknown')) return false;
+      if (networkFilter.size > 0 && !(r.networks?.some((n) => networkFilter.has(n)) ?? false)) return false;
       // Marker filter: route qualifies iff it serves at least one
       // station carrying a marker in the active filter set. Routes
       // with no overlap are excluded. Skipped entirely when no
@@ -556,7 +568,7 @@
   });
 
   const stationsScopeCount = $derived(Object.keys(stationsScope).length);
-  const filtersActive = $derived(typeFilter !== null || networkFilter !== null || activeMarkerFilter.size > 0);
+  const filtersActive = $derived(typeFilter.size > 0 || networkFilter.size > 0 || activeMarkerFilter.size > 0);
   const otherStationsHasMore = $derived(
     otherStationsTotal === 0 || otherStationsPage.length < otherStationsTotal,
   );
@@ -731,21 +743,32 @@
                   wrap
                   class="pt-2"
                 >
+                  <TypeBadge
+                    size="small"
+                    label="All"
+                    active={typeFilter.size === 0}
+                    onclick={clearTypeFilter}
+                  />
                   {#each presentTypes as t (t)}
-                    <TypeBadge type={t} color={colorByType.get(t)} active={typeFilter === t} onclick={() => toggleType(t)} />
+                    <TypeBadge type={t} color={colorByType.get(t)} active={typeFilter.has(t)} onclick={() => toggleType(t)} />
                   {/each}
                 </Stack>
               {/if}
 
               {#if allNetworks.length > 0}
                 <Stack direction="row" spacing={1} align="center" wrap class="pt-2">
+                  <TypeBadge
+                    size="small"
+                    label="All"
+                    active={networkFilter.size === 0}
+                    onclick={clearNetworkFilter}
+                  />
                   {#each allNetworks as net (net.id)}
-                    {@const active = networkFilter === net.id}
                     <TypeBadge
                       size="small"
                       label={net.name}
                       color={net.color}
-                      {active}
+                      active={networkFilter.has(net.id)}
                       onclick={() => toggleNetwork(net.id)}
                     />
                   {/each}
