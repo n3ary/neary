@@ -22,20 +22,17 @@
 
   The "Your favorites" card ALWAYS renders all of the user's
   favorites regardless of the active tab or the filter cascade.
-  Filters (mode / network / marker) only narrow the "All other
-  routes" / "All other stations" catalog below the tabs — they
-  never hide or trim a favorited item from the pinned card. A
-  favorited route also never reappears in the "All other routes"
-  catalog: the catalog subtracts the favorites set before
-  rendering.
+  Filters (marker / mode / network) only narrow the "All routes" /
+   "All stations" catalog below the tabs — they never hide or trim a
+   favorited item from the pinned card. A favorited route also never
+   reappears in the "All routes" catalog: the catalog subtracts the
+   favorites set before rendering.
 
-  The marker filter (All / Favorite / Home / Work / City center)
-  lives inside the Routes tab, above the "All other routes" catalog.
-  On the Stations tab it is hidden: the "All other stations" catalog
-  already excludes marked stations (they're in Your favorites), so
-  the filter would have nothing to act on. On the Routes tab the
-  filter narrows the catalog to routes serving at least one marked
-  station of the active type.
+   The marker filter (All / Favorite / Home / Work / City center)
+   lives in the shared filter card above the tabs, so it applies to
+   both the Routes and Stations tab. On Routes it narrows the catalog
+   to routes serving at least one marked station of the active type.
+   On Stations it filters to stations with the active marker type.
 -->
 <script lang="ts">
   import { goto } from '$app/navigation';
@@ -543,20 +540,23 @@
   // alphabetically, same as on the home FavoritesCard.
   const favStationsSorted = $derived<StopWithDistance[]>(favoriteStations);
 
-  // "All other stations": the stations that AREN'T in the favorites
-  // card above. Filter cascade (mode + network) trims the page at
-  // the worker via stationsScope. All other stations are included
-  // regardless of their marker - they appear here too so the user
-  // can find and interact with any station. The marker filter no
-  // longer applies here: its chips live on the Routes tab only, so
-  // on this tab the filter is always empty and the old "look up
-  // marker match" pass was always a no-op anyway.
+  // "All stations": stations that AREN'T in the favorites card above.
+  // Filter cascade (marker + mode + network) trims the page at the
+  // worker via stationsScope. Marker filter is applied here by
+  // checking each station's marker against the active filter set.
   const otherStationsSorted = $derived.by<StopWithDistance[]>(() => {
-    return sortStationsForPicker(otherStationsPage, stationAnchor);
+    let list = otherStationsPage;
+    if (activeMarkerFilter.size > 0) {
+      list = list.filter((s) => {
+        const marker = favoritesStore.markerFor(s.id);
+        return marker != null && activeMarkerFilter.has(marker);
+      });
+    }
+    return sortStationsForPicker(list, stationAnchor);
   });
 
   const stationsScopeCount = $derived(Object.keys(stationsScope).length);
-  const filtersActive = $derived(typeFilter !== null || networkFilter !== null);
+  const filtersActive = $derived(typeFilter !== null || networkFilter !== null || activeMarkerFilter.size > 0);
   const otherStationsHasMore = $derived(
     otherStationsTotal === 0 || otherStationsPage.length < otherStationsTotal,
   );
@@ -568,15 +568,14 @@
     work: 'Work',
     cityCenter: 'City center',
   };
-  // Marker filter chip colors. Matches the marker-icon palette used
-  // elsewhere (favorite = danger; home / work / cityCenter = primary).
-  // Foregrounds are the theme's matching `-fg` tokens so the contrast
-  // follows light/dark mode.
+  // Marker filter chip colors. All markers use amber (--color-favorite)
+  // for consistency. Foregrounds are the theme's matching `-fg` tokens
+  // so the contrast follows light/dark mode.
   const MARKER_COLORS: Record<StationMarker, { bg: string; fg: string }> = {
-    favorite: { bg: 'var(--color-danger)', fg: 'var(--color-danger-fg, #fff)' },
-    home: { bg: 'var(--color-primary)', fg: 'var(--color-primary-fg)' },
-    work: { bg: 'var(--color-primary)', fg: 'var(--color-primary-fg)' },
-    cityCenter: { bg: 'var(--color-primary)', fg: 'var(--color-primary-fg)' },
+    favorite: { bg: 'var(--color-favorite)', fg: 'var(--color-favorite-fg, #fff)' },
+    home: { bg: 'var(--color-favorite)', fg: 'var(--color-favorite-fg, #fff)' },
+    work: { bg: 'var(--color-favorite)', fg: 'var(--color-favorite-fg, #fff)' },
+    cityCenter: { bg: 'var(--color-favorite)', fg: 'var(--color-favorite-fg, #fff)' },
   };
 
   // Per-stop marker map for the expanded route view.
@@ -683,11 +682,9 @@
         </FavoritesCard>
       {/if}
 
-      <!-- Filter card: mode + network filters, shared across both tabs.
-           Mode + network cascade to the Stations tab; on the Routes tab
-           they just narrow the catalog shown below. The marker filter
-           lives inside the Routes tab (above all routes), not here. -->
-      {#if presentTypes.length > 1 || allNetworks.length > 0}
+      <!-- Filter card: marker + mode + network filters, shared across
+           both tabs. All cascade to the catalog below. -->
+      {#if favoritesStore.markers.size > 0 || presentTypes.length > 1 || allNetworks.length > 0}
         <Card>
           <CardContent>
             <!--
@@ -696,18 +693,38 @@
               network name) are self-evident. Hairlines separate the
               rows. See #257.
 
-              Order: mode filter first (Bus/Tram/...), then network
-              filter. The marker filter lives inside the Routes tab
-              above all routes, not in this card.
+              Order: marker filter first, then mode (Bus/Tram/...), then
+              network. Applied to both Routes and Stations tabs.
             -->
             <Stack spacing={1.5}>
+              {#if favoritesStore.markers.size > 0}
+                <Stack direction="row" spacing={1} align="center" wrap class="pb-2 border-b border-[color:var(--color-border)]">
+                  <TypeBadge
+                    size="small"
+                    label="All"
+                    active={activeMarkerFilter.size === 0}
+                    onclick={clearMarkerFilter}
+                  />
+                  {#each STATION_MARKERS as m (m)}
+                    <TypeBadge
+                      size="small"
+                      label={MARKER_LABELS[m]}
+                      color={MARKER_COLORS[m].bg}
+                      fg={MARKER_COLORS[m].fg}
+                      active={activeMarkerFilter.has(m)}
+                      onclick={() => toggleMarkerFilter(m)}
+                    />
+                  {/each}
+                </Stack>
+              {/if}
+
               {#if presentTypes.length > 1}
                 <Stack
                   direction="row"
                   spacing={1}
                   align="center"
                   wrap
-                  class={activeTab === 'routes' ? 'pt-2 border-t border-[color:var(--color-border)]' : ''}
+                  class="pt-2 border-t border-[color:var(--color-border)]"
                 >
                   {#each presentTypes as t (t)}
                     <TypeBadge type={t} color={colorByType.get(t)} active={typeFilter === t} onclick={() => toggleType(t)} />
@@ -751,25 +768,7 @@
         />
 
         {#if activeTab === 'routes'}
-          <!-- ── Routes tab: marker filter + all routes ─────── -->
-          <Stack direction="row" spacing={1} align="center" wrap class="px-3 pt-2">
-            <TypeBadge
-              size="small"
-              label="All"
-              active={activeMarkerFilter.size === 0}
-              onclick={clearMarkerFilter}
-            />
-            {#each STATION_MARKERS as m (m)}
-              <TypeBadge
-                size="small"
-                label={MARKER_LABELS[m]}
-                color={MARKER_COLORS[m].bg}
-                fg={MARKER_COLORS[m].fg}
-                active={activeMarkerFilter.has(m)}
-                onclick={() => toggleMarkerFilter(m)}
-              />
-            {/each}
-          </Stack>
+          <!-- ── Routes tab: all routes ─────── -->
 
           {#if otherRoutes.length > 0 || noScheduleRoutes.length > 0}
             <Card class="rounded-none border-0 border-t border-[color:var(--color-border)] shadow-none">
@@ -777,7 +776,7 @@
                 <Stack spacing={1}>
                   <Stack spacing={0.5}>
                     <Typography variant="h5">
-                      {favRoutes.length > 0 ? 'All other routes' : 'All routes'}
+                      All routes
                     </Typography>
                     <Typography variant="caption" class="text-[color:var(--color-fg-muted)]">
                       Routes running in the next hour float to the top.
