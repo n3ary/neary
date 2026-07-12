@@ -155,9 +155,9 @@
           onclick={() => pick(opt.marker)}
           class={cn(
             'flex items-center gap-2 rounded px-2 py-1 text-left text-sm hover:bg-[color:var(--color-border)]/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--color-primary)]',
-            // Highlight the selected option: amber tint for non-normal, muted for Normal.
-            selected && opt.marker !== null && 'bg-[color:var(--color-favorite)]/15',
-            selected && opt.marker === null && 'bg-[color:var(--color-border)]/40',
+            // Highlight the selected option: amber tint for all selected
+            // markers including Normal (so the user can see their pick).
+            selected && 'bg-[color:var(--color-favorite)]/15',
           )}
         >
           <Icon
@@ -165,13 +165,12 @@
             strokeWidth={2.25}
             fill={selected && opt.marker !== null ? STATION_MARKER_FILL[opt.marker] : 'none'}
             class={cn(
-              // Selected option: full colour (favorite = --color-favorite, others = primary).
+              // Selected: full colour via STATION_MARKER_ACCENT
+              // (Normal uses --color-primary, others use --color-favorite).
               // Unselected: muted.
-              selected && opt.marker === 'favorite'
-                ? 'text-[color:var(--color-favorite)]'
-                : selected
-                  ? 'text-[color:var(--color-favorite)]'
-                  : 'text-[color:var(--color-fg-muted)] opacity-60',
+              selected
+                ? `text-[color:${opt.marker === null ? 'var(--color-primary)' : STATION_MARKER_ACCENT[opt.marker as keyof typeof STATION_MARKER_ACCENT]}]`
+                : 'text-[color:var(--color-fg-muted)] opacity-60',
             )}
           />
           <span>{opt.label}</span>
