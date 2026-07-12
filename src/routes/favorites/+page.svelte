@@ -516,15 +516,17 @@
     const set = new Set(favoritesStore.routeIds);
     return sortRoutesForPicker(allRoutes.filter((r) => set.has(r.id)), activeRouteIds);
   });
+  // All routes passing filters (including favorited), split by schedule status.
+  // Favorited routes appear here AND in the pinned FavoritesCard above.
   const otherRoutes = $derived.by<Route[]>(() => {
     return sortRoutesForPicker(
-      filteredRoutes.filter((r) => !favoritesStore.hasRoute(r.id) && r.hasSchedule !== false),
+      filteredRoutes.filter((r) => r.hasSchedule !== false),
       activeRouteIds,
     );
   });
   const noScheduleRoutes = $derived.by<Route[]>(() => {
     return sortRoutesForPicker(
-      filteredRoutes.filter((r) => !favoritesStore.hasRoute(r.id) && r.hasSchedule === false),
+      filteredRoutes.filter((r) => r.hasSchedule === false),
       activeRouteIds,
     );
   });
