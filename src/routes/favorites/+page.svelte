@@ -30,12 +30,12 @@
   rendering.
 
   The marker filter (All / Favorite / Home / Work / City center)
-  is the first row in the filter card, but only on the Routes tab.
-  On the Stations tab the row is hidden: the "All other stations"
-  catalog already excludes marked stations (they're in Your
-  favorites), so the filter would have nothing to act on. On the
-  Routes tab the filter narrows the catalog to routes serving at
-  least one marked station of the active type.
+  lives inside the Routes tab, above the "All other routes" catalog.
+  On the Stations tab it is hidden: the "All other stations" catalog
+  already excludes marked stations (they're in Your favorites), so
+  the filter would have nothing to act on. On the Routes tab the
+  filter narrows the catalog to routes serving at least one marked
+  station of the active type.
 -->
 <script lang="ts">
   import { goto } from '$app/navigation';
@@ -658,12 +658,11 @@
         </FavoritesCard>
       {/if}
 
-      <!-- Filter card: shared across both tabs. Mode + network cascade
-           to the Stations tab; on the Routes tab they just narrow the
-           catalog shown below. Sits between the favorites card and the
-           catalog so the user's pinned items render first, keeping
-           catalog controls out of the way until they scroll. -->
-      {#if presentTypes.length > 1 || allNetworks.length > 0 || activeTab === 'routes'}
+      <!-- Filter card: mode + network filters, shared across both tabs.
+           Mode + network cascade to the Stations tab; on the Routes tab
+           they just narrow the catalog shown below. The marker filter
+           lives inside the Routes tab (above all routes), not here. -->
+      {#if presentTypes.length > 1 || allNetworks.length > 0}
         <Card>
           <CardContent>
             <!--
@@ -672,36 +671,11 @@
               network name) are self-evident. Hairlines separate the
               rows. See #257.
 
-              Order: marker filter is first when on the Routes tab --
-              it's the most specific ("which stations do you care
-              about") and narrows the route catalog to routes serving
-              those stations. On the Stations tab the marker row is
-              hidden because the catalog already excludes marked
-              stations (they're in Your favorites), so the filter
-              would have nothing to act on.
+              Order: mode filter first (Bus/Tram/...), then network
+              filter. The marker filter lives inside the Routes tab
+              above all routes, not in this card.
             -->
             <Stack spacing={1.5}>
-              {#if activeTab === 'routes'}
-                <Stack direction="row" spacing={1} align="center" wrap>
-                  <TypeBadge
-                    size="small"
-                    label="All"
-                    active={activeMarkerFilter.size === 0}
-                    onclick={clearMarkerFilter}
-                  />
-                  {#each STATION_MARKERS as m (m)}
-                    <TypeBadge
-                      size="small"
-                      label={MARKER_LABELS[m]}
-                      color={MARKER_COLORS[m].bg}
-                      fg={MARKER_COLORS[m].fg}
-                      active={activeMarkerFilter.has(m)}
-                      onclick={() => toggleMarkerFilter(m)}
-                    />
-                  {/each}
-                </Stack>
-              {/if}
-
               {#if presentTypes.length > 1}
                 <Stack
                   direction="row"
@@ -752,7 +726,26 @@
         />
 
         {#if activeTab === 'routes'}
-          <!-- ── Routes tab: All other routes ──────────────────── -->
+          <!-- ── Routes tab: marker filter + all routes ─────── -->
+          <Stack direction="row" spacing={1} align="center" wrap class="px-3 pt-2">
+            <TypeBadge
+              size="small"
+              label="All"
+              active={activeMarkerFilter.size === 0}
+              onclick={clearMarkerFilter}
+            />
+            {#each STATION_MARKERS as m (m)}
+              <TypeBadge
+                size="small"
+                label={MARKER_LABELS[m]}
+                color={MARKER_COLORS[m].bg}
+                fg={MARKER_COLORS[m].fg}
+                active={activeMarkerFilter.has(m)}
+                onclick={() => toggleMarkerFilter(m)}
+              />
+            {/each}
+          </Stack>
+
           {#if otherRoutes.length > 0 || noScheduleRoutes.length > 0}
             <Card class="rounded-none border-0 border-t border-[color:var(--color-border)] shadow-none">
               <CardContent>
