@@ -27,7 +27,7 @@ permissions:
 
 jobs:
   pr-check:
-    uses: n3ary/actions/.github/workflows/pr-check.yml@417e0158b91865e750bb59157da04a737188fe87
+    uses: n3ary/actions/.github/workflows/pr-check.yml@main
 
   validate:
     runs-on: ubuntu-latest
