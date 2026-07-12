@@ -696,9 +696,9 @@
               Order: marker filter first, then mode (Bus/Tram/...), then
               network. Applied to both Routes and Stations tabs.
             -->
-            <Stack spacing={1.5}>
+            <Stack spacing={1.5} class="border-t border-[color:var(--color-border)]">
               {#if favoritesStore.markers.size > 0}
-                <Stack direction="row" spacing={1} align="center" wrap class="pb-2 border-b border-[color:var(--color-border)]">
+                <Stack direction="row" spacing={1} align="center" wrap class="pt-2">
                   <TypeBadge
                     size="small"
                     label="All"
@@ -729,7 +729,7 @@
                   spacing={1}
                   align="center"
                   wrap
-                  class="pt-2 border-t border-[color:var(--color-border)]"
+                  class="pt-2"
                 >
                   {#each presentTypes as t (t)}
                     <TypeBadge type={t} color={colorByType.get(t)} active={typeFilter === t} onclick={() => toggleType(t)} />
@@ -738,7 +738,7 @@
               {/if}
 
               {#if allNetworks.length > 0}
-                <Stack direction="row" spacing={1} align="center" wrap class="pt-2 border-t border-[color:var(--color-border)]">
+                <Stack direction="row" spacing={1} align="center" wrap class="pt-2">
                   {#each allNetworks as net (net.id)}
                     {@const active = networkFilter === net.id}
                     <TypeBadge
