@@ -4,13 +4,10 @@
 # Validates every PR: shared ASCII + standards-drift checks, repo-specific
 # check/test/build. Never pushes to the branch.
 #
-# Trigger:     pull_request
+# Trigger:     pull_request + workflow_dispatch (manual rerun from Actions UI)
 # Permissions: contents: read
 # Secrets:     NPM_TOKEN (for pnpm install from GH Packages)
 # Owner:       @ciotlosm
-# Run time:    ~3-7 min (retrigger v2)
-# Force-retrigger: 2026-07-12
-# Note: workflow triggers on pull_request events to this branch.
 # ----------------------------------------------------------------------------
 name: '[check] PR validation (on PR)'
 
@@ -18,11 +15,6 @@ on:
   pull_request:
     branches: [main]
   workflow_dispatch:
-    inputs:
-      branch:
-        description: 'Branch to run'
-        required: true
-        default: 'station-marker-dropdown'
 
 # Shared base PR-validation lives in n3ary/actions. enable-drift-check
 # is true: app vendors n3ary/standards under docs/standards/.
