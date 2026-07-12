@@ -1,0 +1,41 @@
+# Temporary workflow to force-retrigger CI on the station-marker-dropdown branch.
+# Safe to delete once CI is flowing normally again.
+name: '[check] force-retrigger'
+
+on:
+  workflow_dispatch:
+    inputs:
+      branch:
+        description: 'Branch to run'
+        required: true
+        default: 'station-marker-dropdown'
+
+jobs:
+  pr-check:
+    uses: n3ary/actions/.github/workflows/pr-check.yml@main
+
+  validate:
+    runs-on: ubuntu-latest
+    if: github.actor != 'dependabot[bot]'
+    steps:
+      - name: Checkout PR branch
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.branch }}
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Setup pnpm with GH Packages auth + install
+        uses: n3ary/actions/.github/actions/setup-pnpm-gh-packages-auth@v23
+        with:
+          auth-token: ${{ secrets.NPM_TOKEN }}
+          install-args: '--no-frozen-lockfile'
+
+      - name: Type check
+        run: pnpm run check
+
+      - name: Run tests
+        run: pnpm test
+
+      - name: Build
+        run: pnpm run build
