@@ -550,35 +550,24 @@
         stop={demoSearchStop}
         routes={demoSearchRoutes}
         hasGps
-        marker={undefined}
-        onChangeMarker={() => statusBus.push({ id: 'fsr-fav', kind: 'info', message: 'Would open marker dropdown' })}
         onbodyclick={() => statusBus.push({ id: 'fsr-click', kind: 'info', message: 'Would open /station/<id>' })}
       />
 
       <Typography variant="caption" class="text-[color:var(--color-fg-muted)]">
-        Same row, each marker type. The dropdown trigger icon swaps
-        to reflect the active marker: filled red Heart for favorite,
-        outlined Home / Briefcase / Concentric Circles for the others.
+        Same row without route chips. Marker editing lives in station detail via the StationCard avatar.
       </Typography>
-      <Stack spacing={0.5}>
-        {#each (['favorite', 'home', 'work', 'cityCenter'] as StationMarker[]) as m (m)}
-          <FavoriteStationRow
-            stop={{ ...demoSearchStop, id: `demo-${m}` }}
-            routes={demoSearchRoutes}
-            hasGps
-            marker={m}
-            onChangeMarker={() => statusBus.push({ id: `fsr-${m}`, kind: 'info', message: `Would clear ${m} marker` })}
-            onbodyclick={() => statusBus.push({ id: `fsr-click-${m}`, kind: 'info', message: 'Would open /station/<id>' })}
-          />
-        {/each}
-      </Stack>
+      <FavoriteStationRow
+        stop={{ ...demoSearchStop, id: 'demo-plain' }}
+        hasGps
+        onbodyclick={() => statusBus.push({ id: 'fsr-click-plain', kind: 'info', message: 'Would open /station/<id>' })}
+      />
     </Stack>
 
     <Stack spacing={1}>
       <Typography variant="body2">StationMarkerDropdown — popover with Normal + 4 markers</Typography>
       <Typography variant="caption" class="text-[color:var(--color-fg-muted)]">
         The dropdown is opened by clicking the icon. Selected option
-        renders in its full color (favorite = danger, others = primary);
+        renders in its full color (favorite = --color-favorite, others = --color-primary);
         unselected options render muted. Tapping the active marker
         clears it (toggle shortcut); tapping Normal always clears.
       </Typography>

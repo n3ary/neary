@@ -428,7 +428,6 @@
           <FavoritesCard
             routes={favoriteRoutes}
             stations={favoriteStations}
-            stationMarkers={favoritesStore.markers}
             routesLoading={!allRoutesForFavorites && !routesError}
             {routesError}
           />
@@ -553,13 +552,14 @@
             rows={rows}
             allRoutes={allRoutes}
             selectedRouteId={stationsViewStore.routeFilterByStop[stop.id] ?? null}
-            onRouteClick={(rid) => stationsViewStore.applyRouteBadgeTap(stop.id, rid)}
+            onRouteClick={(rid: string) => stationsViewStore.applyRouteBadgeTap(stop.id, rid)}
             favoriteRouteIds={favoritesStore.routeIds}
             getUpcomingStops={getUpcomingStops}
             expanded={effectiveExpandedStopId === stop.id}
             ontoggle={() => stationsViewStore.pickExpand(
               effectiveExpandedStopId === stop.id ? null : stop.id,
             )}
+            onChangeMarker={(stopId: string, next) => favoritesStore.setMarker(stopId, next)}
           />
         {/each}
       {/if}

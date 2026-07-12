@@ -11,6 +11,7 @@
   import { DEFAULT_CONFIG } from '$lib/domain/config';
   import { feedsStore } from '$lib/stores/feedsStore.svelte';
   import { favoritesStore } from '$lib/stores/favoritesStore.svelte';
+  import type { StationMarker } from '$lib/stores/favoritesStore.svelte';
   import { refreshBus } from '$lib/stores/refreshBus.svelte';
   import { stationsViewStore } from '$lib/stores/stationsViewStore.svelte';
   import { userPrefs } from '$lib/stores/userPrefs.svelte';
@@ -110,12 +111,13 @@
     rawVehicleCount={assembled?.vehicles.length}
     allRoutes={assembled?.allRoutes ?? []}
     selectedRouteId={stationsViewStore.routeFilterByStop[stopKey] ?? null}
-      onRouteClick={(rid) => stationsViewStore.applyRouteBadgeTap(stopKey, rid)}
-      favoriteRouteIds={favoritesStore.routeIds}
-      originRouteIds={originRouteIds}
-      getUpcomingStops={getUpcomingStops}
-      expanded={true}
-      ontoggle={() => {}}
-    />
+    onRouteClick={(rid: string) => stationsViewStore.applyRouteBadgeTap(stopKey, rid)}
+    favoriteRouteIds={favoritesStore.routeIds}
+    originRouteIds={originRouteIds}
+    getUpcomingStops={getUpcomingStops}
+    expanded={true}
+    ontoggle={() => {}}
+    onChangeMarker={(id: string, next: StationMarker | null) => favoritesStore.setMarker(id, next)}
+  />
   {/if}
 </div>

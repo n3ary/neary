@@ -9,17 +9,24 @@
   type Props = {
     variant?: Variant;
     tone?: Tone;
+    /** Override the accent border-left colour. Accepts a CSS colour
+     *  string (hex, rgb(), or var(--color-...)). When undefined the
+     *  variant's default accent colour is used. */
+    accentColor?: string;
     class?: string;
     children?: Snippet;
   };
 
-  let { variant = 'plain', tone = 'plain', class: className, children }: Props = $props();
+  let { variant = 'plain', tone = 'plain', accentColor, class: className, children }: Props = $props();
 
   const ACCENT: Record<Variant, string> = {
     plain: '',
-    station: 'border-l-4 border-l-[color:var(--color-primary)]',
-    route: 'border-l-4 border-l-[color:var(--color-success)]',
-    vehicle: 'border-l-4 border-l-[color:var(--color-warning)]',
+    // --card-accent: inline CSS var set by callers; fallback is the
+    // variant's canonical colour so the border reads correctly even when
+    // no override is passed.
+    station: 'border-l-4 border-l-[color:var(--card-accent,var(--color-primary))]',
+    route: 'border-l-4 border-l-[color:var(--card-accent,var(--color-success))]',
+    vehicle: 'border-l-4 border-l-[color:var(--card-accent,var(--color-warning))]',
   };
   const TONE: Record<Tone, string> = {
     // plain = the default card frame: surface bg + gray border.
@@ -41,6 +48,9 @@
     ACCENT[variant],
     className,
   )}
+  style={accentColor
+    ? `--card-accent: ${accentColor}`
+    : undefined}
 >
   {@render children?.()}
 </div>

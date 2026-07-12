@@ -1,12 +1,10 @@
-<!-- FavoriteStationRow: single source of truth for the station row used by the search overlay (with optional distance), /favorites, and home. The marker dropdown replaces the old heart toggle; the body tap navigates to /station/[id]. -->
+<!-- FavoriteStationRow: plain tappable station row used by the search overlay (with optional distance) and /favorites. Tapping the row navigates to /station/[id] where the marker dropdown lives via the StationCard avatar. -->
 <script lang="ts">
   import { Bus } from 'lucide-svelte';
   import type { Route } from '$lib/domain/types';
   import type { StopWithDistance } from '$lib/data/gtfs/types';
-  import type { StationMarker } from '$lib/stores/favoritesStore.svelte';
   import Avatar from './Avatar.svelte';
   import RouteChipsRow from './RouteChipsRow.svelte';
-  import StationMarkerDropdown from './StationMarkerDropdown.svelte';
   import { cn } from './cn';
 
   type Props = {
@@ -15,10 +13,6 @@
      *  wider shape enables `hasGps`-gated distance display; the
      *  minimal shape is what the favorites store has on hand. */
     stop: StopWithDistance | { id: string; name: string };
-    /** Current marker on the station, or undefined if unstarred. */
-    marker: StationMarker | undefined;
-    /** Mutate the station's marker; `null` clears it. */
-    onChangeMarker: (next: StationMarker | null) => void;
     /** Optional body tap. When null/undefined the row is non-interactive
      *  (the search overlay always supplies one; the home favorites
      *  card uses one for station detail navigation). */
@@ -36,8 +30,6 @@
 
   let {
     stop,
-    marker,
-    onChangeMarker,
     onbodyclick = null,
     routes,
     hasGps = false,
@@ -94,10 +86,6 @@
   </Avatar>
   <div class="min-w-0 flex-1 flex flex-col gap-1">
     <div class="flex items-center gap-2">
-      <!-- Marker is conveyed by the dropdown trigger on the right;
-           a left-side badge next to the name would be redundant in a
-           list row. The dedicated station detail page (/station/[id])
-           renders the badge via StationCard. -->
       <span class="min-w-0 flex-1 text-sm font-medium truncate">{stop.name}</span>
       {#if hasGps && distance != null}
         <span class="shrink-0 text-xs font-mono text-[color:var(--color-fg-muted)]">
@@ -108,13 +96,5 @@
     {#if showChips && routes}
       <RouteChipsRow {routes} />
     {/if}
-  </div>
-  <div class="flex items-center gap-1 shrink-0">
-    <StationMarkerDropdown
-      stationId={stop.id}
-      {marker}
-      onChange={onChangeMarker}
-      label={stop.name}
-    />
   </div>
 </div>

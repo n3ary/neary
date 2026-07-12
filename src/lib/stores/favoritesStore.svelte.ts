@@ -28,12 +28,14 @@ export const STATION_MARKERS: readonly StationMarker[] = [
 // centro" - a circle with crosshair lines indicating the centre of a
 // city/town. Visually distinct from Heart / Home / Briefcase so the
 // four markers don't blur together when shown on the same row.
-export const STATION_MARKER_ICONS: Record<StationMarker, typeof Heart> = {
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const _markerIcons: Record<StationMarker, any> = {
   favorite: Heart,
   home: Home,
   work: Briefcase,
   cityCenter: Crosshair,
 };
+export const STATION_MARKER_ICONS: Record<StationMarker, (props: any) => any> = _markerIcons;
 
 /** Whether the marker's icon should be filled or outlined. favorite
  *  fills (matches the long-standing heart fill convention); the rest
@@ -43,6 +45,18 @@ export const STATION_MARKER_FILL: Record<StationMarker, 'currentColor' | 'none'>
   home: 'none',
   work: 'none',
   cityCenter: 'none',
+};
+
+/** Accent colour for stations with a marker. Used for the left-border
+ *  accent on station cards/rows and the badge icon tint. Uses CSS
+ *  variables so theme.css controls the actual colour (--color-favorite
+ *  for favorite, --color-primary for home/work/cityCenter). */
+export const STATION_MARKER_ACCENT: Record<StationMarker | 'none', string> = {
+  none: 'transparent',
+  favorite: 'var(--color-favorite)',
+  home: 'var(--color-primary)',
+  work: 'var(--color-primary)',
+  cityCenter: 'var(--color-primary)',
 };
 
 export function isStationMarker(value: unknown): value is StationMarker {

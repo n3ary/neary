@@ -1,18 +1,26 @@
-<!--
-  StationMarkerDropdown: button face that shows the station's current
-  marker (filled Heart for favorite, outline for the others, outline
-  Heart for unstarred) and opens a small popover with the marker
-  options. The "Normal" entry clears the marker; tapping the same
-  marker a second time also clears (kept as a shortcut).
+  <!--
+  StationMarkerDropdown: button face that opens a small popover with
+  station marker options (Normal / Favorite / Home / Work / City center).
+  The trigger icon reflects the current marker state. The "Normal" entry
+  clears the marker; tapping the same marker a second time also clears
+  (kept as a shortcut).
 
   Visual: the active option's icon is rendered in its full color
-  (favorite: --color-danger, others: --color-primary); inactive
-  options render in --color-fg-muted. Replaces an earlier "current"
-  text label which made the row widths jumpy.
+  (favorite: --color-favorite, others: --color-primary); inactive
+  options render muted.
+
+  Props:
+  - `icon` (optional): Lucide icon to use as the trigger instead of the
+    marker icon. Used by StationCard where the trigger IS the Avatar
+    (Bus icon) regardless of the marker state.
+  - `markerColor` (optional): CSS color string for the trigger icon.
+    When omitted, the icon uses the default marker-colour logic.
+  - `size`: lucide icon size for the trigger.
 -->
 <script lang="ts">
+  import type { Snippet } from 'svelte';
   import { Popover } from 'bits-ui';
-  import { CircleOff, Heart } from 'lucide-svelte';
+  import { Bus, Heart } from 'lucide-svelte';
   import type { StationMarker } from '$lib/stores/favoritesStore.svelte';
   import {
     STATION_MARKERS, STATION_MARKER_ICONS, STATION_MARKER_FILL,
@@ -26,8 +34,18 @@
     onChange: (next: StationMarker | null) => void;
     /** The stop name (or generic label) for aria-label on the trigger. */
     label?: string;
-    size?: 14 | 16;
+    /** Override the trigger icon. When set, this icon renders instead of
+     *  the marker icon. Used by StationCard where the Avatar (Bus icon)
+     *  is the trigger regardless of marker state. */
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    icon?: (props: { size?: number; strokeWidth?: number }) => any;
+    /** Override the trigger icon colour. When omitted, uses the default
+     *  marker colour logic (--color-favorite for favorite, --color-primary for others). */
+    iconColor?: string;
+    /** Icon pixel size. Defaults to 16. */
+    size?: 14 | 16 | 20;
     class?: string;
+    children?: Snippet;
   };
 
   let {
@@ -35,15 +53,30 @@
     marker,
     onChange,
     label,
+    icon,
+    iconColor,
     size = 16,
     class: className,
+    children,
   }: Props = $props();
 
-  // Trigger shows the current marker's icon, or outline Heart if none.
-  // Filled only for `favorite` (matches the long-standing heart fill
-  // convention); the other three read better outlined at 14-16px.
+  // Trigger shows the current marker's icon, or the override icon.
+  // Filled only for `favorite`; the other three read better outlined.
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const TriggerIcon = $derived(
-    marker === undefined ? Heart : STATION_MARKER_ICONS[marker],
+    (icon ?? (marker === undefined ? Bus : STATION_MARKER_ICONS[marker])) as any,
+  );
+  const triggerFill = $derived(
+    icon != null ? 'none'
+    : marker === undefined ? 'none'
+    : STATION_MARKER_FILL[marker],
+  );
+  const triggerColor = $derived(
+    iconColor ?? (
+      marker === 'favorite'
+        ? 'var(--color-favorite)'
+        : 'var(--color-primary)'
+    ),
   );
 
   function pick(next: StationMarker | null) {
@@ -58,22 +91,27 @@
     }
   }
 
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  type LucideLike = (props: { size?: number; strokeWidth?: number }) => any;
+
   type Option = {
     /** null = the "Normal" / unstarred entry. */
     marker: StationMarker | null;
-    Icon: typeof Heart;
+    Icon: LucideLike;
     label: string;
   };
   // Normal sits at the top: it's the default, the most common pick
   // when the user opens the dropdown by accident, and the "remove"
   // escape hatch. The four real markers follow STATION_MARKERS order
   // (single source of truth - same order as the favorites card,
-  // the marker filter chips, the station badges, etc.).
+  // the marker filter chips, etc.).
+  // @ts-ignore Svelte 5 icon components don't satisfy a plain function signature;
+  //       the cast is safe because we only invoke them with {size, strokeWidth}.
   const options: Option[] = [
-    { marker: null, Icon: CircleOff, label: 'Normal' },
+    { marker: null, Icon: Bus, label: 'Normal' } as unknown as Option,
     ...STATION_MARKERS.map<Option>((m) => ({
       marker: m,
-      Icon: STATION_MARKER_ICONS[m],
+      Icon: STATION_MARKER_ICONS[m] as unknown as LucideLike,
       label: m === 'cityCenter' ? 'City center' : m.charAt(0).toUpperCase() + m.slice(1),
     })),
   ];
@@ -89,19 +127,24 @@
       className,
     )}
   >
-    <TriggerIcon
-      {size}
-      strokeWidth={2.25}
-      fill={marker === undefined ? 'none' : STATION_MARKER_FILL[marker]}
-      class={cn(
-        marker === 'favorite'
-          ? 'text-[color:var(--color-danger)]'
-          : marker
-            ? 'text-[color:var(--color-primary)]'
-            : 'text-[color:var(--color-fg-muted)]',
-        'shrink-0',
-      )}
-    />
+    {#if children}
+      {@render children()}
+    {:else}
+      <TriggerIcon
+        {size}
+        strokeWidth={2.25}
+        fill={triggerFill}
+        class={cn(
+          'shrink-0',
+          iconColor ? '' : (
+          marker === 'favorite'
+            ? 'text-[color:var(--color-favorite)]'
+            : 'text-[color:var(--color-primary)]'
+          )
+        )}
+        style={iconColor ? `color: ${iconColor}` : undefined}
+      />
+    {/if}
   </Popover.Trigger>
   <Popover.Portal>
     <Popover.Content
@@ -112,6 +155,7 @@
     >
       {#each options as opt (opt.marker ?? 'normal')}
         {@const selected = opt.marker === marker}
+        {@const Icon = opt.Icon as any}
         <button
           type="button"
           onclick={() => pick(opt.marker)}
@@ -120,18 +164,15 @@
             selected && 'bg-[color:var(--color-border)]/30',
           )}
         >
-          <opt.Icon
+          <Icon
             size={14}
             strokeWidth={2.25}
             fill={selected && opt.marker !== null ? STATION_MARKER_FILL[opt.marker] : 'none'}
             class={cn(
-              // Selected option: full color (favorite = danger, others = primary).
-              // Unselected (including favorite when home/work/cityCenter is the
-              // active marker): muted grey. The "favorite always red" exception
-              // dropped — favorite reads as just another unselected option
-              // when it isn't the active marker.
+              // Selected option: full colour (favorite = --color-favorite, others = primary).
+              // Unselected: muted.
               selected && opt.marker === 'favorite'
-                ? 'text-[color:var(--color-danger)]'
+                ? 'text-[color:var(--color-favorite)]'
                 : selected
                   ? 'text-[color:var(--color-primary)]'
                   : 'text-[color:var(--color-fg-muted)] opacity-60',

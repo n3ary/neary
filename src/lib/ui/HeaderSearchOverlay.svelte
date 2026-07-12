@@ -232,15 +232,6 @@
   function toggleFavorite(route: Route) {
     favoritesStore.toggleRoute(route.id);
   }
-  function changeStationMarker(stopId: string, next: 'favorite' | 'home' | 'work' | 'cityCenter' | null) {
-    if (next === null) {
-      const current = favoritesStore.markerFor(stopId);
-      if (current === undefined) return;
-      favoritesStore.setMarker(stopId, null);
-    } else {
-      favoritesStore.setMarker(stopId, next);
-    }
-  }
   function normalizeForSearch(s: string): string {
     return s.normalize('NFD').replace(/\p{M}/gu, '').toLowerCase().trim();
   }
@@ -331,8 +322,6 @@
               {#each favoriteStations as stop (stop.id)}
                 <FavoriteStationRow
                   {stop}
-                  marker={favoritesStore.markerFor(stop.id)}
-                  onChangeMarker={(next) => changeStationMarker(stop.id, next)}
                   onbodyclick={() => selectStop(stop.id)}
                   routes={stopRoutes[stop.id]}
                 />
@@ -349,8 +338,6 @@
                   routes={stopRoutes[stop.id] ?? []}
                   {hasGps}
                   onbodyclick={() => selectStop(stop.id)}
-                  marker={favoritesStore.markerFor(stop.id)}
-                  onChangeMarker={(next) => changeStationMarker(stop.id, next)}
                 />
               {/each}
             {/if}
@@ -365,8 +352,6 @@
                   routes={stopRoutes[stop.id] ?? []}
                   {hasGps}
                   onbodyclick={() => selectStop(stop.id)}
-                  marker={favoritesStore.markerFor(stop.id)}
-                  onChangeMarker={(next) => changeStationMarker(stop.id, next)}
                 />
               {/each}
             {/if}

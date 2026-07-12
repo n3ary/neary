@@ -126,7 +126,7 @@
         size={16}
         strokeWidth={2.25}
         fill={isFav ? 'currentColor' : 'none'}
-        class={isFav ? 'text-[color:var(--color-danger)]' : 'text-[color:var(--color-fg-muted)]'}
+        class={isFav ? 'text-[color:var(--color-favorite)]' : 'text-[color:var(--color-fg-muted)]'}
       />
     </button>
   </div>

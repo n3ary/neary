@@ -20,7 +20,7 @@
   import type { BoardRow } from '$lib/domain/stationBoard';
   import type { ScheduleTripStop } from '$lib/data/gtfs/types';
   import type { StationMarker } from '$lib/stores/favoritesStore.svelte';
-  import { favoritesStore } from '$lib/stores/favoritesStore.svelte';
+  import { favoritesStore, STATION_MARKER_ACCENT } from '$lib/stores/favoritesStore.svelte';
   import { feedsStore } from '$lib/stores/feedsStore.svelte';
   import Avatar from './Avatar.svelte';
   import Box from './Box.svelte';
@@ -31,11 +31,10 @@
   import IconButton from './IconButton.svelte';
   import RouteBadge from './RouteBadge.svelte';
   import Stack from './Stack.svelte';
-  import StationMarkerBadge from './StationMarkerBadge.svelte';
+  import StationMarkerDropdown from './StationMarkerDropdown.svelte';
   import Tooltip from './Tooltip.svelte';
   import TripStopList from './TripStopList.svelte';
   import Typography from './Typography.svelte';
-  import StationMarkerBadges from './StationMarkerBadges.svelte';
   import VehicleCard from './VehicleCard.svelte';
   import { cn } from './cn';
 
@@ -69,12 +68,13 @@
     onRouteClick?: (routeId: string) => void;
     /** Optional set of route ids that are favorited. */
     favoriteRouteIds?: ReadonlySet<string>;
-    /** When set, a StationMarkerBadge renders next to the station
-     *  name. Defaults to looking up the station in favoritesStore
-     *  (the marker model — see favoritesStore.markers) so call
-     *  sites don't have to pass it explicitly. Pass undefined to
-     *  suppress the badge even when a marker exists. */
+    /** Marker for the station. Defaults to looking up the station
+     *  in favoritesStore so call sites don't have to pass it
+     *  explicitly. Pass null to suppress. */
     marker?: StationMarker | null;
+    /** Mutate the station's marker from within the card. When set,
+     *  the marker icon becomes an interactive dropdown. null clears. */
+    onChangeMarker?: (stopId: string, next: StationMarker | null) => void;
     /** Route ids for which this station is the first (origin) stop. When set,
      *  the corresponding badge shows the isStart ▶ wedge. */
     originRouteIds?: ReadonlySet<string>;
@@ -100,6 +100,7 @@
     originRouteIds,
     getUpcomingStops,
     marker,
+    onChangeMarker,
     class: className,
   }: Props = $props();
 
@@ -111,6 +112,9 @@
       ? null
       : (marker ?? favoritesStore.markerFor(station.id) ?? null),
   );
+
+  // Accent for left-border on stations with a non-normal marker.
+  const markerAccent = $derived(STATION_MARKER_ACCENT[resolvedMarker ?? 'none']);
 
   // Stop-list expansion state for vehicle route badge tap.
   let expandedVehicleId = $state<string | null>(null);
@@ -279,12 +283,30 @@
   const interactive = $derived(typeof ontoggle === 'function');
 </script>
 
-<Card variant="station" class={className}>
+<Card
+  variant="station"
+  class={className}
+  accentColor={markerAccent !== 'transparent' ? markerAccent : undefined}
+>
   <CardContent>
     <Stack direction="row" spacing={1.5} align="center">
-      <Avatar variant="square" class="w-10 h-10 sm:w-12 sm:h-12">
-        <Bus size={20} />
-      </Avatar>
+      <!-- Avatar doubles as the dropdown trigger: tapping it opens the
+           marker dropdown. Shows the Bus icon (the station default avatar)
+           as the trigger regardless of marker state. -->
+      {#if onChangeMarker}
+        <StationMarkerDropdown
+          stationId={station.id}
+          marker={resolvedMarker ?? undefined}
+          onChange={(next) => onChangeMarker(station.id, next)}
+          label={station.name}
+          size={20}
+          class="w-10 h-10 sm:w-12 sm:h-12 rounded-md"
+        />
+      {:else}
+        <Avatar variant="square" class="w-10 h-10 sm:w-12 sm:h-12">
+          <Bus size={20} />
+        </Avatar>
+      {/if}
 
       <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
       <div
@@ -302,12 +324,7 @@
         )}
       >
         <Stack spacing={0.5}>
-          <Stack direction="row" spacing={1} align="center" class="min-w-0">
-            {#if resolvedMarker}
-              <StationMarkerBadge marker={resolvedMarker} size={14} />
-            {/if}
-            <Typography variant="h6" class="truncate">{station.name}</Typography>
-          </Stack>
+          <Typography variant="h6" class="truncate">{station.name}</Typography>
 
           <Stack direction="row" spacing={1} align="center" wrap>
             {#if typeof station.distance === 'number'}

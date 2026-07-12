@@ -30,7 +30,7 @@
   fill={STATION_MARKER_FILL[marker]}
   class={cn(
     marker === 'favorite'
-      ? 'text-[color:var(--color-danger)]'
+      ? 'text-[color:var(--color-favorite)]'
       : 'text-[color:var(--color-primary)]',
     'shrink-0',
     className,

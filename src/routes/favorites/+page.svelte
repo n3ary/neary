@@ -596,14 +596,7 @@
     goto(`/station/${id}`);
   }
 
-  function changeStationMarker(stopId: string, next: StationMarker | null) {
-    if (next === null) {
-      if (favoritesStore.markerFor(stopId) === undefined) return;
-      favoritesStore.setMarker(stopId, null);
-    } else {
-      favoritesStore.setMarker(stopId, next);
-    }
-  }
+
 </script>
 
 <!-- expandableRouteRow: route row + stops-list Collapsible. Routes
@@ -682,8 +675,7 @@
         <FavoritesCard
           routes={favRoutes}
           stations={favStationsSorted}
-          stationMarkers={favoritesStore.markers}
-          onChangeStationMarker={changeStationMarker}
+
           headerStyle="standalone"
         >
           {#snippet routeRow(args: { route: Route; markerStopIds: readonly string[] })}
@@ -839,8 +831,6 @@
                     {#each otherStationsSorted as stop (stop.id)}
                       <FavoriteStationRow
                         stop={stop}
-                        marker={favoritesStore.markerFor(stop.id)}
-                        onChangeMarker={(next) => changeStationMarker(stop.id, next)}
                         onbodyclick={() => selectStation(stop.id)}
                         routes={stationsScope[stop.id]}
                         hasGps={!!locationStore.position && stop.distance != null}

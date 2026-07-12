@@ -9,6 +9,8 @@
 # Secrets:     NPM_TOKEN (for pnpm install from GH Packages)
 # Owner:       @ciotlosm
 # Run time:    ~3-7 min
+# Force-retrigger: 2026-07-12
+# Note: workflow triggers on pull_request events to this branch.
 # ----------------------------------------------------------------------------
 name: '[check] PR validation (on PR)'
 
