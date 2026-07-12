@@ -133,25 +133,55 @@
   let allRoutes = $state<Route[] | null>(null);
   let allNetworks = $state<Network[]>([]);
   let error = $state<string | null>(null);
+  // Collapse state: when all options are selected, the row collapses into
+  // a single "All" chip. Tapping it expands back to individual chips with
+  // nothing selected (full view). Tapping individual chips toggles them;
+  // when all become selected again the row collapses back to "All".
+  let markersCollapsed = $state(true);
   let typeFilter = $state<ReadonlySet<VehicleType>>(new Set());
+  let typesCollapsed = $state(true);
   let networkFilter = $state<ReadonlySet<string>>(new Set());
+  let networksCollapsed = $state(true);
+
+  function toggleMarker(m: StationMarker) {
+    toggleMarkerFilter(m);
+    // Collapse to "All" when all markers are selected
+    if (activeMarkerFilter.size === STATION_MARKERS.length) {
+      markersCollapsed = true;
+    }
+  }
+  function expandMarkers() {
+    markersCollapsed = false;
+    clearMarkerFilter();
+  }
 
   function toggleType(t: VehicleType) {
     const next = new Set(typeFilter);
     if (next.has(t)) next.delete(t);
     else next.add(t);
     typeFilter = next;
+    // Collapse to "All" when all types are selected
+    if (typeFilter.size === presentTypes.length) {
+      typesCollapsed = true;
+    }
   }
-  function clearTypeFilter() {
+  function expandTypes() {
+    typesCollapsed = false;
     typeFilter = new Set();
   }
+
   function toggleNetwork(id: string) {
     const next = new Set(networkFilter);
     if (next.has(id)) next.delete(id);
     else next.add(id);
     networkFilter = next;
+    // Collapse to "All" when all networks are selected
+    if (networkFilter.size === allNetworks.length) {
+      networksCollapsed = true;
+    }
   }
-  function clearNetworkFilter() {
+  function expandNetworks() {
+    networksCollapsed = false;
     networkFilter = new Set();
   }
 
@@ -711,27 +741,38 @@
             <Stack spacing={1.5}>
               {#if favoritesStore.markers.size > 0}
                 <Stack direction="row" spacing={1} align="center" wrap class="pt-2">
-                  <TypeBadge
-                    size="small"
-                    label="All"
-                    active={activeMarkerFilter.size === 0}
-                    onclick={clearMarkerFilter}
-                  />
-                  {#each STATION_MARKERS as m (m)}
-                    {@const MarkerIcon = STATION_MARKER_ICONS[m]}
+                  {#if markersCollapsed}
+                    <!-- "All" shows the full list as active; tapping expands to individual chips -->
                     <TypeBadge
                       size="small"
-                      label={MARKER_LABELS[m]}
-                      color={MARKER_COLORS[m].bg}
-                      fg={MARKER_COLORS[m].fg}
-                      active={activeMarkerFilter.has(m)}
-                      onclick={() => toggleMarkerFilter(m)}
+                      label="All"
+                      active
+                      onclick={expandMarkers}
                     >
                       {#snippet icon()}
-                        <MarkerIcon size={12} strokeWidth={2.25} class="shrink-0" />
+                        {#each STATION_MARKERS as m (m)}
+                          {@const MarkerIcon = STATION_MARKER_ICONS[m]}
+                          <MarkerIcon size={10} strokeWidth={2.25} class="shrink-0" />
+                        {/each}
                       {/snippet}
                     </TypeBadge>
-                  {/each}
+                  {:else}
+                    {#each STATION_MARKERS as m (m)}
+                      {@const MarkerIcon = STATION_MARKER_ICONS[m]}
+                      <TypeBadge
+                        size="small"
+                        label={MARKER_LABELS[m]}
+                        color={MARKER_COLORS[m].bg}
+                        fg={MARKER_COLORS[m].fg}
+                        active={activeMarkerFilter.has(m)}
+                        onclick={() => toggleMarker(m)}
+                      >
+                        {#snippet icon()}
+                          <MarkerIcon size={12} strokeWidth={2.25} class="shrink-0" />
+                        {/snippet}
+                      </TypeBadge>
+                    {/each}
+                  {/if}
                 </Stack>
               {/if}
 
@@ -743,35 +784,41 @@
                   wrap
                   class="pt-2"
                 >
-                  <TypeBadge
-                    size="small"
-                    label="All"
-                    active={typeFilter.size === 0}
-                    onclick={clearTypeFilter}
-                  />
-                  {#each presentTypes as t (t)}
-                    <TypeBadge type={t} color={colorByType.get(t)} active={typeFilter.has(t)} onclick={() => toggleType(t)} />
-                  {/each}
+                  {#if typesCollapsed}
+                    <TypeBadge
+                      size="small"
+                      label="All"
+                      active
+                      onclick={expandTypes}
+                    />
+                  {:else}
+                    {#each presentTypes as t (t)}
+                      <TypeBadge type={t} color={colorByType.get(t)} active={typeFilter.has(t)} onclick={() => toggleType(t)} />
+                    {/each}
+                  {/if}
                 </Stack>
               {/if}
 
               {#if allNetworks.length > 0}
                 <Stack direction="row" spacing={1} align="center" wrap class="pt-2">
-                  <TypeBadge
-                    size="small"
-                    label="All"
-                    active={networkFilter.size === 0}
-                    onclick={clearNetworkFilter}
-                  />
-                  {#each allNetworks as net (net.id)}
+                  {#if networksCollapsed}
                     <TypeBadge
                       size="small"
-                      label={net.name}
-                      color={net.color}
-                      active={networkFilter.has(net.id)}
-                      onclick={() => toggleNetwork(net.id)}
+                      label="All"
+                      active
+                      onclick={expandNetworks}
                     />
-                  {/each}
+                  {:else}
+                    {#each allNetworks as net (net.id)}
+                      <TypeBadge
+                        size="small"
+                        label={net.name}
+                        color={net.color}
+                        active={networkFilter.has(net.id)}
+                        onclick={() => toggleNetwork(net.id)}
+                      />
+                    {/each}
+                  {/if}
                 </Stack>
               {/if}
             </Stack>
