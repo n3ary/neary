@@ -168,6 +168,20 @@
     networkFilter = new Set(allNetworks.map((n) => n.id));
   }
 
+  // Seed filters with all values on first data load so the default
+  // state is "everything selected". Skipped once either filter has
+  // been manually changed (size > 0 means user interacted).
+  $effect(() => {
+    if (typeFilter.size === 0 && presentTypes.length > 0) {
+      typeFilter = new Set(presentTypes);
+    }
+  });
+  $effect(() => {
+    if (networkFilter.size === 0 && allNetworks.length > 0) {
+      networkFilter = new Set(allNetworks.map((n) => n.id));
+    }
+  });
+
   const tz = $derived(feedsStore.activeTimezone);
 
   // ── Routes tab state ────────────────────────────────────────────
