@@ -10,6 +10,7 @@
   import type { StationMarker } from '$lib/stores/favoritesStore.svelte';
   import {
     STATION_MARKERS, STATION_MARKER_ICONS, STATION_MARKER_FILL,
+    STATION_MARKER_ACCENT,
   } from '$lib/stores/favoritesStore.svelte';
   import { cn } from './cn';
 
@@ -37,13 +38,13 @@
     return STATION_MARKERS.filter((m) => seen.has(m));
   });
 
-  // Color per marker. favorite is the danger (red) accent to match
-  // the heart fill convention; the rest share the primary tint.
+  // Color per marker. All non-Normal markers use --color-favorite
+  // (amber) for consistency. Color flows from STATION_MARKER_ACCENT.
   const COLOR: Record<StationMarker, string> = {
-    favorite: 'text-[color:var(--color-danger)]',
-    home: 'text-[color:var(--color-primary)]',
-    work: 'text-[color:var(--color-primary)]',
-    cityCenter: 'text-[color:var(--color-primary)]',
+    favorite: `text-[color:${STATION_MARKER_ACCENT.favorite}]`,
+    home: `text-[color:${STATION_MARKER_ACCENT.home}]`,
+    work: `text-[color:${STATION_MARKER_ACCENT.work}]`,
+    cityCenter: `text-[color:${STATION_MARKER_ACCENT.cityCenter}]`,
   };
 </script>
 
