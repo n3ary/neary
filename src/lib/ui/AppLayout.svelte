@@ -40,8 +40,7 @@
 </script>
 
 <!-- Shell bg is --color-surface (not --color-bg) so the band immediately below the fixed BottomNavigation matches the nav; with --color-bg the band's --bg shows through and reads as a dark stripe between the last card and the screen bottom on short views. -->
-<!-- h-svh (not min-h-svh) pins the outer to the viewport height so the inner <main> can scroll when its child content (e.g. the / wrapper at min-h-150svh) is taller than the viewport. Without this, the outer grows past the viewport to fit the child and main.scrollHeight === main.clientHeight, making main non-scrollable. -->
-<div class="h-svh flex flex-col bg-[color:var(--color-surface)] text-[color:var(--color-fg)]">
+<div class="min-h-svh flex flex-col bg-[color:var(--color-surface)] text-[color:var(--color-fg)]">
   <!-- Sticky strip so Header and StatusBar scroll together (StatusBar alone would scroll away); wrapper's surface background hides the gap between an active Header and an inactive StatusBar. -->
   <div class="sticky top-0 z-40 bg-[color:var(--color-surface)]">
     <Header {title} {health} {onrefresh} {refreshing} {showSearch} />
@@ -49,9 +48,8 @@
   </div>
   <!-- Surface bg hides the --bg shell showing through flex-1's slack area on short views (Stations with one card, Schedule, empty Favs/Settings) where that slack read as a stripe between the last card and the fixed nav. -->
   <!-- flex flex-col lets route wrappers use `flex-1 min-h-0` to fill the available height and push trailing content (e.g. the version watermark on /) to the bottom of the visible area, closing the gap between the last card and the fixed nav. -->
-  <!-- overflow-y-auto lets the inner content scroll when it exceeds the viewport (used by / which sets a min-h-svh wrapper so the trailing version is pushed off the fold on short views). -->
-  <!-- Bottom padding clears the fixed BottomNavigation plus the iOS home-indicator inset so the nav + inset don't cover the last content row. -->
-  <main class="flex-1 flex flex-col overflow-x-hidden overflow-y-auto bg-[color:var(--color-surface)] pb-[calc(3.5rem+env(safe-area-inset-bottom,0px))]">
+  <!-- Bottom padding clears ONLY the fixed BottomNavigation (3.5rem). The nav itself no longer reserves extra space for the iOS home indicator (see BottomNavigation.svelte) - the indicator is allowed to overlay the bottom of the nav buttons rather than paint a --color-surface strip that collapses to --color-bg on dark mode. -->
+  <main class="flex-1 flex flex-col overflow-x-hidden bg-[color:var(--color-surface)] pb-[3.5rem]">
     {@render children?.()}
   </main>
 </div>

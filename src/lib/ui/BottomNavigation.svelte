@@ -1,4 +1,4 @@
-<!-- Fixed bottom bar of icon + label tabs; position uses left-0 right-0 (not inset-inline) for max iOS Safari compatibility, safe-area inset read via env() directly so the fallback is explicit at paint time. -->
+<!-- Fixed bottom bar of icon + label tabs; position uses left-0 right-0 (not inset-inline) for max iOS Safari compatibility. The nav intentionally has NO bottom safe-area padding: the reserved --color-surface strip at the bottom collapses to --color-bg on dark mode (oklch 20% vs 15%) and reads as a "black bar below the nav" on short views. The iOS home indicator is allowed to overlay the bottom of the nav buttons - the buttons are h-14 (56px) so the indicator covers < 6px of the label baseline, which is acceptable for the visual fix. -->
 <script lang="ts" generics="T extends string | number">
   import type { Snippet } from 'svelte';
   import { cn } from './cn';
@@ -24,7 +24,6 @@
   class={cn(
     'fixed left-0 right-0 bottom-0 z-30 flex bg-[color:var(--color-surface)]',
     'border-t border-[color:var(--color-border)]',
-    'pb-[env(safe-area-inset-bottom,0px)]',
     className,
   )}
 >
