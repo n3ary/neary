@@ -155,9 +155,11 @@
           onclick={() => pick(opt.marker)}
           class={cn(
             'flex items-center gap-2 rounded px-2 py-1 text-left text-sm hover:bg-[color:var(--color-border)]/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--color-primary)]',
-            // Highlight the selected option: amber tint for all selected
-            // markers including Normal (so the user can see their pick).
-            selected && 'bg-[color:var(--color-favorite)]/15',
+            // Selected row: clear amber tint for non-Normal, blue for Normal.
+            selected && opt.marker === null && 'bg-[color:var(--color-primary)]/20',
+            selected && opt.marker !== null && 'bg-[color:var(--color-favorite)]/25',
+            // Unselected rows: slightly dim the label so the selected one pops.
+            !selected && 'opacity-75',
           )}
         >
           <Icon
@@ -167,13 +169,13 @@
             class={cn(
               // Selected: full colour via STATION_MARKER_ACCENT
               // (Normal uses --color-primary, others use --color-favorite).
-              // Unselected: muted.
+              // Unselected: muted at 80%.
               selected
                 ? `text-[color:${opt.marker === null ? 'var(--color-primary)' : STATION_MARKER_ACCENT[opt.marker as keyof typeof STATION_MARKER_ACCENT]}]`
-                : 'text-[color:var(--color-fg-muted)] opacity-60',
+                : 'text-[color:var(--color-fg-muted)] opacity-80',
             )}
           />
-          <span>{opt.label}</span>
+          <span class={cn(selected && 'font-medium')}>{opt.label}</span>
         </button>
       {/each}
     </Popover.Content>
