@@ -89,8 +89,11 @@
     const url = new URL(page.url);
     if (next === 'routes') url.searchParams.delete('tab');
     else url.searchParams.set('tab', next);
-    void goto(url, { replaceState: true, noScroll: true, keepFocus: true });
-    requestAnimationFrame(() => restoreScroll(next));
+    // keepFocus: false — SvelteKit's focus-restore on URL change
+    // would otherwise scroll the Tabs control into view and fight
+    // the manual restoreScroll below (issue #306, tab-swap jumps).
+    void goto(url, { replaceState: true, noScroll: true, keepFocus: false });
+    restoreScrollWhenStable(next);
   }
 
   // ── Scroll preservation per tab ─────────────────────────────────
@@ -100,10 +103,32 @@
     if (typeof window === 'undefined') return;
     scrollByTab.set(tab, window.scrollY);
   }
-  function restoreScroll(tab: FavoritesTab) {
+
+  // rAF loop: scroll to the stashed y once the document has stopped
+  // growing for two consecutive frames. A single rAF can fire before
+  // the new tab's first paint lands its lazy-loaded content (Stations
+  // page 0, Routes catalog stop badges) — restoring there gets
+  // overwritten the moment the new rows paint. Bounded so a runaway
+  // resize doesn't trap the loop.
+  function restoreScrollWhenStable(tab: FavoritesTab) {
     if (typeof window === 'undefined') return;
-    const y = scrollByTab.get(tab) ?? 0;
-    window.scrollTo({ top: y, behavior: 'auto' });
+    const target = scrollByTab.get(tab) ?? 0;
+    let lastHeight = document.documentElement.scrollHeight;
+    let stableFrames = 0;
+    let frame = 0;
+    const maxFrames = 30;
+    const tick = () => {
+      frame++;
+      const h = document.documentElement.scrollHeight;
+      stableFrames = h === lastHeight ? stableFrames + 1 : 0;
+      lastHeight = h;
+      if (stableFrames >= 2 || frame >= maxFrames) {
+        window.scrollTo({ top: target, behavior: 'auto' });
+        return;
+      }
+      requestAnimationFrame(tick);
+    };
+    requestAnimationFrame(tick);
   }
 
   // ── Shared filter state (visible on both tabs) ──────────────────
@@ -342,7 +367,16 @@
           timeZone: tz,
         });
         const ids = await repo.getActiveRouteIdsInWindow(qp.localDate, qp.fromMin, 60);
-        activeRouteIds = new Set(ids);
+        const next = new Set(ids);
+        // Skip the write when the active set hasn't actually changed.
+        // Without this, every nowTicker pulse produces a fresh Set
+        // reference (even with identical contents) and re-triggers
+        // sortRoutesForPicker, which floats routes to the top of
+        // the catalog and shifts the user's view (issue #306,
+        // idle-drift on Routes).
+        const cur = activeRouteIds;
+        if (cur.size === next.size && [...next].every((id) => cur.has(id))) return;
+        activeRouteIds = next;
       } catch {
         // Best-effort.
       }
