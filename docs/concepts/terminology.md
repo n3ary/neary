@@ -28,6 +28,7 @@ Canonical names. Use these in code and docs.
 | live source | provider, feed (when talking about live-data URLs) |
 | `isFirstStop` / `isLastStop` | `isAtTripStart` / `isAtTripEnd` (the row's POV, not the vehicle's) |
 | `tripPhase` (`next` / `last` / `on-route` / `later`) | ad-hoc "which trip is upcoming" predicates — see [vehicle.md](vehicle.md#trip-phase) |
+| standalone | PWA installed, A2HS, homescreen app, saved-to-home-screen — the `display-mode: standalone` runtime; iOS standalone has no overscroll and `100svh` = the full app area; detect with `window.matchMedia('(display-mode: standalone)').matches` |
 
 ## Anti-vocabulary (do not introduce)
 

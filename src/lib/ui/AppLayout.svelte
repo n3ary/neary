@@ -47,8 +47,9 @@
     <StatusBar />
   </div>
   <!-- Surface bg hides the --bg shell showing through flex-1's slack area on short views (Stations with one card, Schedule, empty Favs/Settings) where that slack read as a stripe between the last card and the fixed nav. -->
+  <!-- flex flex-col lets route wrappers use `flex-1 min-h-0` to fill the available height and push trailing content (e.g. the version watermark on /) to the bottom of the visible area, closing the gap between the last card and the fixed nav. -->
   <!-- Bottom padding clears the fixed BottomNavigation plus the iOS home-indicator inset so the nav + inset don't cover the last content row. -->
-  <main class="flex-1 overflow-x-hidden bg-[color:var(--color-surface)] pb-[calc(3.5rem+env(safe-area-inset-bottom,0px))]">
+  <main class="flex-1 flex flex-col overflow-x-hidden bg-[color:var(--color-surface)] pb-[calc(3.5rem+env(safe-area-inset-bottom,0px))]">
     {@render children?.()}
   </main>
 </div>
