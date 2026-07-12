@@ -69,7 +69,7 @@
   });
 </script>
 
-<div class="mx-auto max-w-3xl px-4 py-6">
+<div class="mx-auto max-w-3xl w-full px-4 py-6">
   {#if userPrefs.feedId == null}
     <SelectFeedCard />
   {:else if !stopIdValid}
