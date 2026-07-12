@@ -29,9 +29,7 @@
   strokeWidth={2.25}
   fill={STATION_MARKER_FILL[marker]}
   class={cn(
-    marker === 'favorite'
-      ? 'text-[color:var(--color-favorite)]'
-      : 'text-[color:var(--color-primary)]',
+    'text-[color:var(--color-favorite)]',
     'shrink-0',
     className,
   )}
