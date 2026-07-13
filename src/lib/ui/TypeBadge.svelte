@@ -1,13 +1,22 @@
 <!-- Small filter button. Originally scoped to vehicle-type mode filters
   (Filter by Mode in /favorites), but the same visual contract - filled
-  accent + active ring + dimmed inactive - reads well for any filter row,
-  so the network and marker filters also use it. Caller passes the
-  accent color and a label; TypeBadge handles shape, active state, and
-  contrast (auto for hex colors, caller-provided for CSS-var colors).
+  accent + active ring - reads well for any filter row, so the network,
+  tag, and marker filters also use it. Caller passes the accent color
+  and a label; TypeBadge handles shape, active state, and contrast
+  (auto for hex colors, caller-provided for CSS-var colors).
 
-  Used by /favorites for the three filter rows. Active = full opacity
-  + white ring; inactive = same fill but dimmed so the unselected
-  state reads clearly.
+  Used by /favorites for the four filter rows. Visual contract:
+  - active = full color + white ring (this chip is the current filter)
+  - inactive = full color, no ring (this chip is NOT the current filter)
+
+  "Inactive" still renders at full opacity on purpose: the user reads
+  the row as "here are the available filters, none is currently
+  applied", and only the ring distinguishes the active one. The
+  earlier dimmed-inactive variant was a holdover from a multi-select
+  model (Set-of-chips) where unselected chips meant "exclude from
+  catalog" - the new single-select-with-deselect model only has one
+  chip active at most, so dimming everyone else reads as "off" and
+  hides the available filters.
 
   `onmousedown` calls preventDefault to suppress the focus shift that
   a mouse/touch click would otherwise apply. A real <button> focuses
@@ -78,7 +87,7 @@
   title={renderedLabel}
   onclick={onclick}
   onmousedown={(e) => e.preventDefault()}
-  style={`background:${bg};color:${computedFg};${!active ? 'opacity:0.6;' : ''}`}
+  style={`background:${bg};color:${computedFg};`}
   class={cn(
     'inline-flex items-center gap-1 justify-center font-semibold rounded-md select-none whitespace-nowrap cursor-pointer',
     'transition-all',

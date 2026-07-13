@@ -7,7 +7,7 @@
  */
 
 import type { Feed } from '$lib/data/feeds';
-import type { Network, Route, Station, Vehicle } from '$lib/domain/types';
+import type { Network, Route, RouteTag, Station, Vehicle } from '$lib/domain/types';
 import type { NearyFeedConfig } from '$lib/workers/gtfs/queries/feedConfig';
 import type { ReconcileStats } from '$lib/domain/reconcile';
 
@@ -80,9 +80,13 @@ export interface GtfsRepo {
   /** All routes, sorted by short_name (numeric where possible). */
   getRoutes(): Promise<Route[]>;
 
-  /** All networks present in the feed (`networks.txt`).
-   *  Empty array for feeds that pre-date networks.txt support. */
+  /** All networks in the feed (`networks.txt`). Empty array for feeds
+   *  that don't ship the table. */
   getNetworks(): Promise<Network[]>;
+
+  /** All tags in the feed (`_route_tags.txt` producer extension).
+   *  Empty array for feeds that don't ship the producer extension. */
+  getRouteTags(): Promise<RouteTag[]>;
 
   /** Per-feed config written by the gtfs pipeline into `_neary_config`.
    *  Returns an empty object for blobs that pre-date this table. */
@@ -189,8 +193,17 @@ export interface GtfsRepo {
    * Feed switches invalidate via the db handle.
    */
   getRoutesThroughStations(filter: {
-    modes?: ReadonlyArray<import('$lib/domain/types').VehicleType>;
-    networks?: ReadonlyArray<string>;
+    /** Mode filter: only routes whose GTFS route_type matches this
+     *  VehicleType. undefined = no mode filter. */
+    modes?: import('$lib/domain/types').VehicleType;
+    /** Network filter: only routes carrying this single network id
+     *  (1:1 per route — school / normal for the cluj feed). undefined
+     *  = no network filter. */
+    networks?: string;
+    /** Tag filter: only routes carrying this single tag id (1:many
+     *  per route — night / metroline / festival / airport / special
+     *  for the cluj feed). undefined = no tag filter. */
+    tags?: string;
   }): Promise<Record<string, Route[]>>;
 
   /**

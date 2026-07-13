@@ -41,11 +41,11 @@
   import {
     Card, CardContent, Chip, Collapsible, FavoriteRouteRow, FavoriteStationRow,
     FavoritesCard, SelectFeedCard, Spinner, Stack, Tabs, TripStopList, Typography,
-    TypeBadge, networkIcon, networkTextColor,
+    TypeBadge, tagIcon, hasTagIcon,
   } from '$lib/ui';
   import { getGtfsRepo } from '$lib/data/gtfs/repo';
   import type { ScheduleTripStop, StopWithDistance } from '$lib/data/gtfs/types';
-  import type { Network, Route, VehicleType } from '$lib/domain/types';
+  import type { Network, Route, RouteTag, VehicleType } from '$lib/domain/types';
   import { vehicleTypeLabel } from '$lib/domain/types';
   import type { StationMarker } from '$lib/stores/favoritesStore.svelte';
   import { STATIONS_PAGE_SIZE } from '$lib/ui/favoritesListConstants';
@@ -131,56 +131,35 @@
 
   let allRoutes = $state<Route[] | null>(null);
   let allNetworks = $state<Network[]>([]);
+  let allTags = $state<RouteTag[]>([]);
   let error = $state<string | null>(null);
-  // All chips start selected (everything visible). Deselecting removes those
-  // items. Deselecting all = empty catalog. No "All" button.
-  let activeMarkerFilter = $state<ReadonlySet<StationMarker>>(new Set(STATION_MARKERS));
-  let typeFilter = $state<ReadonlySet<VehicleType>>(new Set());
-  let networkFilter = $state<ReadonlySet<string>>(new Set());
+  // Single-select-with-deselect filter rows. Each filter type
+  // (marker, mode, network, tag) holds at most one active chip;
+  // `null` means no chip is selected and the filter is inactive
+  // (catalog shows everything). Tapping the active chip again
+  // deselects it. All chips render at full color regardless of
+  // active state — the white ring is the only visual cue, so the
+  // available filter set stays readable when nothing is selected.
+  let activeMarkerFilter = $state<StationMarker | null>(null);
+  let typeFilter = $state<VehicleType | null>(null);
+  let networkFilter = $state<string | null>(null);
+  let tagFilter = $state<string | null>(null);
 
   function toggleMarkerFilter(m: StationMarker) {
-    const next = new Set(activeMarkerFilter);
-    if (next.has(m)) next.delete(m);
-    else next.add(m);
-    activeMarkerFilter = next;
-  }
-  function clearMarkerFilter() {
-    activeMarkerFilter = new Set(STATION_MARKERS);
+    activeMarkerFilter = activeMarkerFilter === m ? null : m;
   }
 
   function toggleType(t: VehicleType) {
-    const next = new Set(typeFilter);
-    if (next.has(t)) next.delete(t);
-    else next.add(t);
-    typeFilter = next;
-  }
-  function clearTypeFilter() {
-    typeFilter = new Set(presentTypes);
+    typeFilter = typeFilter === t ? null : t;
   }
 
   function toggleNetwork(id: string) {
-    const next = new Set(networkFilter);
-    if (next.has(id)) next.delete(id);
-    else next.add(id);
-    networkFilter = next;
-  }
-  function clearNetworkFilter() {
-    networkFilter = new Set(allNetworks.map((n) => n.id));
+    networkFilter = networkFilter === id ? null : id;
   }
 
-  // Seed filters with all values on first data load so the default
-  // state is "everything selected". Skipped once either filter has
-  // been manually changed (size > 0 means user interacted).
-  $effect(() => {
-    if (typeFilter.size === 0 && presentTypes.length > 0) {
-      typeFilter = new Set(presentTypes);
-    }
-  });
-  $effect(() => {
-    if (networkFilter.size === 0 && allNetworks.length > 0) {
-      networkFilter = new Set(allNetworks.map((n) => n.id));
-    }
-  });
+  function toggleTag(id: string) {
+    tagFilter = tagFilter === id ? null : id;
+  }
 
   const tz = $derived(feedsStore.activeTimezone);
 
@@ -263,17 +242,18 @@
   // routes/stations with that marker. Deselecting all = empty catalog.
   // Client-side only - the marker map is small.
 
-  // Route filter cascade marker pass: when all markers are selected the
-  // filter is dormant (null = no constraint). When fewer are selected,
-  // fetch the routes serving those marker-bearing stops and intersect.
+  // Route filter cascade marker pass: when no marker is selected the
+  // filter is dormant (null = no constraint). When exactly one
+  // marker is selected, fetch the routes serving those marker-
+  // bearing stops and intersect.
   $effect(() => {
-    // All markers selected = no filter applied
-    if (activeMarkerFilter.size === STATION_MARKERS.length) {
+    // No marker selected = no filter applied.
+    if (activeMarkerFilter === null) {
       routeIdsForMarker = null;
       return;
     }
     const stopIds = Array.from(favoritesStore.markers.entries())
-      .filter(([, m]) => activeMarkerFilter.has(m))
+      .filter(([, m]) => m === activeMarkerFilter)
       .map(([id]) => id);
     if (stopIds.length === 0) {
       routeIdsForMarker = new Set();
@@ -291,7 +271,7 @@
         }
         routeIdsForMarker = ids;
       } catch {
-        // Network failure: leave the previous (or null) state in place.
+        // Marker fetch failure: leave the previous (or null) state in place.
       }
     })();
     return () => { cancelled = true; };
@@ -322,12 +302,14 @@
     (async () => {
       try {
         const repo = getGtfsRepo();
-        const [routes, networks] = await Promise.all([
+        const [routes, networks, tags] = await Promise.all([
           repo.getRoutes(),
           repo.getNetworks(),
+          repo.getRouteTags(),
         ]);
         allRoutes = routes;
         allNetworks = networks;
+        allTags = tags;
       } catch (e) {
         error = e instanceof Error ? e.message : String(e);
       }
@@ -358,16 +340,19 @@
   });
 
   // Filter-cascade scope for the Stations tab. Recomputed when
-  // mode or network filter changes.
+  // mode, network, or tag filter changes. Each filter is single-
+  // value or null; `undefined` = no filter.
   $effect(() => {
     const fid = feedsStore.boundFeedId;
     if (!fid) return;
-    const modes = typeFilter.size < presentTypes.length ? Array.from(typeFilter) : undefined;
-    const networks = networkFilter.size < allNetworks.length ? Array.from(networkFilter) : undefined;
     (async () => {
       try {
         const repo = getGtfsRepo();
-        stationsScope = await repo.getRoutesThroughStations({ modes, networks });
+        stationsScope = await repo.getRoutesThroughStations({
+          modes: typeFilter ?? undefined,
+          networks: networkFilter ?? undefined,
+          tags: tagFilter ?? undefined,
+        });
         stationsScopeError = null;
       } catch (e) {
         stationsScopeError = e instanceof Error ? e.message : String(e);
@@ -499,12 +484,13 @@
   const filteredRoutes = $derived.by<Route[]>(() => {
     if (!allRoutes) return [];
     return allRoutes.filter((r) => {
-      if (typeFilter.size < presentTypes.length && !typeFilter.has(r.type ?? 'unknown')) return false;
-      if (networkFilter.size < allNetworks.length && !(r.networks?.some((n) => networkFilter.has(n)) ?? false)) return false;
+      if (typeFilter !== null && r.type !== typeFilter) return false;
+      if (networkFilter !== null && !(r.networks?.includes(networkFilter) ?? false)) return false;
+      if (tagFilter !== null && !(r.tags?.includes(tagFilter) ?? false)) return false;
       // Marker filter: route qualifies iff it serves at least one
-      // station carrying a marker in the active filter set. Routes
-      // with no overlap are excluded. Skipped entirely when no
-      // filter is active (routeIdsForMarker stays null).
+      // station carrying the active marker. Routes with no overlap
+      // are excluded. Skipped entirely when no filter is active
+      // (routeIdsForMarker stays null).
       if (routeIdsForMarker !== null && !routeIdsForMarker.has(r.id)) return false;
       return true;
     });
@@ -516,26 +502,22 @@
     const set = new Set(favoritesStore.routeIds);
     return sortRoutesForPicker(allRoutes.filter((r) => set.has(r.id)), activeRouteIds);
   });
-  // All routes passing filters (including favorited), split by schedule status.
-  // Favorited routes appear here AND in the pinned FavoritesCard above.
-  const otherRoutes = $derived.by<Route[]>(() => {
-    return sortRoutesForPicker(
-      filteredRoutes.filter((r) => r.hasSchedule !== false),
-      activeRouteIds,
-    );
-  });
-  const noScheduleRoutes = $derived.by<Route[]>(() => {
-    return sortRoutesForPicker(
-      filteredRoutes.filter((r) => r.hasSchedule === false),
-      activeRouteIds,
-    );
+  // All routes passing the filter cascade (including routes whose
+  // schedule is empty - the Tranzy fallback for routes with no CSV
+  // coverage ships trips with empty arrival_time, which surfaces
+  // here as `hasSchedule === false`). The filter is single-value
+  // per row (mode/network/tag/marker), so a route qualifies iff it
+  // matches the active filter for that row OR no filter is set.
+  // No visual sub-grouping by hasSchedule: a route the user
+  // filtered for should be visible, even if it has no schedule to
+  // show. Favorited routes also appear here AND in the pinned
+  // FavoritesCard above.
+  const catalogRoutes = $derived.by<Route[]>(() => {
+    return sortRoutesForPicker(filteredRoutes, activeRouteIds);
   });
 
-  // Catalog rows combined - one fetch covers both scheduled + no-schedule.
-  const catalogRouteIds = $derived([
-    ...otherRoutes.map((r) => r.id),
-    ...noScheduleRoutes.map((r) => r.id),
-  ]);
+  // Catalog row ids - one fetch covers the full filtered set.
+  const catalogRouteIds = $derived(catalogRoutes.map((r) => r.id));
 
   // Per-route stop lists for the catalog rows' marker badges.
   // Batched in one worker call. Tracked on catalogRouteIds so the
@@ -569,23 +551,23 @@
   const favStationsSorted = $derived<StopWithDistance[]>(favoriteStations);
 
   // "All stations": stations that AREN'T in the favorites card above.
-  // All chips start selected (everything visible). Deselecting a marker
-  // hides stations with that marker. Deselecting all = empty catalog.
+  // When a marker is selected, only stations carrying that marker
+  // show; otherwise the full catalog renders.
   const otherStationsSorted = $derived.by<StopWithDistance[]>(() => {
     let list = otherStationsPage;
-    if (activeMarkerFilter.size < STATION_MARKERS.length) {
-      list = list.filter((s) => {
-        const marker = favoritesStore.markerFor(s.id);
-        // Show station if it has no marker, or its marker is in the active set.
-        // Hide stations whose marker is deselected.
-        return marker == null || activeMarkerFilter.has(marker);
-      });
+    if (activeMarkerFilter !== null) {
+      list = list.filter((s) => favoritesStore.markerFor(s.id) === activeMarkerFilter);
     }
     return sortStationsForPicker(list, stationAnchor);
   });
 
   const stationsScopeCount = $derived(Object.keys(stationsScope).length);
-  const filtersActive = $derived(typeFilter.size < presentTypes.length || networkFilter.size < allNetworks.length || activeMarkerFilter.size < STATION_MARKERS.length);
+  const filtersActive = $derived(
+    typeFilter !== null
+    || networkFilter !== null
+    || tagFilter !== null
+    || activeMarkerFilter !== null
+  );
   const otherStationsHasMore = $derived(
     otherStationsTotal === 0 || otherStationsPage.length < otherStationsTotal,
   );
@@ -719,9 +701,9 @@
         </FavoritesCard>
       {/if}
 
-      <!-- Filter card: marker + mode + network filters, shared across
-           both tabs. All cascade to the catalog below. -->
-      {#if favoritesStore.markers.size > 0 || presentTypes.length > 1 || allNetworks.length > 0}
+      <!-- Filter card: marker + mode + network + tag filters, shared
+           across both tabs. All cascade to the catalog below. -->
+      {#if favoritesStore.markers.size > 0 || presentTypes.length > 1 || allNetworks.length > 0 || allTags.length > 0}
         <Card>
           <CardContent>
             <!--
@@ -730,8 +712,10 @@
               network name) are self-evident. Hairlines separate the
               rows. See #257.
 
-              Order: marker filter first, then mode (Bus/Tram/...), then
-              network. Applied to both Routes and Stations tabs.
+              Order: marker filter first, then mode (Bus/Tram/...),
+              then network (1:1 school/normal), then tag (1:many
+              night/metroline/...). Applied to both Routes and
+              Stations tabs.
             -->
             <Stack spacing={1.5}>
               {#if favoritesStore.markers.size > 0}
@@ -743,7 +727,7 @@
                       label={MARKER_LABELS[m]}
                       color={MARKER_COLORS[m].bg}
                       fg={MARKER_COLORS[m].fg}
-                      active={activeMarkerFilter.has(m)}
+                      active={activeMarkerFilter === m}
                       onclick={() => toggleMarkerFilter(m)}
                     >
                       {#snippet icon()}
@@ -763,7 +747,7 @@
                   class="pt-2"
                 >
                   {#each presentTypes as t (t)}
-                    <TypeBadge type={t} color={colorByType.get(t)} active={typeFilter.has(t)} onclick={() => toggleType(t)} />
+                    <TypeBadge type={t} color={colorByType.get(t)} active={typeFilter === t} onclick={() => toggleType(t)} />
                   {/each}
                 </Stack>
               {/if}
@@ -775,9 +759,29 @@
                       size="small"
                       label={net.name}
                       color={net.color}
-                      active={networkFilter.has(net.id)}
+                      active={networkFilter === net.id}
                       onclick={() => toggleNetwork(net.id)}
                     />
+                  {/each}
+                </Stack>
+              {/if}
+
+              {#if allTags.length > 0}
+                <Stack direction="row" spacing={1} align="center" wrap class="pt-2">
+                  {#each allTags as tag (tag.id)}
+                    <TypeBadge
+                      size="small"
+                      label={tag.name}
+                      active={tagFilter === tag.id}
+                      onclick={() => toggleTag(tag.id)}
+                    >
+                      {#snippet icon()}
+                        {#if hasTagIcon(tag.icon)}
+                          {@const Icon = tagIcon(tag.icon)}
+                          <Icon size={12} strokeWidth={2.25} class="shrink-0" />
+                        {/if}
+                      {/snippet}
+                    </TypeBadge>
                   {/each}
                 </Stack>
               {/if}
@@ -805,7 +809,7 @@
         {#if activeTab === 'routes'}
           <!-- ── Routes tab: all routes ─────── -->
 
-          {#if otherRoutes.length > 0 || noScheduleRoutes.length > 0}
+          {#if catalogRoutes.length > 0}
             <Card class="rounded-none border-0 border-t border-[color:var(--color-border)] shadow-none">
               <CardContent>
                 <Stack spacing={1}>
@@ -818,10 +822,7 @@
                     </Typography>
                   </Stack>
                   <Stack spacing={1}>
-                    {#each otherRoutes as route (route.id)}
-                      {@render expandableRouteRow({ route, markerStopIds: catalogRouteStopIds[route.id] ?? [] })}
-                    {/each}
-                    {#each noScheduleRoutes as route (route.id)}
+                    {#each catalogRoutes as route (route.id)}
                       {@render expandableRouteRow({ route, markerStopIds: catalogRouteStopIds[route.id] ?? [] })}
                     {/each}
                   </Stack>

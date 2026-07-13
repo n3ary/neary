@@ -35,24 +35,38 @@ export function getRouteMapView(
     route_color: string | null;
     route_text_color: string | null;
     route_type: number | null;
+    tag_ids: string | null;
     network_ids: string | null;
   };
-  const hasNetworks = selectAll<{ name: string }>(
+  // Probe + LEFT JOIN both producer extensions (tag + network) so
+  // the route badge in the map-view header can render the same
+  // chips the schedule + favorites surfaces do. Older cached blobs
+  // without the tables fall back to NULL for both columns and the
+  // Route shape comes out without tags/networks.
+  const tables = selectAll<{ name: string }>(
     db,
-    `SELECT name FROM sqlite_master WHERE type='table' AND name='route_networks';`,
-  ).length > 0;
+    `SELECT name FROM sqlite_master WHERE type IN ('table')
+     AND name IN ('_route_tags', 'route_networks');`,
+  );
+  const hasRouteTags = tables.some((t) => t.name === '_route_tags');
+  const hasRouteNetworks = tables.some((t) => t.name === 'route_networks');
+  const tagJoin = hasRouteTags ? 'LEFT JOIN _route_tags rt ON rt.route_id = r.route_id' : '';
+  const netJoin = hasRouteNetworks ? 'LEFT JOIN route_networks rn ON rn.route_id = r.route_id' : '';
+  const tagSelect = hasRouteTags
+    ? "GROUP_CONCAT(DISTINCT rt.tag_id, ',' ORDER BY rt.priority ASC) AS tag_ids"
+    : 'NULL AS tag_ids';
+  const netSelect = hasRouteNetworks
+    ? "GROUP_CONCAT(DISTINCT rn.network_id, ',') AS network_ids"
+    : 'NULL AS network_ids';
   const routeRows = selectAll<RouteRow>(
     db,
-    hasNetworks
-      ? `SELECT r.route_id, r.route_short_name, r.route_color, r.route_text_color, r.route_type,
-                GROUP_CONCAT(rn.network_id, ',') AS network_ids
-         FROM routes r
-         LEFT JOIN route_networks rn ON rn.route_id = r.route_id
-         WHERE r.route_id = ?
-         GROUP BY r.route_id;`
-      : `SELECT route_id, route_short_name, route_color, route_text_color, route_type,
-                NULL AS network_ids
-         FROM routes WHERE route_id = ?;`,
+    `SELECT r.route_id, r.route_short_name, r.route_color, r.route_text_color, r.route_type,
+            ${tagSelect}, ${netSelect}
+     FROM routes r
+     ${tagJoin}
+     ${netJoin}
+     WHERE r.route_id = ?
+     GROUP BY r.route_id;`,
     [routeId],
   );
   if (routeRows.length === 0) return null;
@@ -65,7 +79,12 @@ export function getRouteMapView(
     textColor: r.route_text_color ? `#${r.route_text_color}` : undefined,
     type: vehicleTypeFromGtfs(r.route_type),
     hasSchedule: withSchedule.has(String(r.route_id)),
-    networks: r.network_ids ? r.network_ids.split(',').filter(Boolean) : undefined,
+    tags: r.tag_ids
+      ? r.tag_ids.split(',').filter(Boolean)
+      : undefined,
+    networks: r.network_ids
+      ? r.network_ids.split(',').filter(Boolean)
+      : undefined,
   };
 
   // 1) Active trips on (route, direction). Origin departure within

@@ -1,58 +1,11 @@
 // Pure list-layout helpers for the /favorites page. The page itself
 // owns fetch + scroll + IntersectionObserver; this module owns
 // "given the data the worker returned, what order do rows render in,
-// and which ones pass the filter cascade".
+// and which tab the user is on".
 
 import { compareRouteShortName } from './types';
-import type { Route, VehicleType } from './types';
-import type { StopWithDistance } from '$lib/data/gtfs/types';
+import type { Route } from './types';
 import { haversineMeters } from '@n3ary/gtfs-spec/shape';
-import { routeMatchesFilters } from './favoritesRanking';
-
-/** Mode filter applied to the Stations tab. `null` = no filter. */
-export type StationModeFilter = VehicleType | null;
-/** Network filter applied to the Stations tab. `null` = no filter. */
-export type StationNetworkFilter = string | null;
-
-/** Decide which stations pass the filter cascade.
- *
- *  `routesThroughStation` is the worker pre-computed map: stop_id ->
- *  distinct routes that serve the stop in the feed schedule. A
- *  station passes iff at least one of its routes passes the active
- *  mode + network filters. Favorited stations are filtered
- *  separately by the caller — they're exempt from the cascade but
- *  the UI annotates them with a caption explaining why they appear
- *  despite the filter.
- *
- *  No filters active -> every station passes (preserves the
- *  pre-#237 "see everything" behavior). */
-export function stationsPassingFilter(args: {
-  /** All stations the page considered (favorited + the visible
-   *  page's worth of "other" stations). */
-  candidates: ReadonlyArray<StopWithDistance>;
-  routesThroughStation: Readonly<Record<string, readonly Route[]>>;
-  modeFilter: StationModeFilter;
-  networkFilter: StationNetworkFilter;
-}): Set<string> {
-  if (args.modeFilter === null && args.networkFilter === null) {
-    return new Set(args.candidates.map((s) => s.id));
-  }
-  const modes = args.modeFilter === null
-    ? undefined
-    : new Set<VehicleType>([args.modeFilter]);
-  const networks = args.networkFilter === null
-    ? undefined
-    : new Set<string>([args.networkFilter]);
-  const out = new Set<string>();
-  for (const s of args.candidates) {
-    const routes = args.routesThroughStation[s.id];
-    if (!routes) continue;
-    if (routes.some((r) => routeMatchesFilters(r, modes, networks))) {
-      out.add(s.id);
-    }
-  }
-  return out;
-}
 
 /** Sort routes for the Routes tab. Active routes float to the top,
  *  inactive ones alphabetical by shortName. */
@@ -68,13 +21,23 @@ export function sortRoutesForPicker(
   });
 }
 
+/** Minimal shape required by the sort helpers — callers pass in
+ *  `StopWithDistance[]` (or anything with the same field set). */
+type SortableStation = {
+  id: string;
+  name: string;
+  lat?: number;
+  lon?: number;
+  distance?: number;
+};
+
 /** Sort stations for the Stations tab catalog. Distance from anchor
  *  when anchor is set; localeCompare on name otherwise. Stops missing
  *  coordinates sort to the end (Infinity) regardless of mode. */
-export function sortStationsForPicker(
-  stations: readonly StopWithDistance[],
+export function sortStationsForPicker<T extends SortableStation>(
+  stations: readonly T[],
   anchor?: { lat: number; lon: number } | null,
-): StopWithDistance[] {
+): T[] {
   if (!anchor) {
     return [...stations].sort((a, b) => a.name.localeCompare(b.name));
   }
@@ -95,9 +58,9 @@ export function sortStationsForPicker(
  *  stations interleave alphabetically. Used by both the home
  *  FavoritesCard and /favorites so the same stations render in the
  *  same order wherever they appear. */
-export function sortStationsAlphabetically(
-  stations: readonly StopWithDistance[],
-): StopWithDistance[] {
+export function sortStationsAlphabetically<T extends { name: string }>(
+  stations: readonly T[],
+): T[] {
   return [...stations].sort((a, b) => a.name.localeCompare(b.name));
 }
 
