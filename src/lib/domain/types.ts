@@ -48,6 +48,8 @@ export interface RouteTag {
   priority: number;
   /** Lucide-svelte slug the chip renders (e.g. `moon`, `map-pin`, `plane`, `music`, `zap`). Owned by the adapter — the app just looks it up in `tagIcons`. Undefined when the adapter didn't declare an icon for this tag; the consumer falls back to a default. */
   icon?: string;
+  /** Optional 6-char hex (no leading `#`) from the adapter's `_route_tags.color` column — the chip background. Owned by the adapter (the `TAGS` array in `routeCategory.ts`); hand-picked per the operator's brand. Undefined on older cached blobs that pre-date the color column; the consumer falls back to the default chip color in that case. Foreground contrast is derived generically via `pickContrastingText` (all 5 cluj hand-picked colors are dark enough for `#fff`). */
+  color?: string;
 }
 
 /** A station / stop as the UI sees it. */

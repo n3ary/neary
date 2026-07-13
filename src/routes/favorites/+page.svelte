@@ -774,6 +774,7 @@
                       label={tag.name}
                       active={tagFilter === tag.id}
                       onclick={() => toggleTag(tag.id)}
+                      color={tag.color ? `#${tag.color}` : undefined}
                     >
                       {#snippet icon()}
                         {#if hasTagIcon(tag.icon)}

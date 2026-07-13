@@ -1,5 +1,4 @@
 import { GraduationCap, MapPin, Moon, Music, Plane, Star, Zap } from 'lucide-svelte';
-import { pickContrastingText } from '$lib/domain/types';
 
 type IconComponent = typeof Moon;
 
@@ -44,11 +43,3 @@ export function hasTagIcon(slug: string | undefined): slug is keyof typeof ICONS
   return !!slug && slug in ICONS;
 }
 
-/** Contrasting foreground color (black or white) for a network
- *  chip's hex background. Lives here (next to the tag-icons
- *  registry) because both pieces are about the same cosmetic
- *  surface — networks never get icons but they DO get the
- *  contrast treatment on their colored chip. */
-export function networkTextColor(hex: string): string {
-  return pickContrastingText(hex);
-}
