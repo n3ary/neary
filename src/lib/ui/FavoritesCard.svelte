@@ -6,6 +6,7 @@
 <script lang="ts">
   import type { Snippet } from 'svelte';
   import { goto } from '$app/navigation';
+  import { Minus, Plus } from 'lucide-svelte';
   import type { Route } from '$lib/domain/types';
   import type { StopWithDistance } from '$lib/data/gtfs/types';
   import { favoritesStore } from '$lib/stores/favoritesStore.svelte';
@@ -42,6 +43,11 @@
     /** Mutate a station's marker from within the card. When set,
      *  the station avatar becomes an interactive dropdown trigger. */
     onChangeStationMarker?: (stopId: string, next: StationMarker | null) => void;
+    /** Start the card collapsed. The +/- button on the right of the
+     *  header toggles; clicking the header itself also toggles.
+     *  Useful on /favorites where the favorited rows are large and
+     *  the user wants to see more of the filter + catalog below. */
+    initialCollapsed?: boolean;
   };
 
   let {
@@ -55,7 +61,17 @@
     stationRow,
     headerStyle = 'compact',
     onChangeStationMarker,
+    initialCollapsed = false,
   }: Props = $props();
+
+  // Local collapsed state. We deliberately read `initialCollapsed` only
+  // once: the prop is the *initial* value, then the user owns the
+  // state via the +/- toggle. Re-reading the prop on every parent
+  // re-render would clobber the user's choice (e.g. if the parent
+  // re-renders after a data fetch). Svelte warns about this
+  // pattern; the warning is intentional.
+  let collapsed = $state(initialCollapsed);
+  function toggleCollapsed() { collapsed = !collapsed; }
 
   const visibleRoutes = $derived(routeLimit != null ? routes.slice(0, routeLimit) : routes);
   const visibleStations = $derived(stationLimit != null ? stations.slice(0, stationLimit) : stations);
@@ -143,80 +159,105 @@
 <Card tone="elevated">
   <CardContent>
     <Stack spacing={1}>
-      {#if headerStyle === 'compact'}
-        <Typography variant="h6">Your favorites</Typography>
-      {:else}
-        <Typography variant="h5">Your favorites</Typography>
-      {/if}
-
-      {#if routesError}
-        <Typography variant="caption" class="block pt-1">
-          Couldn't load your favorites.
-        </Typography>
-      {:else if routesLoading}
-        <Stack direction="row" spacing={1} align="center" class="pt-3">
-          <Spinner size={14} />
-          <Typography variant="caption">Loading...</Typography>
-        </Stack>
-      {/if}
-
-      {#if visibleRoutes.length > 0}
-        {#if showRoutesHeader}
-          <Typography variant="caption" class="block pt-2 px-1 text-[color:var(--color-fg-muted)]">
-            Routes
-          </Typography>
+      <!-- Header row: title (left) + collapse toggle (right). The
+           whole row is a button so tapping anywhere on it (title or
+           padding) toggles. The dedicated +/- button is also a button
+           nested inside, with stopPropagation so the click is a toggle
+           but doesn't fire twice. -->
+      <button
+        type="button"
+        class="flex w-full items-center justify-between gap-2 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--color-primary)] rounded"
+        aria-expanded={!collapsed}
+        aria-controls="favorites-card-body"
+        onclick={toggleCollapsed}
+      >
+        {#if headerStyle === 'compact'}
+          <Typography variant="h6">Your favorites</Typography>
+        {:else}
+          <Typography variant="h5">Your favorites</Typography>
         {/if}
-        <Stack spacing={1}>
-          {#each visibleRoutes as route (route.id)}
-            {#if routeRow}
-              {@render routeRow({ route, markerStopIds: routeStopIds[route.id] ?? [] })}
-            {:else}
-              <FavoriteRouteRow
-                {route}
-                isFav={favoritesStore.hasRoute(route.id)}
-                onToggleFavorite={() => favoritesStore.toggleRoute(route.id)}
-                markerStopIds={routeStopIds[route.id]}
-                variant="card"
-                class="mt-1"
-              />
-            {/if}
-          {/each}
-        </Stack>
-      {/if}
+        <span
+          class="inline-flex h-7 w-7 items-center justify-center rounded text-[color:var(--color-fg-muted)] hover:bg-[color:var(--color-border)]/40"
+          aria-hidden="true"
+        >
+          {#if collapsed}
+            <Plus size={16} strokeWidth={2.25} />
+          {:else}
+            <Minus size={16} strokeWidth={2.25} />
+          {/if}
+        </span>
+      </button>
 
-      {#if visibleStations.length > 0}
-        {#if showStationsHeader}
-          <Typography variant="caption" class="block pt-2 px-1 text-[color:var(--color-fg-muted)]">
-            Stations
+      <div id="favorites-card-body" hidden={collapsed}>
+        {#if routesError}
+          <Typography variant="caption" class="block pt-1">
+            Couldn't load your favorites.
           </Typography>
+        {:else if routesLoading}
+          <Stack direction="row" spacing={1} align="center" class="pt-3">
+            <Spinner size={14} />
+            <Typography variant="caption">Loading...</Typography>
+          </Stack>
         {/if}
-        <Stack spacing={1}>
-          {#each visibleStations as stop (stop.id)}
-            {#if stationRow}
-              {@render stationRow({ stop })}
-            {:else}
-              <FavoriteStationRow
-                stop={stop}
-                onbodyclick={() => goto(`/station/${stop.id}`)}
-                routes={stopRoutes[stop.id]}
-                hasGps={false}
-                variant="card"
-                marker={favoritesStore.markerFor(stop.id) ?? undefined}
-                onChangeMarker={onChangeStationMarker}
-                class="mt-1"
-              />
-            {/if}
-          {/each}
-        </Stack>
-      {/if}
 
-      {#if truncated && viewAllHref}
-        <Stack direction="row" spacing={1} align="center" class="pt-2 border-t border-[color:var(--color-border)] mt-1">
-          <Button variant="text" size="small" onclick={() => goto(viewAllHref)}>
-            View all {total} in Favorites
-          </Button>
-        </Stack>
-      {/if}
+        {#if visibleRoutes.length > 0}
+          {#if showRoutesHeader}
+            <Typography variant="caption" class="block pt-2 px-1 text-[color:var(--color-fg-muted)]">
+              Routes
+            </Typography>
+          {/if}
+          <Stack spacing={1}>
+            {#each visibleRoutes as route (route.id)}
+              {#if routeRow}
+                {@render routeRow({ route, markerStopIds: routeStopIds[route.id] ?? [] })}
+              {:else}
+                <FavoriteRouteRow
+                  {route}
+                  isFav={favoritesStore.hasRoute(route.id)}
+                  onToggleFavorite={() => favoritesStore.toggleRoute(route.id)}
+                  markerStopIds={routeStopIds[route.id]}
+                  variant="card"
+                  class="mt-1"
+                />
+              {/if}
+            {/each}
+          </Stack>
+        {/if}
+
+        {#if visibleStations.length > 0}
+          {#if showStationsHeader}
+            <Typography variant="caption" class="block pt-2 px-1 text-[color:var(--color-fg-muted)]">
+              Stations
+            </Typography>
+          {/if}
+          <Stack spacing={1}>
+            {#each visibleStations as stop (stop.id)}
+              {#if stationRow}
+                {@render stationRow({ stop })}
+              {:else}
+                <FavoriteStationRow
+                  stop={stop}
+                  onbodyclick={() => goto(`/station/${stop.id}`)}
+                  routes={stopRoutes[stop.id]}
+                  hasGps={false}
+                  variant="card"
+                  marker={favoritesStore.markerFor(stop.id) ?? undefined}
+                  onChangeMarker={onChangeStationMarker}
+                  class="mt-1"
+                />
+              {/if}
+            {/each}
+          </Stack>
+        {/if}
+
+        {#if truncated && viewAllHref}
+          <Stack direction="row" spacing={1} align="center" class="pt-2 border-t border-[color:var(--color-border)] mt-1">
+            <Button variant="text" size="small" onclick={() => goto(viewAllHref)}>
+              View all {total} in Favorites
+            </Button>
+          </Stack>
+        {/if}
+      </div>
     </Stack>
   </CardContent>
 </Card>

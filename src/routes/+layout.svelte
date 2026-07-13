@@ -49,8 +49,19 @@
   // happens.
   $effect(() => {
     if (typeof window === 'undefined') return;
-    if (!import.meta.env.PROD) return;
     if (!('serviceWorker' in navigator)) return;
+    if (!import.meta.env.PROD) {
+      // Unregister any SW left over from a previous production
+      // build. The previous SW source contains `__APP_VERSION__`
+      // (Vite-replaced at build time) -- if the user opens the
+      // dev server with a stale SW still registered, it tries to
+      // evaluate the un-replaced source and throws
+      // "Can't find variable: __APP_VERSION__".
+      void navigator.serviceWorker.getRegistrations().then((regs) => {
+        for (const r of regs) void r.unregister();
+      });
+      return;
+    }
     // Defer registration so it doesn't compete with the initial
     // route hydration. The SW will pick up the page on the next
     // navigation if it installs faster than the first paint.

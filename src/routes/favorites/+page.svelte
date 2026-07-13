@@ -1,5 +1,5 @@
 <!--
-  /favorites — pick + manage favorited routes and stations.
+  /favorites -- pick + manage favorited routes and stations.
 
   After #234 the page landed a shared FavoritesCard that combined
   routes + stations under one "Your favorites" header. #237 splits
@@ -9,11 +9,11 @@
   national-scale feeds stay performant.
 
   #237 added a station-marker model (favorite / home / work /
-  cityCenter) — the heart button on each station card is now a
+  cityCenter) -- the heart button on each station card is now a
   dropdown picker; the "Your favorites" card sits above the tabs and
   shows both routes and stations, each with their marker badges.
 
-  Tabs are scoped to /favorites — the search overlay and home
+  Tabs are scoped to /favorites -- the search overlay and home
   favorites card keep their merged layout. The active tab persists
   via `?tab=routes|stations` so a deep link or reload lands on the
   same surface. Scroll position is preserved per tab (stash on
@@ -23,7 +23,7 @@
   The "Your favorites" card ALWAYS renders all of the user's
   favorites regardless of the active tab or the filter cascade.
   Filters (marker / mode / network) only narrow the "All routes" /
-   "All stations" catalog below the tabs — they never hide or trim a
+   "All stations" catalog below the tabs -- they never hide or trim a
    favorited item from the pinned card. A favorited route also never
    reappears in the "All routes" catalog: the catalog subtracts the
    favorites set before rendering.
@@ -34,7 +34,7 @@
    to both Routes (routes serving marked stations) and Stations tabs.
 -->
 <script lang="ts">
-  import { goto } from '$app/navigation';
+  import { goto, replaceState } from '$app/navigation';
   import { page } from '$app/state';
   import { untrack } from 'svelte';
   import { Heart } from 'lucide-svelte';
@@ -63,7 +63,7 @@
   import { nowTicker } from '$lib/stores/nowTicker.svelte';
   import { userPrefs } from '$lib/stores/userPrefs.svelte';
 
-  // ── Tab state + URL deep-link ───────────────────────────────────
+  // ------ Tab state + URL deep-link ---------------------------------------------------------------------------------------------------------
 
   let activeTab = $state<FavoritesTab>(initialTab());
 
@@ -71,63 +71,65 @@
     return parseFavoritesTab(page.url.searchParams.get('tab')) ?? 'routes';
   }
 
-  $effect(() => {
-    const fromUrl = parseFavoritesTab(page.url.searchParams.get('tab'));
-    if (fromUrl && fromUrl !== activeTab) {
-      activeTab = fromUrl;
-    }
-  });
+  // No URL -> state sync effect. setTab is the only writer of
+  // activeTab after mount; initialTab() seeds it from the URL on
+  // mount; browser back/forward triggers a re-mount of the page
+  // component, which re-calls initialTab(). Earlier we had a
+  // `fromUrl !== activeTab` sync effect, but it raced with
+  // replaceState: SvelteKit's replaceState updates the browser
+  // history and `page.state` but not `page.url` synchronously,
+  // so on the same tick the effect saw the old URL and clobbered
+  // activeTab back to it -- which is why a click on the Routes
+  // tab was silently ignored.
 
   function setTab(next: FavoritesTab) {
     if (next === activeTab) return;
+    const y = window.scrollY;
     stashScroll(activeTab);
     activeTab = next;
     const url = new URL(page.url);
     if (next === 'routes') url.searchParams.delete('tab');
     else url.searchParams.set('tab', next);
-    // keepFocus: false — SvelteKit's focus-restore on URL change
-    // would otherwise scroll the Tabs control into view and fight
-    // the manual restoreScroll below (issue #306, tab-swap jumps).
-    void goto(url, { replaceState: true, noScroll: true, keepFocus: false });
-    restoreScrollWhenStable(next);
+    // Use SvelteKit's replaceState (not the raw history API and
+    // not goto) so the page store stays in sync without triggering
+    // a full navigation. With both tabs always mounted (visibility:
+    // hidden on the inactive one), the document height is stable
+    // across tab swaps so `window.scrollY` is preserved naturally
+    // -- no manual scroll restore is needed (issue #344). `goto`
+    // with `noScroll: true` was resetting scrollY to 0 on same-page
+    // query changes despite the noScroll option, and the raw
+    // `window.history.replaceState` triggers a SvelteKit dev-mode
+    // warning that it conflicts with the router.
+    replaceState(url, {});
+    // The browser's "scroll focused element into view" behavior
+    // fires on the click that activated the tab trigger (the
+    // tab is at the top of the page, the user is mid-list, so
+    // the browser scrolls to y=0). One rAF is enough to restore:
+    // the document height is stable across the swap (visibility-
+    // based mounting), so there's no second paint commit to
+    // invalidate the restore.
+    requestAnimationFrame(() => window.scrollTo({ top: y, behavior: 'auto' }));
   }
 
-  // ── Scroll preservation per tab ─────────────────────────────────
+  // ------ Scroll preservation per tab ---------------------------------------------------------------------------------------------------
 
+  // Scroll preservation across tab swaps. Both tabs are always
+  // mounted in the catalog area (the inactive one is
+  // `visibility: hidden`); the document height is the max of both
+  // tabs' content. Because the height doesn't change on tab swap,
+  // the user's `window.scrollY` is preserved naturally -- no
+  // `scrollByTab` map, no rAF restore loop, no race with a second
+  // paint commit invalidating the restored y. Filtering (which can
+  // shrink the visible tab's height) doesn't change the document
+  // height either, because the OTHER tab's content is still in
+  // the layout and still contributing.
   const scrollByTab = new Map<FavoritesTab, number>();
   function stashScroll(tab: FavoritesTab) {
     if (typeof window === 'undefined') return;
     scrollByTab.set(tab, window.scrollY);
   }
 
-  // rAF loop: scroll to the stashed y once the document has stopped
-  // growing for two consecutive frames. A single rAF can fire before
-  // the new tab's first paint lands its lazy-loaded content (Stations
-  // page 0, Routes catalog stop badges) — restoring there gets
-  // overwritten the moment the new rows paint. Bounded so a runaway
-  // resize doesn't trap the loop.
-  function restoreScrollWhenStable(tab: FavoritesTab) {
-    if (typeof window === 'undefined') return;
-    const target = scrollByTab.get(tab) ?? 0;
-    let lastHeight = document.documentElement.scrollHeight;
-    let stableFrames = 0;
-    let frame = 0;
-    const maxFrames = 30;
-    const tick = () => {
-      frame++;
-      const h = document.documentElement.scrollHeight;
-      stableFrames = h === lastHeight ? stableFrames + 1 : 0;
-      lastHeight = h;
-      if (stableFrames >= 2 || frame >= maxFrames) {
-        window.scrollTo({ top: target, behavior: 'auto' });
-        return;
-      }
-      requestAnimationFrame(tick);
-    };
-    requestAnimationFrame(tick);
-  }
-
-  // ── Shared filter state (visible on both tabs) ──────────────────
+  // ------ Shared filter state (visible on both tabs) ------------------------------------------------------
 
   let allRoutes = $state<Route[] | null>(null);
   let allNetworks = $state<Network[]>([]);
@@ -138,7 +140,7 @@
   // `null` means no chip is selected and the filter is inactive
   // (catalog shows everything). Tapping the active chip again
   // deselects it. All chips render at full color regardless of
-  // active state — the white ring is the only visual cue, so the
+  // active state -- the white ring is the only visual cue, so the
   // available filter set stays readable when nothing is selected.
   let activeMarkerFilter = $state<StationMarker | null>(null);
   let typeFilter = $state<VehicleType | null>(null);
@@ -163,7 +165,7 @@
 
   const tz = $derived(feedsStore.activeTimezone);
 
-  // ── Routes tab state ────────────────────────────────────────────
+  // ------ Routes tab state ------------------------------------------------------------------------------------------------------------------------------------
 
   let activeRouteIds = $state<Set<string>>(new Set());
   let expandedRouteId = $state<string | null>(null);
@@ -212,7 +214,7 @@
     }
   }
 
-  // ── Stations tab state ──────────────────────────────────────────
+  // ------ Stations tab state ------------------------------------------------------------------------------------------------------------------------------
 
   let favoriteStations = $state<StopWithDistance[]>([]);
   let favoriteStationsError = $state<string | null>(null);
@@ -279,7 +281,7 @@
 
   const stationAnchor = $derived.by(() => {
     if (locationStore.position) {
-      // Plain object literal — already cloneable through postMessage.
+      // Plain object literal -- already cloneable through postMessage.
       return {
         lat: locationStore.position.coords.latitude,
         lon: locationStore.position.coords.longitude,
@@ -287,14 +289,14 @@
     }
     const feed = feedsStore.byId(feedsStore.boundFeedId);
     if (!feed) return null;
-    // Manual copy from the proxied Feed.center — Svelte 5's $state
+    // Manual copy from the proxied Feed.center -- Svelte 5's $state
     // proxies are not always structured-cloneable, and feeding a
     // proxied anchor into the worker was throwing "The object can
     // not be cloned" on the stations tab pagination call.
     return { lat: feed.center.lat, lon: feed.center.lon };
   });
 
-  // ── Effects: initial loads ──────────────────────────────────────
+  // ------ Effects: initial loads ------------------------------------------------------------------------------------------------------------------
 
   $effect(() => {
     const fid = feedsStore.boundFeedId;
@@ -317,10 +319,11 @@
   });
 
   // Stations with any marker (favorite / home / work / cityCenter).
-  // Routes-per-station is loaded by FavoritesCard itself — no need to
+  // Routes-per-station is loaded by FavoritesCard itself -- no need to
   // duplicate that worker call here.
   $effect(() => {
     const fid = feedsStore.boundFeedId;
+    void fid;
     if (!fid) return;
     const ids = Array.from(favoritesStore.markers.keys());
     if (ids.length === 0) {
@@ -344,6 +347,7 @@
   // value or null; `undefined` = no filter.
   $effect(() => {
     const fid = feedsStore.boundFeedId;
+    void fid;
     if (!fid) return;
     (async () => {
       try {
@@ -354,6 +358,15 @@
           tags: tagFilter ?? undefined,
         });
         stationsScopeError = null;
+        // Trigger catalog fetch after stationsScope is populated.
+        // The catalog effect tracks stationsScope, but if it ran before
+        // this async resolves (boundFeedId changes first), it would read
+        // an empty stationsScope and return early. Moving the trigger
+        // here ensures the fetch fires with fresh data.
+        otherStationsPage = [];
+        otherStationsTotal = 0;
+        otherStationsError = null;
+        await fetchNextStationsPage();
       } catch (e) {
         stationsScopeError = e instanceof Error ? e.message : String(e);
       }
@@ -363,6 +376,7 @@
   // Routes "active right now" set (one worker round-trip).
   $effect(() => {
     const fid = feedsStore.boundFeedId;
+    void fid;
     if (!fid) return;
     const now = nowTicker.ms;
     (async () => {
@@ -391,13 +405,13 @@
     })();
   });
 
-  // ── Stations tab: paginated "other stations" ────────────────────
+  // ------ Stations tab: paginated "other stations" ------------------------------------------------------------
 
   $effect(() => {
     // Touch the inputs so the effect re-runs on cascade or anchor change.
     // The whole body is wrapped in untrack: the writes to
     // otherStationsPage/Total happen here AND the call to
-    // fetchNextStationsPage — that function synchronously reads
+    // fetchNextStationsPage -- that function synchronously reads
     // otherStationsPage.length to decide the next offset, so leaving
     // it inside the tracked run would add otherStationsPage as a dep.
     // When the async work then writes to otherStationsPage the
@@ -405,8 +419,18 @@
     // forever fetching page 0.
     const _scope = stationsScope;
     const _anchor = stationAnchor;
+    const _fid = feedsStore.boundFeedId;
     void _scope;
     void _anchor;
+    void _fid;
+    // Skip the very first run of this effect, which fires before
+    // /+layout has set the feed. Without this guard, the worker
+    // throws "not bound to a feed yet" and the error gets stored
+    // in `otherStationsError`, which paints "GTFS worker not bound
+    // to a feed yet" inside the catalog card -- the user reads it
+    // as "data isn't loading". The next run (after boundFeedId is
+    // set) will fire and actually load the data.
+    if (!feedsStore.boundFeedId) return;
     untrack(() => {
       otherStationsPage = [];
       otherStationsTotal = 0;
@@ -417,12 +441,12 @@
 
   // Paginate on a real user scroll, not on a layout reflow. The previous
   // IntersectionObserver fired whenever the sentinel crossed the 1000px
-  // rootMargin edge — including reflows from stationsScope / stationAnchor
-  // changes, row-grow on marker-chip population, and viewport resizes —
+  // rootMargin edge -- including reflows from stationsScope / stationAnchor
+  // changes, row-grow on marker-chip population, and viewport resizes --
   // which silently appended pages and shifted the user's mid-list view
   // (issue #328). A `scroll` event only fires on real input, so the page
   // can no longer grow beneath the user. Reads inside `onScroll` are
-  // ordinary closure captures, not $effect-tracked — the listener is
+  // ordinary closure captures, not $effect-tracked -- the listener is
   // registered once at mount, the handler reads the current state at
   // fire-time.
   $effect(() => {
@@ -439,7 +463,6 @@
     window.addEventListener('scroll', onScroll, { passive: true });
     return () => window.removeEventListener('scroll', onScroll);
   });
-
   async function fetchNextStationsPage() {
     if (otherStationsLoading) return;
     if (otherStationsTotal > 0 && otherStationsPage.length >= otherStationsTotal) return;
@@ -459,7 +482,20 @@
       const seen = new Set(otherStationsPage.map((s) => s.id));
       const filtered = result.rows.filter((s) => !seen.has(s.id));
       otherStationsPage = [...otherStationsPage, ...filtered];
-      otherStationsTotal = result.total;
+      // Cap `otherStationsTotal` at the current page length when
+      // the worker returned no new rows. Otherwise the button stays
+      // visible forever (issue follow-up to #328 / #344 -- the
+      // worker can report `total > 0` even when the page slice
+      // overlaps with what's already in the page; the dedup above
+      // strips the overlap and the page never grows, but the
+      // unconditional `otherStationsTotal = result.total` keeps
+      // the button live). When that happens, treat the catalog
+      // as exhausted at the current page length.
+      if (filtered.length === 0) {
+        otherStationsTotal = otherStationsPage.length;
+      } else {
+        otherStationsTotal = result.total;
+      }
     } catch (e) {
       otherStationsError = e instanceof Error ? e.message : String(e);
     } finally {
@@ -467,7 +503,7 @@
     }
   }
 
-  // ── Derived: routes + stations lists ────────────────────────────
+  // ------ Derived: routes + stations lists ------------------------------------------------------------------------------------
 
   const presentTypes = $derived.by<VehicleType[]>(() => {
     if (!allRoutes) return [];
@@ -638,7 +674,7 @@
           {#if loading}
             <Stack direction="row" spacing={1} align="center" class="px-2 py-1">
               <Spinner size={14} />
-              <Typography variant="caption">Loading stops…</Typography>
+              <Typography variant="caption">Loading stops...</Typography>
             </Stack>
           {:else if failed || (expanded && stops != null && stops.length === 0)}
             <Typography variant="caption" class="px-2 py-1 text-[color:var(--color-fg-muted)]">
@@ -676,7 +712,7 @@
       <CardContent>
         <Stack direction="row" spacing={1} align="center">
           <Spinner size={16} />
-          <Typography variant="caption">Loading routes…</Typography>
+          <Typography variant="caption">Loading routes...</Typography>
         </Stack>
       </CardContent>
     </Card>
@@ -686,7 +722,7 @@
            active tab. Lists favorited routes AND marked stations, with
            their marker badges. The routeRow snippet wraps each row in
            expandableRouteRow so a tap on the row expands to show the
-           station list (TripStopList) — same as the catalog rows below.
+           station list (TripStopList) -- same as the catalog rows below.
 
            Invariant: this card is the user's pinned surface and is
            NEVER affected by the filter cascade. `favRoutes` and
@@ -813,11 +849,19 @@
           variant="block"
         />
 
-        {#if activeTab === 'routes'}
-          <!-- ── Routes tab: all routes ─────── -->
+        <!--
+          Both tab panels use `display: none` for the inactive one.
+          The filter card above is a separate sibling — no stacking
+          from hidden content, no gap under the tab strip. (issue #344)
+        -->
+        <div class="border-t border-[color:var(--color-border)]"></div>
 
+        <div
+          style:display={activeTab === 'routes' ? 'block' : 'none'}
+          aria-hidden={activeTab !== 'routes' ? 'true' : undefined}
+        >
           {#if catalogRoutes.length > 0}
-            <Card class="rounded-none border-0 border-t border-[color:var(--color-border)] shadow-none">
+            <Card class="rounded-none border-0 border-t-0 shadow-none">
               <CardContent>
                 <Stack spacing={1}>
                   <Stack spacing={0.5}>
@@ -837,10 +881,14 @@
               </CardContent>
             </Card>
           {/if}
-        {:else}
-          <!-- "All other stations" - paginated catalog. -->
+        </div>
+
+        <div
+          style:display={activeTab === 'stations' ? 'block' : 'none'}
+          aria-hidden={activeTab !== 'stations' ? 'true' : undefined}
+        >
           {#if otherStationsPage.length > 0 || otherStationsLoading || otherStationsError}
-            <Card class="rounded-none border-0 border-t border-[color:var(--color-border)] shadow-none">
+            <Card class="rounded-none border-0 border-t-0 shadow-none">
               <CardContent>
                 <Stack spacing={1}>
                   <Stack spacing={0.5}>
@@ -849,7 +897,7 @@
                     </Typography>
                     <Typography variant="caption" class="text-[color:var(--color-fg-muted)]">
                       {#if otherStationsLoading && otherStationsPage.length === 0}
-                        Loading…
+                        Loading...
                       {:else if otherStationsError}
                         {otherStationsError}
                       {:else if otherStationsTotal > 0}
@@ -886,7 +934,7 @@
                   {#if otherStationsLoading}
                     <Stack direction="row" spacing={1} align="center" class="py-2">
                       <Spinner size={14} />
-                      <Typography variant="caption">Loading more stations…</Typography>
+                      <Typography variant="caption">Loading more stations...</Typography>
                     </Stack>
                   {:else if otherStationsHasMore}
                     <Stack direction="row" spacing={1} align="center" class="py-2">
@@ -907,7 +955,7 @@
               </CardContent>
             </Card>
           {/if}
-        {/if}
+        </div>
       </div>
     </Stack>
   {/if}

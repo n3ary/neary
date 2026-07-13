@@ -24,7 +24,8 @@
 </script>
 
 <Bits.Root
-  bind:value={() => value, (v: T) => onchange(v)}
+  {value}
+  onValueChange={(v) => onchange(v as T)}
   class={cn('w-full', className)}
 >
   <Bits.List

@@ -33,10 +33,10 @@
     plain: 'bg-[color:var(--color-surface)] border-[color:var(--color-border)]',
     // 'elevated' = the anchor card (currently "Your favorites"). A
     // different surface (--color-surface-elevated) so the card
-    // visually settles into the page; no perimeter border — the
-    // tint alone carries the focus, and the marker's accent colour
-    // stays reserved for chips / strokes inside the card.
-    elevated: 'bg-[color:var(--color-surface-elevated)] border-0',
+    // visually settles into the page; keeps the same gray border as
+    // the plain tone so the card has a clear perimeter -- the tint
+    // alone wasn't enough to read as a frame in practice.
+    elevated: 'bg-[color:var(--color-surface-elevated)] border-[color:var(--color-border)]',
   };
 </script>
 
