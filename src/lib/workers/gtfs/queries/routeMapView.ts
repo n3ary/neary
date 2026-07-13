@@ -38,11 +38,21 @@ export function getRouteMapView(
     tag_ids: string | null;
     network_ids: string | null;
   };
-  // Probe + LEFT JOIN both producer extensions (tag + network) so
-  // the route badge in the map-view header can render the same
-  // chips the schedule + favorites surfaces do. Older cached blobs
-  // without the tables fall back to NULL for both columns and the
-  // Route shape comes out without tags/networks.
+  // Probe both producer extensions (tag + network) so the route
+  // badge in the map-view header can render the same chips the
+  // schedule + favorites surfaces do. Older cached blobs without the
+  // tables fall back to NULL for both columns.
+  //
+  // Aggregation runs as correlated subqueries (not LEFT JOIN +
+  // GROUP_CONCAT) for two reasons:
+  //   1. `GROUP_CONCAT(DISTINCT x, sep)` is invalid SQLite — the
+  //      parser treats `(DISTINCT x, sep)` as DISTINCT taking two
+  //      arguments and throws "DISTINCT aggregates must have
+  //      exactly one argument".
+  //   2. LEFT JOINing two 1:many tables together produces a
+  //      cartesian product (a route with N tags and M networks →
+  //      N*M rows), which would repeat every tag M times and every
+  //      network N times inside the GROUP_CONCAT result.
   const tables = selectAll<{ name: string }>(
     db,
     `SELECT name FROM sqlite_master WHERE type IN ('table')
@@ -50,23 +60,18 @@ export function getRouteMapView(
   );
   const hasRouteTags = tables.some((t) => t.name === '_route_tags');
   const hasRouteNetworks = tables.some((t) => t.name === 'route_networks');
-  const tagJoin = hasRouteTags ? 'LEFT JOIN _route_tags rt ON rt.route_id = r.route_id' : '';
-  const netJoin = hasRouteNetworks ? 'LEFT JOIN route_networks rn ON rn.route_id = r.route_id' : '';
   const tagSelect = hasRouteTags
-    ? "GROUP_CONCAT(DISTINCT rt.tag_id, ',' ORDER BY rt.priority ASC) AS tag_ids"
+    ? "(SELECT GROUP_CONCAT(rt.tag_id, ',' ORDER BY rt.priority ASC) FROM _route_tags rt WHERE rt.route_id = r.route_id) AS tag_ids"
     : 'NULL AS tag_ids';
   const netSelect = hasRouteNetworks
-    ? "GROUP_CONCAT(DISTINCT rn.network_id, ',') AS network_ids"
+    ? "(SELECT GROUP_CONCAT(rn.network_id, ',') FROM route_networks rn WHERE rn.route_id = r.route_id) AS network_ids"
     : 'NULL AS network_ids';
   const routeRows = selectAll<RouteRow>(
     db,
     `SELECT r.route_id, r.route_short_name, r.route_color, r.route_text_color, r.route_type,
             ${tagSelect}, ${netSelect}
      FROM routes r
-     ${tagJoin}
-     ${netJoin}
-     WHERE r.route_id = ?
-     GROUP BY r.route_id;`,
+     WHERE r.route_id = ?;`,
     [routeId],
   );
   if (routeRows.length === 0) return null;
