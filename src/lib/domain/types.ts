@@ -22,6 +22,8 @@ export interface Route {
   hasSchedule?: boolean;
   /** GTFS route_networks.txt ids — `['night']`, `['metroline', 'school']`. Undefined on older cached blobs. */
   networks?: string[];
+  /** Producer-extension tag ids from `_route_tags.txt` (1:many per route, e.g. `['night', 'metroline']`). Undefined on feeds that don't ship the producer extension. */
+  tags?: string[];
 }
 
 /** A network / service category from GTFS `networks.txt`. */
@@ -30,6 +32,16 @@ export interface Network {
   name: string;
   /** Hex chip color (with leading '#'), modal route_color of routes in this network, collision-resolved. */
   color: string;
+}
+
+/** A tag from the feed's producer-extension `_route_tags` table (1:many per route). */
+export interface RouteTag {
+  /** Stable tag id (`night`, `metroline`, `festival`, `airport`, `special` for the cluj adapter). */
+  id: string;
+  /** Human label (denormalized into the row so consumers don't have to join). */
+  name: string;
+  /** TAGS-declaration index; sort ASCENDING for stable badge ordering. The cluj adapter encodes 0=night, 1=metroline, 2=airport, 3=festival, 4=special. */
+  priority: number;
 }
 
 /** A station / stop as the UI sees it. */
@@ -229,9 +241,10 @@ export function formatRelativeMin(deltaMin: number): string {
   return m === 0 ? `in ${h}h` : `in ${h}h ${m}m`;
 }
 
-/** True when the route belongs to the 'night' network. Falls back to legacy short-name heuristic for feeds that pre-date networks.txt support. */
+/** True when the route belongs to the 'night' network or has the 'night' tag. Falls back to legacy short-name heuristic for feeds that pre-date networks.txt / _route_tags support. */
 export function isNightRoute(route: Route): boolean {
-  if (route.networks !== undefined) return route.networks.includes('night');
+  if (route.tags?.includes('night')) return true;
+  if (route.networks?.includes('night')) return true;
   return /n$/i.test(route.shortName);
 }
 

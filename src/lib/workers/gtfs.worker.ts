@@ -40,6 +40,7 @@ import { getActiveRouteIdsInWindow, getRouteSchedule } from './gtfs/queries/rout
 import { getStopsAlongTrip } from './gtfs/queries/routeStops';
 import { getRouteById, getRoutes, getRoutesForStop, getRoutesForStops, getStopsForRoute, getStopsForRoutes } from './gtfs/queries/routes';
 import { getNetworks } from './gtfs/queries/networks';
+import { getTags } from './gtfs/queries/routeTags';
 import { getFeedConfig } from './gtfs/queries/feedConfig';
 import { getStationBoard, getStationBoardsNear } from './gtfs/queries/stationBoards';
 import { getDeparturesFromStop, getOriginRoutesAtStop, getStopsByIds, getStopsNear, searchStops } from './gtfs/queries/stops';
@@ -110,6 +111,9 @@ const api: GtfsRepo = {
   async getNetworks() {
     return getNetworks(await ensureDb());
   },
+  async getRouteTags() {
+    return getTags(await ensureDb());
+  },
   async getFeedConfig() {
     return getFeedConfig(await ensureDb());
   },
@@ -152,7 +156,7 @@ const api: GtfsRepo = {
   async getRoutesThroughStations(filter) {
     return getRoutesThroughStationsImpl(await ensureDb(), {
       modes: filter.modes ? new Set(filter.modes) : undefined,
-      networks: filter.networks ? new Set(filter.networks) : undefined,
+      tags: filter.tags ? new Set(filter.tags) : undefined,
     });
   },
   async getStationsPage(query) {
