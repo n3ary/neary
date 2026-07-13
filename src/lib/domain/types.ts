@@ -22,6 +22,8 @@ export interface Route {
   hasSchedule?: boolean;
   /** Producer-extension tag ids from `_route_tags.txt` (1:many per route, e.g. `['night', 'metroline']`). Undefined on feeds that don't ship the producer extension. */
   tags?: string[];
+  /** GTFS route_networks.txt ids — `['night']`, `['metroline', 'school']`. Undefined on older cached blobs. */
+  networks?: string[];
 }
 
 /** A network / service category from GTFS `networks.txt`. */
@@ -239,9 +241,12 @@ export function formatRelativeMin(deltaMin: number): string {
   return m === 0 ? `in ${h}h` : `in ${h}h ${m}m`;
 }
 
-/** True when the route has the 'night' tag. Falls back to legacy short-name heuristic for feeds that pre-date _route_tags support. */
+/** True when the route belongs to the 'night' tag or the 'night' network.
+ *  Falls back to legacy short-name heuristic for feeds that pre-date
+ *  both _route_tags and networks.txt support. */
 export function isNightRoute(route: Route): boolean {
   if (route.tags?.includes('night')) return true;
+  if (route.networks?.includes('night')) return true;
   return /n$/i.test(route.shortName);
 }
 

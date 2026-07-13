@@ -7,7 +7,7 @@
  */
 
 import type { Feed } from '$lib/data/feeds';
-import type { Route, RouteTag, Station, Vehicle } from '$lib/domain/types';
+import type { Network, Route, RouteTag, Station, Vehicle } from '$lib/domain/types';
 import type { NearyFeedConfig } from '$lib/workers/gtfs/queries/feedConfig';
 import type { ReconcileStats } from '$lib/domain/reconcile';
 
@@ -79,6 +79,10 @@ export interface GtfsRepo {
 
   /** All routes, sorted by short_name (numeric where possible). */
   getRoutes(): Promise<Route[]>;
+
+  /** All networks in the feed (`networks.txt`). Empty array for feeds
+   *  that don't ship the table. */
+  getNetworks(): Promise<Network[]>;
 
   /** All tags in the feed (`_route_tags.txt` producer extension).
    *  Empty array for feeds that don't ship the producer extension. */
@@ -190,10 +194,13 @@ export interface GtfsRepo {
    */
   getRoutesThroughStations(filter: {
     modes?: ReadonlyArray<import('$lib/domain/types').VehicleType>;
+    /** Network filter — OR semantics: a route qualifies if it carries
+     *  at least one of the listed network ids (1:1 per route — school
+     *  / normal for the cluj feed). */
+    networks?: ReadonlyArray<string>;
     /** Tag filter — OR semantics: a route qualifies if it carries at
-     *  least one of the listed tag ids. Replaces the older `networks`
-     *  filter; see `favoritesQueries.FavoritesStationsFilter.tags` for
-     *  the rationale. */
+     *  least one of the listed tag ids (1:many per route — night /
+     *  metroline / festival / airport / special for the cluj feed). */
     tags?: ReadonlyArray<string>;
   }): Promise<Record<string, Route[]>>;
 

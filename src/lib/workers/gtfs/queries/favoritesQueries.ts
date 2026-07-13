@@ -6,11 +6,11 @@
  * focus on the search-overlay / station-view contracts.
  *
  * Cache shape: the filter cascade can have at most
- * (num_modes * num_networks) distinct keys per feed. Capped at 4
- * most-recently-used entries via a tiny LRU keyed by filter
- * signature; cleared on db handle swap (each feed gets a fresh
- * Database so the module-level cache invalidates naturally on
- * setFeed).
+ * (num_modes * num_networks * num_tags) distinct keys per feed.
+ * Capped at 4 most-recently-used entries via a tiny LRU keyed by
+ * filter signature; cleared on db handle swap (each feed gets a
+ * fresh Database so the module-level cache invalidates naturally
+ * on setFeed).
  */
 
 import type { Database } from '@sqlite.org/sqlite-wasm';
@@ -25,12 +25,14 @@ import { getRoutesWithSchedule } from './routesWithSchedule';
 export interface FavoritesStationsFilter {
   /** `undefined` = no mode filter; Set = filter to those modes. */
   modes?: ReadonlySet<VehicleType>;
+  /** `undefined` = no network filter; Set = filter to routes that carry
+   *  at least one of the listed network ids (OR semantics). Empty Set
+   *  = match none. 1:1 per route (school / normal). */
+  networks?: ReadonlySet<string>;
   /** `undefined` = no tag filter; Set = filter to routes that carry at
    *  least one of the listed tag ids (OR semantics). Empty Set = match
-   *  none. Replaces the older `networks` filter; networks were 1:1 per
-   *  route (school / normal) while tags are 1:many (night / metroline /
-   *  festival / airport / special) and give the user more filter
-   *  granularity over what they see on the favorites page. */
+   *  none. 1:many per route (night / metroline / festival / airport /
+   *  special). */
   tags?: ReadonlySet<string>;
 }
 
@@ -65,6 +67,7 @@ interface RouteRowBase {
   route_text_color: string | null;
   route_type: number | null;
   tag_ids: string | null;
+  network_ids: string | null;
 }
 
 function routeDescExpr(db: Database): string {
@@ -84,6 +87,18 @@ function routeTagsJoinExpr(db: Database): { join: string; select: string } {
   };
 }
 
+function routeNetworksJoinExpr(db: Database): { join: string; select: string } {
+  const tables = selectAll<{ name: string }>(
+    db,
+    `SELECT name FROM sqlite_master WHERE type='table' AND name='route_networks';`,
+  );
+  if (tables.length === 0) return { join: '', select: 'NULL AS network_ids' };
+  return {
+    join: 'LEFT JOIN route_networks rn ON rn.route_id = r.route_id',
+    select: "GROUP_CONCAT(rn.network_id, ',') AS network_ids",
+  };
+}
+
 function rowToRoute(r: RouteRowBase, withSchedule: Set<string>): Route {
   return {
     id: r.route_id,
@@ -97,19 +112,25 @@ function rowToRoute(r: RouteRowBase, withSchedule: Set<string>): Route {
     tags: r.tag_ids
       ? r.tag_ids.split(',').filter(Boolean)
       : undefined,
+    networks: r.network_ids
+      ? r.network_ids.split(',').filter(Boolean)
+      : undefined,
   };
 }
 
-/** Cache key for the filter-cascade query. Mode + tag filter
- *  combination, in that order. `*` = no filter (all in scope). */
+/** Cache key for the filter-cascade query. Mode + network + tag
+ *  filter combination, in that order. `*` = no filter (all in scope). */
 function filterKey(filter: FavoritesStationsFilter): string {
   const modes = filter.modes === undefined
     ? '*'
     : Array.from(filter.modes).sort().join(',') || '-';
+  const networks = filter.networks === undefined
+    ? '*'
+    : Array.from(filter.networks).sort().join(',') || '-';
   const tags = filter.tags === undefined
     ? '*'
     : Array.from(filter.tags).sort().join(',') || '-';
-  return `${modes}|${tags}`;
+  return `${modes}|${networks}|${tags}`;
 }
 
 /** Routes-through-station cache. One LRU per Database handle so a
@@ -130,7 +151,7 @@ function getRoutesCache(db: Database): Map<string, Record<string, Route[]>> {
 }
 
 /** Distinct routes that serve each schedule-bearing stop in the
- *  feed, optionally filtered by mode + network.
+ *  feed, optionally filtered by mode + network + tag.
  *
  *  "Serves" is derived from any trip the feed schedules through the
  *  stop with a usable arrival_time — same definition the rest of the
@@ -164,15 +185,16 @@ export function getRoutesThroughStations(
   const desc = routeDescExpr(db);
   const descCol = desc === 'route_desc' ? 'r.route_desc' : 'NULL AS route_desc';
   const { join: tagJoin, select: tagSelect } = routeTagsJoinExpr(db);
+  const { join: netJoin, select: netSelect } = routeNetworksJoinExpr(db);
 
-  // Build the WHERE clause for mode + tag filters. The mode filter
-  // maps VehicleType -> GTFS route_type integer for an exact match;
-  // the tag filter joins `_route_tags` (the cluj producer extension).
-  // SQL returns the DISTINCT (stop_id, route_id) pairs the JS side
-  // then projects to the record shape, applying the tag filter
-  // (because the SQL join emits rows per (route, tag) — we collapse
-  // those to per-route once before the filter so a route with two
-  // tags doesn't double-count).
+  // Build the WHERE clause for mode + network + tag filters. The
+  // mode filter maps VehicleType -> GTFS route_type integer for an
+  // exact match; the network and tag filters join their respective
+  // tables. SQL returns the DISTINCT (stop_id, route_id) pairs the
+  // JS side then projects to the record shape (because the SQL
+  // joins emit rows per (route, network) and per (route, tag) — we
+  // collapse those to per-route once before filtering so a route in
+  // two networks + two tags doesn't double-count).
   const modeList = filter.modes === undefined
     ? null
     : Array.from(filter.modes)
@@ -193,6 +215,16 @@ export function getRoutesThroughStations(
     conds.push(`r.route_type IN (${ph})`);
     params.push(...modeList);
   }
+  if (filter.networks !== undefined) {
+    if (filter.networks.size === 0) {
+      const empty: Record<string, Route[]> = {};
+      insertAtCap(cache, key, empty);
+      return empty;
+    }
+    const ph = Array.from(filter.networks).map(() => '?').join(',');
+    conds.push(`rn.network_id IN (${ph})`);
+    params.push(...filter.networks);
+  }
   if (filter.tags !== undefined) {
     if (filter.tags.size === 0) {
       const empty: Record<string, Route[]> = {};
@@ -208,11 +240,12 @@ export function getRoutesThroughStations(
     db,
     `SELECT st.stop_id, r.route_id, r.route_short_name, r.route_long_name, ${descCol},
             r.route_color, r.route_text_color, r.route_type,
-            ${tagSelect}
+            ${tagSelect}, ${netSelect}
      FROM stop_times st
      JOIN trips t  ON t.trip_id = st.trip_id
      JOIN routes r ON r.route_id = t.route_id
      ${tagJoin}
+     ${netJoin}
      WHERE ${conds.join(' AND ')}
      GROUP BY st.stop_id, r.route_id;`,
     params,

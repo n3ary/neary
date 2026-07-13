@@ -5,12 +5,12 @@
   import { ArrowRightLeft, ChevronDown, Map as MapIcon } from 'lucide-svelte';
   import {
     BackButton, Card, CardContent, Chip, IconButton, RouteBadge, SelectFeedCard, Spinner,
-    Stack, ToggleGroup, TripStopList, Typography, networkIcon,
+    Stack, ToggleGroup, TripStopList, Typography, networkIcon, networkTextColor,
   } from '$lib/ui';
   import { getGtfsRepo } from '$lib/data/gtfs/repo';
   import { useOtherDirectionExists } from '$lib/data/gtfs/otherDirectionExists.svelte';
   import { parseRouteIdWithDirection } from '$lib/data/gtfs/parseRouteIdWithDirection';
-  import type { Route, RouteTag } from '$lib/domain/types';
+  import type { Network, Route, RouteTag } from '$lib/domain/types';
   import {
     formatHHMM, formatRelativeMin, isNightRoute, vehicleTypeLabel,
   } from '$lib/domain/types';
@@ -52,12 +52,16 @@ import { favoritesStore } from '$lib/stores/favoritesStore.svelte';
   // ── Data state ──────────────────────────────────────────────────────
   let route = $state<Route | null>(null);
   let routeTags = $state<Map<string, RouteTag>>(new Map());
+  let networkMap = $state<Map<string, Network>>(new Map());
 
   $effect(() => {
     const fid = feedsStore.boundFeedId;
     if (!fid) return;
     void getGtfsRepo().getRouteTags().then((tags) => {
       routeTags = new Map(tags.map((t) => [t.id, t]));
+    });
+    void getGtfsRepo().getNetworks().then((nets) => {
+      networkMap = new Map(nets.map((n) => [n.id, n]));
     });
   });
   // Departures for the day the user is currently viewing. Empty array
@@ -519,6 +523,14 @@ import { favoritesStore } from '$lib/stores/favoritesStore.svelte';
             <Stack spacing={0.5} class="flex-1 min-w-0">
               <Stack direction="row" spacing={1} align="center" wrap>
                 <Typography variant="h5" class="truncate">{headerTitle}</Typography>
+                {#each (route?.networks ?? []) as netId (netId)}
+                  {@const net = networkMap.get(netId)}
+                  {@const Icon = networkIcon(netId)}
+                  <Chip size="small" hex={net?.color} fg={net ? networkTextColor(net.color) : undefined}>
+                    {#snippet icon()}<Icon size={12} />{/snippet}
+                    {net?.name ?? netId}
+                  </Chip>
+                {/each}
                 {#each (route?.tags ?? []) as tagId (tagId)}
                   {@const tag = routeTags.get(tagId)}
                   {@const Icon = networkIcon(tagId)}

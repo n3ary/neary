@@ -45,7 +45,7 @@
   } from '$lib/ui';
   import { getGtfsRepo } from '$lib/data/gtfs/repo';
   import type { ScheduleTripStop, StopWithDistance } from '$lib/data/gtfs/types';
-  import type { Route, RouteTag, VehicleType } from '$lib/domain/types';
+  import type { Network, Route, RouteTag, VehicleType } from '$lib/domain/types';
   import { vehicleTypeLabel } from '$lib/domain/types';
   import type { StationMarker } from '$lib/stores/favoritesStore.svelte';
   import { STATIONS_PAGE_SIZE } from '$lib/ui/favoritesListConstants';
@@ -130,12 +130,14 @@
   // ── Shared filter state (visible on both tabs) ──────────────────
 
   let allRoutes = $state<Route[] | null>(null);
+  let allNetworks = $state<Network[]>([]);
   let allTags = $state<RouteTag[]>([]);
   let error = $state<string | null>(null);
   // All chips start selected (everything visible). Deselecting removes those
   // items. Deselecting all = empty catalog. No "All" button.
   let activeMarkerFilter = $state<ReadonlySet<StationMarker>>(new Set(STATION_MARKERS));
   let typeFilter = $state<ReadonlySet<VehicleType>>(new Set());
+  let networkFilter = $state<ReadonlySet<string>>(new Set());
   let tagFilter = $state<ReadonlySet<string>>(new Set());
 
   function toggleMarkerFilter(m: StationMarker) {
@@ -158,6 +160,16 @@
     typeFilter = new Set(presentTypes);
   }
 
+  function toggleNetwork(id: string) {
+    const next = new Set(networkFilter);
+    if (next.has(id)) next.delete(id);
+    else next.add(id);
+    networkFilter = next;
+  }
+  function clearNetworkFilter() {
+    networkFilter = new Set(allNetworks.map((n) => n.id));
+  }
+
   function toggleTag(id: string) {
     const next = new Set(tagFilter);
     if (next.has(id)) next.delete(id);
@@ -174,6 +186,11 @@
   $effect(() => {
     if (typeFilter.size === 0 && presentTypes.length > 0) {
       typeFilter = new Set(presentTypes);
+    }
+  });
+  $effect(() => {
+    if (networkFilter.size === 0 && allNetworks.length > 0) {
+      networkFilter = new Set(allNetworks.map((n) => n.id));
     }
   });
   $effect(() => {
@@ -322,11 +339,13 @@
     (async () => {
       try {
         const repo = getGtfsRepo();
-        const [routes, tags] = await Promise.all([
+        const [routes, networks, tags] = await Promise.all([
           repo.getRoutes(),
+          repo.getNetworks(),
           repo.getRouteTags(),
         ]);
         allRoutes = routes;
+        allNetworks = networks;
         allTags = tags;
       } catch (e) {
         error = e instanceof Error ? e.message : String(e);
@@ -358,16 +377,17 @@
   });
 
   // Filter-cascade scope for the Stations tab. Recomputed when
-  // mode or tag filter changes.
+  // mode, network, or tag filter changes.
   $effect(() => {
     const fid = feedsStore.boundFeedId;
     if (!fid) return;
     const modes = typeFilter.size < presentTypes.length ? Array.from(typeFilter) : undefined;
+    const networks = networkFilter.size < allNetworks.length ? Array.from(networkFilter) : undefined;
     const tags = tagFilter.size < allTags.length ? Array.from(tagFilter) : undefined;
     (async () => {
       try {
         const repo = getGtfsRepo();
-        stationsScope = await repo.getRoutesThroughStations({ modes, tags });
+        stationsScope = await repo.getRoutesThroughStations({ modes, networks, tags });
         stationsScopeError = null;
       } catch (e) {
         stationsScopeError = e instanceof Error ? e.message : String(e);
@@ -500,6 +520,7 @@
     if (!allRoutes) return [];
     return allRoutes.filter((r) => {
       if (typeFilter.size < presentTypes.length && !typeFilter.has(r.type ?? 'unknown')) return false;
+      if (networkFilter.size < allNetworks.length && !(r.networks?.some((n) => networkFilter.has(n)) ?? false)) return false;
       if (tagFilter.size < allTags.length && !(r.tags?.some((t) => tagFilter.has(t)) ?? false)) return false;
       // Marker filter: route qualifies iff it serves at least one
       // station carrying a marker in the active filter set. Routes
@@ -585,7 +606,12 @@
   });
 
   const stationsScopeCount = $derived(Object.keys(stationsScope).length);
-  const filtersActive = $derived(typeFilter.size < presentTypes.length || tagFilter.size < allTags.length || activeMarkerFilter.size < STATION_MARKERS.length);
+  const filtersActive = $derived(
+    typeFilter.size < presentTypes.length
+    || networkFilter.size < allNetworks.length
+    || tagFilter.size < allTags.length
+    || activeMarkerFilter.size < STATION_MARKERS.length
+  );
   const otherStationsHasMore = $derived(
     otherStationsTotal === 0 || otherStationsPage.length < otherStationsTotal,
   );
@@ -719,9 +745,9 @@
         </FavoritesCard>
       {/if}
 
-      <!-- Filter card: marker + mode + network filters, shared across
-           both tabs. All cascade to the catalog below. -->
-      {#if favoritesStore.markers.size > 0 || presentTypes.length > 1 || allTags.length > 0}
+      <!-- Filter card: marker + mode + network + tag filters, shared
+           across both tabs. All cascade to the catalog below. -->
+      {#if favoritesStore.markers.size > 0 || presentTypes.length > 1 || allNetworks.length > 0 || allTags.length > 0}
         <Card>
           <CardContent>
             <!--
@@ -730,8 +756,10 @@
               network name) are self-evident. Hairlines separate the
               rows. See #257.
 
-              Order: marker filter first, then mode (Bus/Tram/...), then
-              network. Applied to both Routes and Stations tabs.
+              Order: marker filter first, then mode (Bus/Tram/...),
+              then network (1:1 school/normal), then tag (1:many
+              night/metroline/...). Applied to both Routes and
+              Stations tabs.
             -->
             <Stack spacing={1.5}>
               {#if favoritesStore.markers.size > 0}
@@ -764,6 +792,20 @@
                 >
                   {#each presentTypes as t (t)}
                     <TypeBadge type={t} color={colorByType.get(t)} active={typeFilter.has(t)} onclick={() => toggleType(t)} />
+                  {/each}
+                </Stack>
+              {/if}
+
+              {#if allNetworks.length > 0}
+                <Stack direction="row" spacing={1} align="center" wrap class="pt-2">
+                  {#each allNetworks as net (net.id)}
+                    <TypeBadge
+                      size="small"
+                      label={net.name}
+                      color={net.color}
+                      active={networkFilter.has(net.id)}
+                      onclick={() => toggleNetwork(net.id)}
+                    />
                   {/each}
                 </Stack>
               {/if}

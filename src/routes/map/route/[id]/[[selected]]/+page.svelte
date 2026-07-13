@@ -6,12 +6,12 @@
   import { ArrowRightLeft, Bus, Calendar, Heart, Maximize2, Minus, Plus } from 'lucide-svelte';
   import {
     BackButton, Card, CardContent, Chip, IconButton, RouteBadge, SelectFeedCard, Spinner,
-    Stack, Typography, networkIcon,
+    Stack, Typography, networkIcon, networkTextColor,
   } from '$lib/ui';
   import { getGtfsRepo } from '$lib/data/gtfs/repo';
   import { useOtherDirectionExists } from '$lib/data/gtfs/otherDirectionExists.svelte';
   import { parseRouteIdWithDirection } from '$lib/data/gtfs/parseRouteIdWithDirection';
-  import type { RouteTag } from '$lib/domain/types';
+  import type { Network, RouteTag } from '$lib/domain/types';
   import type { RouteMapView } from '$lib/data/gtfs/types';
   import {
     formatHHMM, formatRelativeMin, pickContrastingText, vehicleTypeLabel,
@@ -71,12 +71,16 @@
   let view = $state<RouteMapView | null>(null);
   let error = $state<string | null>(null);
   let routeTags = $state<Map<string, RouteTag>>(new Map());
+  let networkMap = $state<Map<string, Network>>(new Map());
 
   $effect(() => {
     const fid = feedsStore.boundFeedId;
     if (!fid) return;
     void getGtfsRepo().getRouteTags().then((tags) => {
       routeTags = new Map(tags.map((t) => [t.id, t]));
+    });
+    void getGtfsRepo().getNetworks().then((nets) => {
+      networkMap = new Map(nets.map((n) => [n.id, n]));
     });
   });
 
@@ -1216,6 +1220,14 @@
             <Stack spacing={0.5} class="flex-1 min-w-0">
               <Stack direction="row" spacing={1} align="center" wrap>
                 <Typography variant="h5" class="truncate">{headerTitle}</Typography>
+                {#each (route?.networks ?? []) as netId (netId)}
+                  {@const net = networkMap.get(netId)}
+                  {@const Icon = networkIcon(netId)}
+                  <Chip size="small" hex={net?.color} fg={net ? networkTextColor(net.color) : undefined}>
+                    {#snippet icon()}<Icon size={12} />{/snippet}
+                    {net?.name ?? netId}
+                  </Chip>
+                {/each}
                 {#each (route?.tags ?? []) as tagId (tagId)}
                   {@const tag = routeTags.get(tagId)}
                   {@const Icon = networkIcon(tagId)}
