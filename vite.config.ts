@@ -11,35 +11,6 @@ export default defineConfig({
   plugins: [
     tailwindcss(),
     sveltekit(),
-    // Dev-only post-transform: SvelteKitPWA's DevPlugin emits a
-    // <script> that calls `navigator.serviceWorker.register` against
-    // the dev /service-worker.js. The dev SW is the raw
-    // src/service-worker.ts (Vite serves it as-is, so the literal
-    // `__APP_VERSION__` is un-replaced and the browser throws
-    // "Can't find variable: __APP_VERSION__" during evaluation,
-    // surfacing as an unhandled promise rejection on every page
-    // load). SvelteKitPWA's own options to suppress the script
-    // (`disable`, `injectRegister: null`) don't work on the dev
-    // injection path -- the only knob that sticks is to strip the
-    // <script> out of the dev HTML. In production the plugin
-    // registers the SW via the build-time injection (which runs
-    // against the properly-built SW with `__APP_VERSION__` replaced)
-    // and src/routes/+layout.svelte's prod branch also does its own
-    // register() -- so removing the dev script has no production
-    // effect.
-    {
-      name: 'strip-dev-sw-registration',
-      apply: 'serve',
-      transformIndexHtml: {
-        order: 'post',
-        handler(html) {
-          return html.replace(
-            /<script>\s*if\s*\(\s*'serviceWorker'\s*in\s*navigator\s*\)[\s\S]*?<\/script>/,
-            '<!-- dev SW registration stripped: see vite.config.ts -->',
-          );
-        },
-      },
-    },
     SvelteKitPWA({
       // The DevPlugin's `transformIndexHtml` injects a registration
       // script in dev that calls `navigator.serviceWorker.register`
@@ -102,6 +73,49 @@ export default defineConfig({
         ],
       },
     }),
+    // Dev-only post-transform: SvelteKitPWA's DevPlugin emits a
+    // <script> that calls `navigator.serviceWorker.register` against
+    // the dev /service-worker.js. The dev SW is the raw
+    // src/service-worker.ts (Vite serves it as-is, so the literal
+    // `__APP_VERSION__` is un-replaced and the browser throws
+    // "Can't find variable: __APP_VERSION__" during evaluation,
+    // surfacing as an unhandled promise rejection on every page
+    // load). SvelteKitPWA's own options to suppress the script
+    // (`disable`, `injectRegister: null`) don't work on the dev
+    // injection path -- the only knob that sticks is to strip the
+    // <script> out of the dev HTML after the DevPlugin has injected
+    // it. This plugin is registered AFTER SvelteKitPWA so its
+    // `transformIndexHtml` runs after the DevPlugin's. In
+    // production the plugin registers the SW via the build-time
+    // injection (which runs against the properly-built SW with
+    // `__APP_VERSION__` replaced) and src/routes/+layout.svelte's
+    // prod branch also does its own register() -- so removing the
+    // dev script has no production effect.
+    {
+      name: 'neutralize-dev-sw',
+      apply: 'serve',
+      configureServer(server) {
+        // Intercept requests for /service-worker.js in dev and
+        // return a no-op SW. The SvelteKitPWA plugin serves the
+        // raw src/service-worker.ts at that path in dev, which
+        // still references the literal `__APP_VERSION__` (Vite's
+        // `define` only runs at build time). The browser evaluates
+        // it, throws "Can't find variable: __APP_VERSION__", and
+        // the registration promise rejects -- SvelteKit surfaces
+        // that as an unhandled rejection on every page load.
+        // Returning a no-op SW silences the error without affecting
+        // production (this plugin has `apply: 'serve'`).
+        server.middlewares.use((req, res, next) => {
+          if (req.url === '/service-worker.js' || req.url === '/service-worker.js?') {
+            res.setHeader('Content-Type', 'application/javascript');
+            res.statusCode = 200;
+            res.end('// dev SW neutralized: see vite.config.ts\nself.addEventListener("install", () => self.skipWaiting());\nself.addEventListener("activate", (e) => e.waitUntil(self.clients.claim()));\n');
+            return;
+          }
+          next();
+        });
+      },
+    },
   ],
   // __APP_VERSION__ is read by src/service-worker.ts to namespace
   // the precache bucket. Without `define` here, the SW would have
