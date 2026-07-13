@@ -850,22 +850,14 @@
         />
 
         <!--
-          Both tabs are always mounted. The inactive one is
-          `visibility: hidden` (NOT `display: none`) so its content
-          still contributes to `document.documentElement.scrollHeight`.
-          That makes the document height = max of the two tabs'
-          content heights, so `window.scrollY` is preserved across
-          tab swaps and across filter changes (which can shrink the
-          visible tab). Cards have no `border-t` of their own -- the
-          single divider below the Tabs control gives one line
-          between Tabs and the catalog area; otherwise the second
-          card would paint a thin line at the bottom of the first
-          one. (issue #344)
+          Both tab panels use `display: none` for the inactive one.
+          The filter card above is a separate sibling — no stacking
+          from hidden content, no gap under the tab strip. (issue #344)
         -->
         <div class="border-t border-[color:var(--color-border)]"></div>
 
         <div
-          style:visibility={activeTab === 'routes' ? 'visible' : 'hidden'}
+          style:display={activeTab === 'routes' ? 'block' : 'none'}
           aria-hidden={activeTab !== 'routes' ? 'true' : undefined}
         >
           {#if catalogRoutes.length > 0}
@@ -892,7 +884,7 @@
         </div>
 
         <div
-          style:visibility={activeTab === 'stations' ? 'visible' : 'hidden'}
+          style:display={activeTab === 'stations' ? 'block' : 'none'}
           aria-hidden={activeTab !== 'stations' ? 'true' : undefined}
         >
           {#if otherStationsPage.length > 0 || otherStationsLoading || otherStationsError}
