@@ -502,26 +502,22 @@
     const set = new Set(favoritesStore.routeIds);
     return sortRoutesForPicker(allRoutes.filter((r) => set.has(r.id)), activeRouteIds);
   });
-  // All routes passing filters (including favorited), split by schedule status.
-  // Favorited routes appear here AND in the pinned FavoritesCard above.
-  const otherRoutes = $derived.by<Route[]>(() => {
-    return sortRoutesForPicker(
-      filteredRoutes.filter((r) => r.hasSchedule !== false),
-      activeRouteIds,
-    );
-  });
-  const noScheduleRoutes = $derived.by<Route[]>(() => {
-    return sortRoutesForPicker(
-      filteredRoutes.filter((r) => r.hasSchedule === false),
-      activeRouteIds,
-    );
+  // All routes passing the filter cascade (including routes whose
+  // schedule is empty - the Tranzy fallback for routes with no CSV
+  // coverage ships trips with empty arrival_time, which surfaces
+  // here as `hasSchedule === false`). The filter is single-value
+  // per row (mode/network/tag/marker), so a route qualifies iff it
+  // matches the active filter for that row OR no filter is set.
+  // No visual sub-grouping by hasSchedule: a route the user
+  // filtered for should be visible, even if it has no schedule to
+  // show. Favorited routes also appear here AND in the pinned
+  // FavoritesCard above.
+  const catalogRoutes = $derived.by<Route[]>(() => {
+    return sortRoutesForPicker(filteredRoutes, activeRouteIds);
   });
 
-  // Catalog rows combined - one fetch covers both scheduled + no-schedule.
-  const catalogRouteIds = $derived([
-    ...otherRoutes.map((r) => r.id),
-    ...noScheduleRoutes.map((r) => r.id),
-  ]);
+  // Catalog row ids - one fetch covers the full filtered set.
+  const catalogRouteIds = $derived(catalogRoutes.map((r) => r.id));
 
   // Per-route stop lists for the catalog rows' marker badges.
   // Batched in one worker call. Tracked on catalogRouteIds so the
@@ -806,7 +802,7 @@
         {#if activeTab === 'routes'}
           <!-- ── Routes tab: all routes ─────── -->
 
-          {#if otherRoutes.length > 0 || noScheduleRoutes.length > 0}
+          {#if catalogRoutes.length > 0}
             <Card class="rounded-none border-0 border-t border-[color:var(--color-border)] shadow-none">
               <CardContent>
                 <Stack spacing={1}>
@@ -819,10 +815,7 @@
                     </Typography>
                   </Stack>
                   <Stack spacing={1}>
-                    {#each otherRoutes as route (route.id)}
-                      {@render expandableRouteRow({ route, markerStopIds: catalogRouteStopIds[route.id] ?? [] })}
-                    {/each}
-                    {#each noScheduleRoutes as route (route.id)}
+                    {#each catalogRoutes as route (route.id)}
                       {@render expandableRouteRow({ route, markerStopIds: catalogRouteStopIds[route.id] ?? [] })}
                     {/each}
                   </Stack>

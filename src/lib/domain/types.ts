@@ -22,7 +22,11 @@ export interface Route {
   hasSchedule?: boolean;
   /** Producer-extension tag ids from `_route_tags.txt` (1:many per route, e.g. `['night', 'metroline']`). Undefined on feeds that don't ship the producer extension. */
   tags?: string[];
-  /** GTFS route_networks.txt ids — `['night']`, `['metroline', 'school']`. Undefined on older cached blobs. */
+  /** Public GTFS `networks.txt` ids the route belongs to. 1:1 by
+   *  `route_id` per the public spec, so this is a single-element
+   *  array in practice; kept as `string[]` for forward-compat
+   *  with any future spec change. Undefined on older cached blobs
+   *  predating the spec's adoption. */
   networks?: string[];
 }
 
