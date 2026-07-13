@@ -46,6 +46,8 @@ export interface RouteTag {
   name: string;
   /** TAGS-declaration index; sort ASCENDING for stable badge ordering. The cluj adapter encodes 0=night, 1=metroline, 2=airport, 3=festival, 4=special. */
   priority: number;
+  /** Lucide-svelte slug the chip renders (e.g. `moon`, `map-pin`, `plane`, `music`, `zap`). Owned by the adapter — the app just looks it up in `tagIcons`. Undefined when the adapter didn't declare an icon for this tag; the consumer falls back to a default. */
+  icon?: string;
 }
 
 /** A station / stop as the UI sees it. */

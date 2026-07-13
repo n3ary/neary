@@ -65,5 +65,5 @@ export { default as StatusDot } from './StatusDot.svelte';
 export { default as AppLayout } from './AppLayout.svelte';
 
 export { cn } from './cn';
-export { networkIcon, networkTextColor } from './networkIcon';
+export { tagIcon, hasTagIcon, networkTextColor } from './tagIcons';
 

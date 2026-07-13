@@ -41,7 +41,7 @@
   import {
     Card, CardContent, Chip, Collapsible, FavoriteRouteRow, FavoriteStationRow,
     FavoritesCard, SelectFeedCard, Spinner, Stack, Tabs, TripStopList, Typography,
-    TypeBadge, networkIcon,
+    TypeBadge, tagIcon, hasTagIcon,
   } from '$lib/ui';
   import { getGtfsRepo } from '$lib/data/gtfs/repo';
   import type { ScheduleTripStop, StopWithDistance } from '$lib/data/gtfs/types';
@@ -774,7 +774,14 @@
                       label={tag.name}
                       active={tagFilter === tag.id}
                       onclick={() => toggleTag(tag.id)}
-                    />
+                    >
+                      {#snippet icon()}
+                        {#if hasTagIcon(tag.icon)}
+                          {@const Icon = tagIcon(tag.icon)}
+                          <Icon size={12} strokeWidth={2.25} class="shrink-0" />
+                        {/if}
+                      {/snippet}
+                    </TypeBadge>
                   {/each}
                 </Stack>
               {/if}

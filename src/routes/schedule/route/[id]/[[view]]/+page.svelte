@@ -5,7 +5,7 @@
   import { ArrowRightLeft, ChevronDown, Map as MapIcon } from 'lucide-svelte';
   import {
     BackButton, Card, CardContent, Chip, IconButton, RouteBadge, SelectFeedCard, Spinner,
-    Stack, ToggleGroup, TripStopList, Typography, networkIcon, networkTextColor,
+    Stack, ToggleGroup, TripStopList, Typography, tagIcon, hasTagIcon, networkTextColor,
   } from '$lib/ui';
   import { getGtfsRepo } from '$lib/data/gtfs/repo';
   import { useOtherDirectionExists } from '$lib/data/gtfs/otherDirectionExists.svelte';
@@ -525,19 +525,23 @@ import { favoritesStore } from '$lib/stores/favoritesStore.svelte';
                 <Typography variant="h5" class="truncate">{headerTitle}</Typography>
                 {#each (route?.networks ?? []) as netId (netId)}
                   {@const net = networkMap.get(netId)}
-                  {@const Icon = networkIcon(netId)}
                   <Chip size="small" hex={net?.color} fg={net ? networkTextColor(net.color) : undefined}>
-                    {#snippet icon()}<Icon size={12} />{/snippet}
                     {net?.name ?? netId}
                   </Chip>
                 {/each}
                 {#each (route?.tags ?? []) as tagId (tagId)}
                   {@const tag = routeTags.get(tagId)}
-                  {@const Icon = networkIcon(tagId)}
-                  <Chip size="small">
-                    {#snippet icon()}<Icon size={12} />{/snippet}
-                    {tag?.name ?? tagId}
-                  </Chip>
+                  {@const TagIcon = tag?.icon ? tagIcon(tag.icon) : null}
+                  {#if TagIcon}
+                    <Chip size="small">
+                      {#snippet icon()}<TagIcon size={12} />{/snippet}
+                      {tag?.name ?? tagId}
+                    </Chip>
+                  {:else}
+                    <Chip size="small">
+                      {tag?.name ?? tagId}
+                    </Chip>
+                  {/if}
                 {/each}
               </Stack>
               {#if headerSubtitle}
