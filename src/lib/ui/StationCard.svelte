@@ -31,6 +31,7 @@
   import IconButton from './IconButton.svelte';
   import RouteBadge from './RouteBadge.svelte';
   import Stack from './Stack.svelte';
+  import StationMarkerBadges from './StationMarkerBadges.svelte';
   import StationMarkerDropdown from './StationMarkerDropdown.svelte';
   import Tooltip from './Tooltip.svelte';
   import TripStopList from './TripStopList.svelte';
@@ -57,6 +58,15 @@
      *  through the station are visible even when capped out of the 5-row
      *  board below. Used by the Stations page. */
     allRoutes?: Route[];
+    /** Full vehicle list serving this station (pre-cap, pre-filter). When
+     *  set, widens the header marker aggregate so a marker on a vehicle
+     *  that's been capped or filtered out of `rows` is still visible.
+     *  Same shape as `allRoutes` for routes; mirrors the assembler's
+     *  pre-bucket pre-cap pre-filter set. Without this prop the header
+     *  aggregate is built from `rows.map((r) => r.vehicle)` (post-cap),
+     *  which is what the showcase and other getUpcomingStops-less
+     *  consumers end up with. */
+    allVehicles?: Vehicle[];
     expanded: boolean;
     ontoggle: () => void;
     /** When true, station shows a "Drop off only" outlined chip. */
@@ -91,6 +101,7 @@
     rows,
     rawVehicleCount,
     allRoutes,
+    allVehicles,
     expanded,
     ontoggle,
     dropOffOnly = false,
@@ -149,22 +160,59 @@
   // Per-vehicle headsign markers: unique markers across the stops
   // the vehicle will visit AFTER this station. Reuses the same
   // `getUpcomingStops` helper that powers the expanded stops list,
-  // called per vehicle (N+1) - acceptable for a typical board
-  // (5-10 vehicles) and avoids introducing a parallel batched
-  // helper for one consumer. Empty for vehicles at the trip's
-  // last stop (no remaining).
+  // called per vehicle (N+1). The eligible set is the pre-cap
+  // pre-filter `allVehicles` when the caller supplies it (so the
+  // header aggregate surfaces markers on vehicles that were capped or
+  // filtered out of the visible board) — falls back to `rows` for
+  // showcase-style consumers. NO bound: a station where the marker-
+  // reaching vehicle is the Nth in SQL-default order must still feed
+  // the aggregate; the header's contract is "any vehicle from this
+  // station reaches a marked stop", and a bound can silently drop the
+  // vehicle that carries the marker. The per-vehicle Map lookup uses
+  // vehicle id; the header reads the flat list of stopIds.
+  // Eligibility (tripId && !isLastStop) drops vehicles that have no
+  // upcoming stops to surface. Per-station N+1 cost scales with the
+  // 18h scheduled-arrival window per stop — typical 5-30, hub 50+.
+  // If the home page's overall fetch budget ever hurts, push the
+  // aggregate into the worker SQL ("for each marked stop, which
+  // stations on the same trip come before it") and replace this with
+  // a precomputed `reachableMarkers: StationMarker[]` per stop.
   let vehicleHeadStopIds = $state<Map<string, string[]>>(new Map());
+
+  // Flat union of all upcoming stop ids across the board's vehicles.
+  // Drives the deduped marker set rendered next to the station name
+  // in the card header. Stop-id list (not marker list) is the right
+  // shape because `StationMarkerBadges` dedupes on the marker axis via
+  // the same `markerFor` lookup the per-vehicle badges use, so the
+  // header and the rows stay in lockstep on what counts as "marked".
+  const allHeadsignStopIds = $derived.by<string[]>(() => {
+    if (vehicleHeadStopIds.size === 0) return [];
+    const out: string[] = [];
+    for (const stops of vehicleHeadStopIds.values()) {
+      for (const id of stops) out.push(id);
+    }
+    return out;
+  });
 
   $effect(() => {
     const fid = feedsStore.boundFeedId;
-    if (!fid || rows.length === 0 || !getUpcomingStops) {
+    if (!fid || !getUpcomingStops) {
       vehicleHeadStopIds = new Map();
       return;
     }
-    // Vehicles that have a trip and aren't at the last stop.
-    const eligible = rows
-      .map((r) => r.vehicle)
-      .filter((v) => v.schedule?.tripId && !v.schedule?.isLastStop);
+    // Pre-cap pre-filter when supplied (so a marker on a vehicle
+    // capped or filtered out of the visible board still feeds the
+    // header aggregate); fall back to `rows` for the showcase and
+    // any other consumer that doesn't pass `allVehicles`. NO bound:
+    // the aggregate's contract is "any vehicle from this station
+    // reaches a marked stop", and a bound can silently drop the
+    // vehicle that carries the marker.
+    const source = allVehicles && allVehicles.length > 0
+      ? allVehicles
+      : rows.map((r) => r.vehicle);
+    const eligible = source.filter(
+      (v) => v.schedule?.tripId && !v.schedule?.isLastStop,
+    );
     if (eligible.length === 0) {
       vehicleHeadStopIds = new Map();
       return;
@@ -324,7 +372,19 @@
         )}
       >
         <Stack spacing={0.5}>
-          <Typography variant="h6" class="truncate">{station.name}</Typography>
+          <div class="flex items-center gap-1.5 min-w-0">
+            <Typography variant="h6" class="truncate flex-1 min-w-0">{station.name}</Typography>
+            <!-- Header aggregate: deduped union of markers from every
+                 vehicle's upcoming stops. Stays visible whether the
+                 card is expanded or collapsed. Inactive (no badges)
+                 when the consumer doesn't pass `getUpcomingStops`. -->
+            <StationMarkerBadges
+              stopIds={allHeadsignStopIds}
+              markerFor={favoritesStore.markerFor}
+              size={14}
+              class="shrink-0"
+            />
+          </div>
 
           <Stack direction="row" spacing={1} align="center" wrap>
             {#if typeof station.distance === 'number'}

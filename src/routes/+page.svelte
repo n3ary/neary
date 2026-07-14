@@ -552,6 +552,7 @@
             station={{ id: stop.id, name: stop.name, distance: stop.distance, lat: stop.lat, lon: stop.lon }}
             rows={rows}
             allRoutes={allRoutes}
+            allVehicles={vehicles}
             selectedRouteId={stationsViewStore.routeFilterByStop[stop.id] ?? null}
             onRouteClick={(rid: string) => stationsViewStore.applyRouteBadgeTap(stop.id, rid)}
             favoriteRouteIds={favoritesStore.routeIds}
