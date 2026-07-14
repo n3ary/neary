@@ -6,7 +6,7 @@ import type {
   Vehicle,
   VehicleType,
 } from '../types';
-import { vehicleTypeFromGtfs } from '../types';
+import { MISSING_ROUTE_COLOR, vehicleTypeFromGtfs } from '../types';
 import { timeToMinutes } from './timeUtils';
 
 /** Raw row from the joined SQL query the worker runs. */
@@ -77,7 +77,7 @@ export function scanSchedule(inputs: ScheduleScannerInputs): Vehicle[] {
       // GTFS route_id is text per spec; keep as the worker emitted it. Number() would map non-numeric ids ('102L') to NaN.
       id: String(r.route_id),
       shortName: r.route_short_name,
-      color: r.route_color ? `#${r.route_color}` : '#F3513C',
+      color: r.route_color ? `#${r.route_color}` : MISSING_ROUTE_COLOR,
       textColor: r.route_text_color ? `#${r.route_text_color}` : undefined,
       // NaN-arrival skip above guarantees this trip has a usable arrival_time — set explicitly so consumers don't fall through ?? true.
       hasSchedule: true,

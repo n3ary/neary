@@ -374,21 +374,37 @@
   });
 
   // Routes "active right now" set (one worker round-trip).
-  $effect(() => {
+  // Track a stable `windowKey` derived from the current schedule
+  // window rather than nowTicker.ms directly. nowTicker pulses
+  // every 15s; the active route set only changes when the schedule
+  // window's `fromMin` ticks over (once a minute). Tracking the
+  // raw `ms` meant the effect re-ran on every 15s tick and hit
+  // the worker four times per window for nothing. The dedup at
+  // the bottom of the body still guards against a no-op write
+  // (e.g. when the worker returns a Set with identical contents
+  // but a fresh reference); the difference is the worker isn't
+  // called at all when the window hasn't moved (issue #306
+  // follow-up: the visible "refresh" on /favorites was the
+  // worker round-trip itself, not the sort).
+  const activeWindowKey = $derived.by(() => {
     const fid = feedsStore.boundFeedId;
-    void fid;
-    if (!fid) return;
-    const now = nowTicker.ms;
+    if (!fid) return null;
+    const qp = scheduleWindowFor({
+      view: 'today',
+      isNight: false,
+      nowMs: nowTicker.ms,
+      timeZone: tz,
+    });
+    return `${qp.localDate}|${qp.fromMin}`;
+  });
+  $effect(() => {
+    const key = activeWindowKey;
+    if (!key) return;
     (async () => {
       try {
         const repo = getGtfsRepo();
-        const qp = scheduleWindowFor({
-          view: 'today',
-          isNight: false,
-          nowMs: now,
-          timeZone: tz,
-        });
-        const ids = await repo.getActiveRouteIdsInWindow(qp.localDate, qp.fromMin, 60);
+        const [localDate, fromMin] = key.split('|');
+        const ids = await repo.getActiveRouteIdsInWindow(localDate, Number(fromMin), 60);
         const next = new Set(ids);
         // Skip the write when the active set hasn't actually changed.
         // Without this, every nowTicker pulse produces a fresh Set

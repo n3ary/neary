@@ -14,7 +14,7 @@
 import type { Database } from '@sqlite.org/sqlite-wasm';
 import type { RouteMapTrip, RouteMapView, ScheduleTripStop } from '$lib/data/gtfs/types';
 import { timeToMinutes } from '$lib/domain/pipeline/timeUtils';
-import { vehicleTypeFromGtfs } from '$lib/domain/types';
+import { MISSING_ROUTE_COLOR, vehicleTypeFromGtfs } from '$lib/domain/types';
 import { activeServicesOn } from '../activeServices';
 import { shapeCache } from '../shapeCache';
 import { selectAll } from '../sqlHelpers';
@@ -80,7 +80,7 @@ export function getRouteMapView(
   const route = {
     id: String(r.route_id),
     shortName: r.route_short_name,
-    color: r.route_color ? `#${r.route_color}` : '#F3513C',
+    color: r.route_color ? `#${r.route_color}` : MISSING_ROUTE_COLOR,
     textColor: r.route_text_color ? `#${r.route_text_color}` : undefined,
     type: vehicleTypeFromGtfs(r.route_type),
     hasSchedule: withSchedule.has(String(r.route_id)),

@@ -216,6 +216,16 @@ export type Vehicle =
       liveSources: LiveSource[];
     });
 
+/** Fallback `route_color` when a row arrives without one. The cluj
+ *  adapter's `route-colors.ts` is contractually supposed to ensure no
+ *  row reaches the DB with a missing color (placeholder substitution +
+ *  OKLCh modal-collision resolution guarantees every row_type gets a
+ *  color), so this is dead code for cluj. It still fires for older
+ *  cached blobs predating the fixup and for any future adapter that
+ *  doesn't run the same pipeline. Matches the producer-side
+ *  `ANCHOR_COLOR` in n3ary/gtfs-adapters so the two sides can't drift. */
+export const MISSING_ROUTE_COLOR = '#F3513C';
+
 /** Pick a black/white foreground that has enough contrast against a hex background. sRGB relative luminance (not perceptual lightness) — good enough for transit palettes which never sit near the boundary. */
 export function pickContrastingText(hex: string): '#000' | '#fff' {
   const c = hex.replace('#', '');
