@@ -107,7 +107,7 @@
   // the marker filter chips, etc.).
   // @ts-ignore Svelte 5 icon components don't satisfy a plain function signature;
   //       the cast is safe because we only invoke them with {size, strokeWidth}.
-  const options: Option[] = [
+  const allOptions: Option[] = [
     { marker: null, Icon: Bus, label: 'Normal' } as unknown as Option,
     ...STATION_MARKERS.map<Option>((m) => ({
       marker: m,
@@ -115,6 +115,14 @@
       label: m === 'cityCenter' ? 'City center' : m.charAt(0).toUpperCase() + m.slice(1),
     })),
   ];
+
+  // Filter out the current station's marker: the dropdown is for assigning
+  // a marker to *other* stations. Seeing the current station's marker here
+  // (e.g. "Work" when looking at the Work station) is confusing - that
+  // marker describes where vehicles can go from there, not the station itself.
+  const options = $derived(
+    allOptions.filter((o) => o.marker !== marker),
+  );
 </script>
 
 <Popover.Root>
