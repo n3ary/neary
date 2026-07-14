@@ -21,26 +21,21 @@
     /** Per-stop marker lookup. Pass the same `markerFor` function the
      *  store exposes (`(stopId) => StationMarker | undefined`). */
     markerFor: (stopId: string) => StationMarker | undefined;
-    /** Marker to exclude from the rendered set. Used by callers who
-     *  already show the current station's marker separately (e.g. in the
-     *  card avatar) so the headsign badge row doesn't repeat it. */
-    excludeMarker?: StationMarker | null;
     size?: 12 | 14 | 16;
     class?: string;
   };
 
-  let { stopIds, markerFor, excludeMarker = null, size = 14, class: className }: Props = $props();
+  let { stopIds, markerFor, size = 14, class: className }: Props = $props();
 
   // Unique markers across all stops, in canonical STATION_MARKERS order
-  // so the visual ordering is stable across views. Exclude the current
-  // station's own marker to avoid duplication in the headsign row.
+  // so the visual ordering is stable across views.
   const uniqueMarkers = $derived.by<StationMarker[]>(() => {
     const seen = new Set<StationMarker>();
     for (const id of stopIds) {
       const m = markerFor(id);
       if (m !== undefined) seen.add(m);
     }
-    return STATION_MARKERS.filter((m) => seen.has(m) && m !== excludeMarker);
+    return STATION_MARKERS.filter((m) => seen.has(m));
   });
 
   // Color per marker. All non-Normal markers use --color-favorite
