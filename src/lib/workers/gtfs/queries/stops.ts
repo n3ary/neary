@@ -4,6 +4,7 @@ import type { Database } from '@sqlite.org/sqlite-wasm';
 import { haversineMeters } from '@n3ary/gtfs-spec/shape';
 import { DAY_KEY_COLS } from '@n3ary/gtfs-spec/spec';
 import { timeToMinutes } from '$lib/domain/pipeline/timeUtils';
+import { MISSING_ROUTE_COLOR } from '$lib/domain/types';
 import type { StopWithDistance, UpcomingDeparture } from '$lib/data/gtfs/types';
 import { selectAll } from '../sqlHelpers';
 
@@ -269,7 +270,7 @@ export function getDeparturesFromStop(
       tripId: r.trip_id,
       routeId: r.route_id,
       routeShortName: r.route_short_name,
-      routeColor: r.route_color ? `#${r.route_color}` : '#F3513C',
+      routeColor: r.route_color ? `#${r.route_color}` : MISSING_ROUTE_COLOR,
       headsign: r.trip_headsign,
       departureTime: r.departure_time,
     }));

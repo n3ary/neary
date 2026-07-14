@@ -15,7 +15,7 @@
 
 import type { Database } from '@sqlite.org/sqlite-wasm';
 import type { Route, VehicleType } from '$lib/domain/types';
-import { vehicleTypeFromGtfs } from '$lib/domain/types';
+import { MISSING_ROUTE_COLOR, vehicleTypeFromGtfs } from '$lib/domain/types';
 import type { StopWithDistance } from '$lib/data/gtfs/types';
 import { haversineMeters } from '@n3ary/gtfs-spec/shape';
 import { selectAll } from '../sqlHelpers';
@@ -103,7 +103,7 @@ function rowToRoute(r: RouteRowBase, withSchedule: Set<string>): Route {
     shortName: r.route_short_name,
     longName: r.route_long_name?.trim() ? r.route_long_name : undefined,
     description: r.route_desc?.trim() ? r.route_desc : undefined,
-    color: r.route_color ? `#${r.route_color}` : '#F3513C',
+    color: r.route_color ? `#${r.route_color}` : MISSING_ROUTE_COLOR,
     textColor: r.route_text_color ? `#${r.route_text_color}` : undefined,
     type: vehicleTypeFromGtfs(r.route_type),
     hasSchedule: withSchedule.has(r.route_id),

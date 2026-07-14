@@ -12,7 +12,7 @@
 
 import type { Database } from '@sqlite.org/sqlite-wasm';
 import type { Route, Vehicle } from '$lib/domain/types';
-import { vehicleTypeFromGtfs } from '$lib/domain/types';
+import { MISSING_ROUTE_COLOR, vehicleTypeFromGtfs } from '$lib/domain/types';
 import { dateKeyInTz, minSinceMidnightInTz, timeToMinutes } from '$lib/domain/pipeline/timeUtils';
 import { activeServicesOn } from '../activeServices';
 import { selectAll } from '../sqlHelpers';
@@ -76,7 +76,7 @@ export function getActiveTrips(
     const route: Route = {
       id: String(r.route_id),
       shortName: r.route_short_name,
-      color: r.route_color ? `#${r.route_color}` : '#F3513C',
+      color: r.route_color ? `#${r.route_color}` : MISSING_ROUTE_COLOR,
       textColor: r.route_text_color ? `#${r.route_text_color}` : undefined,
       type: vehicleTypeFromGtfs(r.route_type),
       hasSchedule: withSchedule.has(String(r.route_id)),
