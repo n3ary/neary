@@ -377,13 +377,18 @@
             <!-- Header aggregate: deduped union of markers from every
                  vehicle's upcoming stops. Stays visible whether the
                  card is expanded or collapsed. Inactive (no badges)
-                 when the consumer doesn't pass `getUpcomingStops`. -->
-            <StationMarkerBadges
-              stopIds={allHeadsignStopIds}
-              markerFor={favoritesStore.markerFor}
-              size={14}
-              class="shrink-0"
-            />
+                 when the consumer doesn't pass `getUpcomingStops`.
+                 excludeMarker ensures the current station's own marker
+                 (already shown by the card avatar) doesn't appear here. -->
+            <div data-testid="header-headsign-markers">
+              <StationMarkerBadges
+                stopIds={allHeadsignStopIds}
+                markerFor={favoritesStore.markerFor}
+                excludeMarker={resolvedMarker}
+                size={14}
+                class="shrink-0"
+              />
+            </div>
           </div>
 
           <Stack direction="row" spacing={1} align="center" wrap>
