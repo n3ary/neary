@@ -2,7 +2,7 @@
 <script lang="ts">
   import { page } from '$app/state';
   import {
-    Card, CardContent, SelectFeedCard, Spinner, Stack, StationCard, Typography,
+    BuyTicketLink, Card, CardContent, SelectFeedCard, Spinner, Stack, StationCard, Typography,
   } from '$lib/ui';
   import { getGtfsRepo } from '$lib/data/gtfs/repo';
   import { getUpcomingStops } from '$lib/data/gtfs/upcomingStops';
@@ -120,6 +120,11 @@
     ontoggle={() => {}}
     onChangeMarker={(id: string, next: StationMarker | null) => favoritesStore.setMarker(id, next)}
   />
+  {#if feedsStore.byId(feedsStore.boundFeedId)?.buyTicketUrl}
+    <div class="mt-3">
+      <BuyTicketLink url={feedsStore.byId(feedsStore.boundFeedId)!.buyTicketUrl!} />
+    </div>
+  {/if}
   {/if}
   <div class="flex-1" aria-hidden="true"></div>
 </div>

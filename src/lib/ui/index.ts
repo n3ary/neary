@@ -40,6 +40,7 @@ export { default as InfoCard } from './InfoCard.svelte';
 export { default as NoLocationCard } from './NoLocationCard.svelte';
 export { default as SelectFeedCard } from './SelectFeedCard.svelte';
 export { default as TypeBadge } from './TypeBadge.svelte';
+export { default as BuyTicketLink } from './BuyTicketLink.svelte';
 
 // Favorites - shared row shapes for favorited routes + stations. One
 // component per kind so a change to the heart / Calendar / tap action
