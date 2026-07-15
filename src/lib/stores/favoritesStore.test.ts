@@ -1,13 +1,9 @@
 import { describe, expect, it, beforeEach } from 'vitest';
 import { favoritesStore, FavoritesStoreInternal } from './favoritesStore.svelte';
 
-// favoritesStore persists to localStorage. The vitest config doesn't
-// pin an environment, so node runs by default with no localStorage
-// global. Stub the API with an in-memory Map so the persistence
-// assertions stay meaningful without pulling in jsdom.
+// In-memory localStorage shim for isolated test runs.
 const memStore = new Map<string, string>();
-beforeEach(() => {
-  memStore.clear();
+function useMemStore() {
   (globalThis as { localStorage?: Storage }).localStorage = {
     getItem: (k: string) => memStore.get(k) ?? null,
     setItem: (k: string, v: string) => { memStore.set(k, v); },
@@ -16,16 +12,20 @@ beforeEach(() => {
     key: (i: number) => Array.from(memStore.keys())[i] ?? null,
     get length() { return memStore.size; },
   } as Storage;
+}
+useMemStore();
+
+beforeEach(() => {
+  memStore.clear();
+  // Reset the singleton to a clean state for each test.
+  favoritesStore.clearRoutes();
+  favoritesStore.clearMarkers();
+  // Reload for a fresh feed so the store starts empty.
+  favoritesStore.loadForFeed('test-feed');
 });
 
 describe('favoritesStore routes', () => {
-  beforeEach(() => {
-    favoritesStore.clearRoutes();
-    favoritesStore.clearMarkers();
-    localStorage.clear();
-  });
-
-  it('starts empty', () => {
+  it('starts empty for a fresh feed', () => {
     expect(favoritesStore.routeIds.size).toBe(0);
   });
 
@@ -63,13 +63,7 @@ describe('favoritesStore routes', () => {
 });
 
 describe('favoritesStore station markers', () => {
-  beforeEach(() => {
-    favoritesStore.clearRoutes();
-    favoritesStore.clearMarkers();
-    localStorage.clear();
-  });
-
-  it('starts empty', () => {
+  it('starts empty for a fresh feed', () => {
     expect(favoritesStore.markers.size).toBe(0);
   });
 
@@ -137,20 +131,6 @@ describe('favoritesStore station markers', () => {
     expect(favoritesStore.markerFor('s-2')).toBe('home');
   });
 
-  it('stationIds -> markers: route set stays separate', () => {
-    favoritesStore.addRoute('r-1');
-    favoritesStore.setMarker('s-1', 'favorite');
-    expect(Array.from(favoritesStore.routeIds)).toEqual(['r-1']);
-    expect(favoritesStore.markers.size).toBe(1);
-  });
-
-  it('persists to a separate localStorage key from routes', () => {
-    favoritesStore.addRoute('r-1');
-    favoritesStore.setMarker('s-1', 'favorite');
-    expect(JSON.parse(localStorage.getItem('neary:favoriteRoutes') ?? '[]')).toEqual(['r-1']);
-    expect(JSON.parse(localStorage.getItem('neary:stationMarkers') ?? '{}')).toEqual({ 's-1': 'favorite' });
-  });
-
   it('stationsWithMarker filters by type', () => {
     favoritesStore.setMarker('s-1', 'home');
     favoritesStore.setMarker('s-2', 'work');
@@ -160,25 +140,126 @@ describe('favoritesStore station markers', () => {
     expect(favoritesStore.stationsWithMarker('favorite').sort()).toEqual(['s-3']);
     expect(favoritesStore.stationsWithMarker('cityCenter')).toEqual([]);
   });
+
+  it('route set stays separate from markers', () => {
+    favoritesStore.addRoute('r-1');
+    favoritesStore.setMarker('s-1', 'favorite');
+    expect(Array.from(favoritesStore.routeIds)).toEqual(['r-1']);
+    expect(favoritesStore.markers.size).toBe(1);
+  });
+
+  it('persists under a feed-scoped key', () => {
+    favoritesStore.setMarker('s-1', 'favorite');
+    const raw = localStorage.getItem('neary:stationMarkers:test-feed');
+    expect(JSON.parse(raw ?? '{}')).toEqual({ 's-1': 'favorite' });
+  });
+
+  it('does NOT persist to the legacy flat key', () => {
+    favoritesStore.setMarker('s-1', 'favorite');
+    expect(localStorage.getItem('neary:stationMarkers')).toBeNull();
+  });
 });
 
-describe('favoritesStore loadInitial', () => {
+describe('favoritesStore feed scoping', () => {
+  it('markers are isolated per feed', () => {
+    favoritesStore.setMarker('s-1', 'favorite');
+    // Switch to a different feed.
+    favoritesStore.loadForFeed('other-feed');
+    // No markers for the new feed yet.
+    expect(favoritesStore.markers.size).toBe(0);
+    expect(favoritesStore.markerFor('s-1')).toBeUndefined();
+    // Mark a station in the new feed.
+    favoritesStore.setMarker('s-2', 'home');
+    expect(favoritesStore.markerFor('s-2')).toBe('home');
+    // Original feed's markers are still in localStorage.
+    const raw = localStorage.getItem('neary:stationMarkers:test-feed');
+    expect(JSON.parse(raw ?? '{}')).toEqual({ 's-1': 'favorite' });
+    // Switch back to the original feed — markers restored.
+    favoritesStore.loadForFeed('test-feed');
+    expect(favoritesStore.markerFor('s-1')).toBe('favorite');
+    expect(favoritesStore.markerFor('s-2')).toBeUndefined();
+  });
+
+  it('loadForFeed is idempotent (safe to call twice)', () => {
+    favoritesStore.setMarker('s-1', 'favorite');
+    favoritesStore.loadForFeed('test-feed');
+    expect(favoritesStore.markerFor('s-1')).toBe('favorite');
+    favoritesStore.loadForFeed('test-feed');
+    expect(favoritesStore.markerFor('s-1')).toBe('favorite');
+  });
+
+  it('migration: legacy flat key is lifted to feed-scoped key', () => {
+    // Simulate the old flat-format data that existed before the fix.
+    localStorage.setItem('neary:stationMarkers', JSON.stringify({
+      's-old': 'favorite',
+      's-work': 'work',
+    }));
+    // Load for a feed — triggers one-time migration.
+    favoritesStore.loadForFeed('migrated-feed');
+    expect(favoritesStore.markerFor('s-old')).toBe('favorite');
+    expect(favoritesStore.markerFor('s-work')).toBe('work');
+    // Legacy key is deleted after migration.
+    expect(localStorage.getItem('neary:stationMarkers')).toBeNull();
+    // Data is stored under the feed-scoped key.
+    const raw = localStorage.getItem('neary:stationMarkers:migrated-feed');
+    expect(JSON.parse(raw ?? '{}')).toEqual({
+      's-old': 'favorite',
+      's-work': 'work',
+    });
+  });
+
+  it('migration is idempotent (does not re-read legacy key after first migration)', () => {
+    // Simulate partial migration: legacy gone, feed-scoped already has some data.
+    localStorage.setItem('neary:stationMarkers:migrated-feed', JSON.stringify({
+      's-existing': 'cityCenter',
+    }));
+    // No legacy key — migration is skipped.
+    favoritesStore.loadForFeed('migrated-feed');
+    expect(favoritesStore.markerFor('s-existing')).toBe('cityCenter');
+    // Legacy key should not appear.
+    expect(localStorage.getItem('neary:stationMarkers')).toBeNull();
+  });
+
+  it('clearMarkers only clears the current feed', () => {
+    favoritesStore.setMarker('s-1', 'favorite');
+    favoritesStore.loadForFeed('other-feed');
+    favoritesStore.setMarker('s-2', 'home');
+    favoritesStore.clearMarkers();
+    expect(favoritesStore.markers.size).toBe(0);
+    // Original feed's markers survived.
+    favoritesStore.loadForFeed('test-feed');
+    expect(favoritesStore.markerFor('s-1')).toBe('favorite');
+  });
+
+  it('setMarker is a noop when no feed is loaded', async () => {
+    // Create a fresh store instance (bypasses the module singleton) so we
+    // can test the no-feed guard without depending on beforeEach setup.
+    const { FavoritesStoreInternal } = await import('./favoritesStore.svelte');
+    const freshStore = new FavoritesStoreInternal();
+    // #currentFeedId is null by default — setMarker must not throw.
+    freshStore.setMarker('s-1', 'favorite');
+    expect(freshStore.markerFor('s-1')).toBeUndefined();
+  });
+});
+
+describe('favoritesStore loadInitial (legacy compat)', () => {
   beforeEach(() => {
     favoritesStore.clearRoutes();
     favoritesStore.clearMarkers();
-    localStorage.clear();
+    favoritesStore.loadForFeed('test-feed');
   });
 
-  it('reads the new key directly when present', () => {
-    localStorage.setItem('neary:stationMarkers', JSON.stringify({ 's-1': 'home', 's-2': 'favorite' }));
+  it('reads the feed-scoped key directly when present', () => {
+    localStorage.setItem('neary:stationMarkers:test-feed', JSON.stringify({ 's-1': 'home', 's-2': 'favorite' }));
     const fresh = new FavoritesStoreInternal();
+    fresh.loadForFeed('test-feed');
     expect(fresh.markerFor('s-1')).toBe('home');
     expect(fresh.markerFor('s-2')).toBe('favorite');
   });
 
   it('tolerates malformed localStorage without throwing on next write', () => {
-    localStorage.setItem('neary:stationMarkers', '{not json');
+    localStorage.setItem('neary:stationMarkers:test-feed', '{not json');
     favoritesStore.setMarker('s-1', 'favorite');
-    expect(JSON.parse(localStorage.getItem('neary:stationMarkers') ?? '{}')).toEqual({ 's-1': 'favorite' });
+    expect(JSON.parse(localStorage.getItem('neary:stationMarkers:test-feed') ?? '{}')).toEqual({ 's-1': 'favorite' });
   });
 });

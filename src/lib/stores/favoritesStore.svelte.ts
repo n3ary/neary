@@ -1,13 +1,23 @@
-// favoritesStore: persistent map of stop_id -> StationMarker. Each
-// station has at most one marker (a station's marker replaces any
-// previous one for the same station); many stations can share the
-// same marker type, so home / work / cityCenter are not singletons.
+// favoritesStore: persistent map of stop_id -> StationMarker, scoped to the
+// current feed. Each station has at most one marker (a station's marker
+// replaces any previous one for the same station); many stations can share
+// the same marker type, so home / work / cityCenter are not singletons.
+//
+// In-memory shape: raw stop_id -> marker (same as before).
+// localStorage shape: `neary:stationMarkers:{feedId}` -> JSON of
+//   `{stopId: marker, ...}` (feed-qualified key).
+//
+// Migration: on first load of a given feed, if the legacy flat key
+// `neary:stationMarkers` exists, its entries are stored under the
+// feed-scoped key and the legacy key is deleted. Migration is idempotent
+// (the legacy key is gone after first migration, so subsequent loads skip it).
 
 import { SvelteMap, SvelteSet } from 'svelte/reactivity';
 import { Briefcase, Crosshair, Heart, Home } from 'lucide-svelte';
 
 const STORAGE_KEY_ROUTES = 'neary:favoriteRoutes';
-const STORAGE_KEY_MARKERS = 'neary:stationMarkers';
+const STORAGE_KEY_MARKERS_PREFIX = 'neary:stationMarkers:';
+const STORAGE_KEY_MARKERS_LEGACY = 'neary:stationMarkers';
 
 export type StationMarker = 'favorite' | 'home' | 'work' | 'cityCenter';
 
@@ -18,17 +28,6 @@ export const STATION_MARKERS: readonly StationMarker[] = [
   'cityCenter',
 ] as const;
 
-// Single source of truth for the icon + display style per marker.
-// Every marker surface (badge / dropdown option / headsign / route row /
-// station header) imports this map - changing the icon here propagates
-// everywhere. Same shape as the marker enum so the iteration order in
-// STATION_MARKERS is the visual order.
-//
-// Crosshair for city center mirrors the Italian road sign "simbolo
-// centro" - a circle with crosshair lines indicating the centre of a
-// city/town. Visually distinct from Heart / Home / Briefcase so the
-// four markers don't blur together when shown on the same row.
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
 const _markerIcons: Record<StationMarker, any> = {
   favorite: Heart,
   home: Home,
@@ -37,9 +36,6 @@ const _markerIcons: Record<StationMarker, any> = {
 };
 export const STATION_MARKER_ICONS: Record<StationMarker, (props: any) => any> = _markerIcons;
 
-/** Whether the marker's icon should be filled or outlined. favorite
- *  fills (matches the long-standing heart fill convention); the rest
- *  read better outlined at the 12-16px sizes markers render at. */
 export const STATION_MARKER_FILL: Record<StationMarker, 'currentColor' | 'none'> = {
   favorite: 'currentColor',
   home: 'none',
@@ -47,10 +43,6 @@ export const STATION_MARKER_FILL: Record<StationMarker, 'currentColor' | 'none'>
   cityCenter: 'none',
 };
 
-/** Accent colour for stations with a marker. Used for the left-border
- *  accent on station cards/rows and the badge icon tint. Uses CSS
- *  variables so theme.css controls the actual colour. All non-normal
- *  markers use --color-favorite (amber) for consistency. */
 export const STATION_MARKER_ACCENT: Record<StationMarker | 'none', string> = {
   none: 'transparent',
   favorite: 'var(--color-favorite)',
@@ -70,8 +62,6 @@ function loadRoutes(): string[] {
     if (!raw) return [];
     const arr: unknown = JSON.parse(raw);
     if (!Array.isArray(arr)) return [];
-    // Tolerate legacy number entries so migrating users keep their
-    // favorites; everything new is written as a string.
     return arr
       .filter((x): x is string | number => typeof x === 'string' || typeof x === 'number')
       .map((x) => String(x));
@@ -80,52 +70,101 @@ function loadRoutes(): string[] {
   }
 }
 
-function loadMarkers(): Record<string, StationMarker> {
+/** Load markers for a specific feed from localStorage.
+ *
+ *  Migration: reads the legacy flat key once, stores under the feed-scoped
+ *  key, and deletes the legacy key. Idempotent — if the scoped key already
+ *  exists or the legacy key is gone, this is a no-op. */
+function loadMarkersForFeed(feedId: string): Record<string, StationMarker> {
   if (typeof localStorage === 'undefined') return {};
-  try {
-    const raw = localStorage.getItem(STORAGE_KEY_MARKERS);
-    if (!raw) return {};
-    const parsed: unknown = JSON.parse(raw);
-    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return {};
-    const out: Record<string, StationMarker> = {};
-    for (const [k, v] of Object.entries(parsed as Record<string, unknown>)) {
-      if (isStationMarker(v)) out[k] = v;
+  const scopedKey = `${STORAGE_KEY_MARKERS_PREFIX}${feedId}`;
+
+  const scoped = localStorage.getItem(scopedKey);
+  if (scoped) {
+    try {
+      const parsed: unknown = JSON.parse(scoped);
+      if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return {};
+      const out: Record<string, StationMarker> = {};
+      for (const [k, v] of Object.entries(parsed as Record<string, unknown>)) {
+        if (isStationMarker(v)) out[k] = v;
+      }
+      return out;
+    } catch {
+      return {};
     }
-    return out;
+  }
+
+  // Migration: one-time lift from legacy flat key.
+  const legacy = localStorage.getItem(STORAGE_KEY_MARKERS_LEGACY);
+  if (legacy) {
+    try {
+      const parsed: unknown = JSON.parse(legacy);
+      if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return {};
+      const migrated: Record<string, StationMarker> = {};
+      for (const [stopId, v] of Object.entries(parsed as Record<string, unknown>)) {
+        if (isStationMarker(v)) migrated[stopId] = v;
+      }
+      localStorage.setItem(scopedKey, JSON.stringify(migrated));
+      localStorage.removeItem(STORAGE_KEY_MARKERS_LEGACY);
+      return migrated;
+    } catch {
+      localStorage.removeItem(STORAGE_KEY_MARKERS_LEGACY);
+      return {};
+    }
+  }
+
+  return {};
+}
+
+function persistMarkersForFeed(
+  feedId: string,
+  markers: ReadonlyMap<string, StationMarker>,
+): void {
+  if (typeof localStorage === 'undefined') return;
+  const scopedKey = `${STORAGE_KEY_MARKERS_PREFIX}${feedId}`;
+  try {
+    const out: Record<string, StationMarker> = {};
+    for (const [k, m] of markers) out[k] = m;
+    localStorage.setItem(scopedKey, JSON.stringify(out));
   } catch {
-    return {};
+    // Quota / disabled — silent noop.
   }
 }
 
 class FavoritesStore {
-  // Native reactive Set for routes. Mutations propagate without any
-  // reassignment dance, and consumers read through `routeIds`
-  // (ReadonlySet view) so they can't mutate behind our back.
   #routes = new SvelteSet<string>(loadRoutes());
 
-  // Station markers: stop_id -> StationMarker. Native SvelteMap so
-  // .set / .delete are reactive.
-  #markers = new SvelteMap<string, StationMarker>(
-    Object.entries(loadMarkers()) as [string, StationMarker][],
-  );
+  // Station markers: raw stop_id -> marker (in-memory, no feed prefix).
+  // Switching feeds swaps this map entirely.
+  #markers = new SvelteMap<string, StationMarker>();
+  #currentFeedId: string | null = null;
 
-  /** Reactive, read-only view. */
-  get routeIds(): ReadonlySet<string> {
-    return this.#routes;
-  }
-
-  /** Reactive, read-only view of the marker map. */
+  /** Reactive, read-only view of the current feed's markers. */
   get markers(): ReadonlyMap<string, StationMarker> {
     return this.#markers;
   }
 
-  // Arrow class fields (initialised in the constructor with `this`
-  // bound to the instance). This lets callers extract a method and
-  // pass it as a callback (`favoritesStore.markerFor`) without losing
-  // `this` - the arrow closes over the instance, so `this.#markers`
-  // still resolves even when the method is invoked as
-  // `markerFor(stopId)` from a child component. Same shape as the
-  // original method-style definitions; just bound at construction.
+  /** Reactive, read-only view of favorited route ids. */
+  get routeIds(): ReadonlySet<string> {
+    return this.#routes;
+  }
+
+  // ── Feed lifecycle ─────────────────────────────────────────────
+
+  /** Call from +layout when the feed changes (including on first bind).
+   *  Loads markers for the new feed, migrating from the legacy flat key
+   *  if this is the first visit to this feed. Clears the in-memory map
+   *  (old feed's markers stay in localStorage under their own key). */
+  loadForFeed = (feedId: string): void => {
+    if (feedId === this.#currentFeedId) return;
+    this.#currentFeedId = feedId;
+    const loaded = loadMarkersForFeed(feedId);
+    this.#markers = new SvelteMap<string, StationMarker>(
+      Object.entries(loaded) as [string, StationMarker][],
+    );
+  };
+
+  // ── Route favorites ────────────────────────────────────────────
 
   hasRoute = (routeId: string): boolean => this.#routes.has(routeId);
 
@@ -151,17 +190,15 @@ class FavoritesStore {
     this.#persistRoutes();
   };
 
-  // ── Station markers ───────────────────────────────────────────
+  // ── Station markers ────────────────────────────────────────────
 
-  /** Marker assigned to a station, or undefined. */
+  /** Marker assigned to a stop in the current feed, or undefined. */
   markerFor = (stopId: string): StationMarker | undefined => this.#markers.get(stopId);
 
-  /** True if the station has any marker (favorite / home / work / cityCenter). */
+  /** True if the stop has any marker in the current feed. */
   hasMarker = (stopId: string): boolean => this.#markers.has(stopId);
 
-  /** Stop ids with the given marker. Allocates a new array; callers
-   *  that read this in render paths should keep the consumer in a
-   *  `$derived` so the allocation only happens on real change. */
+  /** Raw stop ids with the given marker type. */
   stationsWithMarker = (marker: StationMarker): string[] => {
     const out: string[] = [];
     for (const [id, m] of this.#markers) {
@@ -170,12 +207,9 @@ class FavoritesStore {
     return out;
   };
 
-  /** Apply a marker to a station. Assigning the same marker a station
-   *  already has is a no-op; assigning a different marker replaces
-   *  the previous one for that station. Pass `null` to remove the
-   *  station's marker entirely. Many stations can share the same
-   *  marker type (no per-type singleton invariant). */
+  /** Apply a marker to a stop in the current feed. Pass `null` to remove. */
   setMarker = (stopId: string, marker: StationMarker | null): void => {
+    if (this.#currentFeedId === null) return;
     const current = this.#markers.get(stopId);
     if (marker === null) {
       if (current === undefined) return;
@@ -184,12 +218,10 @@ class FavoritesStore {
       if (current === marker) return;
       this.#markers.set(stopId, marker);
     }
-    this.#persistMarkers();
+    persistMarkersForFeed(this.#currentFeedId, this.#markers);
   };
 
-  /** Toggle semantics for the heart-button dropdown: if the station
-   *  currently has the given marker, remove it; otherwise assign it.
-   *  Returns the station's resulting marker (undefined if cleared). */
+  /** Toggle marker for a stop. Returns the resulting marker (or undefined if removed). */
   toggleMarker = (stopId: string, marker: StationMarker): StationMarker | undefined => {
     const current = this.#markers.get(stopId);
     if (current === marker) {
@@ -200,11 +232,11 @@ class FavoritesStore {
     return marker;
   };
 
-  /** Reset every station's marker. Tests + "clear all" UI use this. */
+  /** Clear all markers for the current feed. */
   clearMarkers = (): void => {
     if (this.#markers.size === 0) return;
     this.#markers.clear();
-    this.#persistMarkers();
+    if (this.#currentFeedId !== null) persistMarkersForFeed(this.#currentFeedId, this.#markers);
   };
 
   // ── Persistence ────────────────────────────────────────────────
@@ -214,24 +246,10 @@ class FavoritesStore {
     try {
       localStorage.setItem(STORAGE_KEY_ROUTES, JSON.stringify(Array.from(this.#routes)));
     } catch {
-      // Quota / disabled — silent noop. Favorites is non-critical.
-    }
-  };
-
-  #persistMarkers = (): void => {
-    if (typeof localStorage === 'undefined') return;
-    try {
-      const out: Record<string, StationMarker> = {};
-      for (const [id, m] of this.#markers) out[id] = m;
-      localStorage.setItem(STORAGE_KEY_MARKERS, JSON.stringify(out));
-    } catch {
       // Quota / disabled — silent noop.
     }
   };
 }
 
 export const favoritesStore = new FavoritesStore();
-/** Exported for tests that need a clean instance after mutating the
- *  pre-load localStorage state. App code should always use the
- *  module-level singleton. */
 export { FavoritesStore as FavoritesStoreInternal };

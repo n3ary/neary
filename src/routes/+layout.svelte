@@ -206,11 +206,15 @@
         feedsStore.bindingProgress = pct;
       }
     });
-    repo
+      repo
       .setFeed($state.snapshot(feed) as typeof feed, onProgress)
       .then(() => {
         feedsStore.boundFeedId = feed.id;
         feedsStore.bindingFeedId = null;
+        // Load the feed's favorites from localStorage (migrating from the
+        // legacy flat key on first visit). Old feed's markers stay in
+        // localStorage under their own feed-scoped key.
+        favoritesStore.loadForFeed(feed.id);
         feedsStore.bindingProgress = null;
         // Subscribe to the worker's reconciliation broadcast. The worker
         // owns the live poll loop (started in setFeed); this just wires
