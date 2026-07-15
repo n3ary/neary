@@ -13,7 +13,10 @@ class FeedsStore {
   /** Download progress 0-100 for `bindingFeedId`. Mirrors the StatusBar's onProgress counter so they stay in lockstep. */
   bindingProgress = $state<number | null>(null);
 
-  /** Idempotent — safe to call from multiple effects. */
+  /** Idempotent — safe to call from multiple effects. Uses `finally` so `loading`
+   *  is reset even when the fetch throws. Without this, a failed load() leaves
+   *  `this.loading = true` forever, and any subsequent refresh() sees loading=true
+   *  and shows a spinner indefinitely. */
   async load(): Promise<void> {
     if (this.feeds || this.loading) return;
     this.loading = true;
@@ -28,8 +31,11 @@ class FeedsStore {
   }
 
   // Coalescing re-fetch. Preserves the old list on failure so the UI doesn't flash empty.
+  // Does NOT bail early when `this.loading` is true — that covers the case where load()
+  // is still in-flight (e.g. the app started online, user went offline, then navigated
+  // to Settings). Without this, refresh() returns immediately and the in-flight 500 from
+  // load() never surfaces in the UI (spinner hangs indefinitely).
   async refresh(): Promise<void> {
-    if (this.loading) return;
     this.loading = true;
     this.error = null;
     try {

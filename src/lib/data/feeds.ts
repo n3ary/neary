@@ -79,7 +79,6 @@ export interface Feed {
   };
   /** Optional link to the operator's ticket-purchase surface (e.g. 24pay,
    *  web shop). The app surfaces this on station views when set. */
-  buyTicketUrl?: string;
 }
 
 export interface FeedsRegistry {
