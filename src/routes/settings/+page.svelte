@@ -379,11 +379,14 @@
                       <div class="text-xs text-[color:var(--color-fg-muted)]">{location}</div>
                     {/if}
                     <div class="text-xs text-[color:var(--color-fg-muted)]">{f.timezone}</div>
-                    {#if size || updated}
-                      <div class="text-xs text-[color:var(--color-fg-muted)]">
+                    {#if size || updated || f.realtime}
+                      <div class="text-xs text-[color:var(--color-fg-muted)] flex items-center gap-2 flex-wrap">
                         {#if size}<span class={SIZE_CLASS[sizeSeverity(sizeBytes)]}>{size}</span>{/if}
-                        {#if size && updated} · {/if}
+                        {#if size && (updated || f.realtime)} · {/if}
                         {#if updated}<span>updated {updated}</span>{/if}
+                        {#if f.realtime}
+                          <Chip size="small" variant="filled" color="success">Live</Chip>
+                        {/if}
                       </div>
                     {/if}
                   </div>
