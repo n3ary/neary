@@ -47,26 +47,25 @@ export async function networkFirstNavigation(
   runtimeHtmlCacheName: RuntimeCacheName,
 ): Promise<Response> {
   const cache = await caches.open(runtimeHtmlCacheName);
-  try {
-    const res = await fetch(req, { cache: 'no-cache' });
-    if (res.ok) {
-      // Background cache update. If put throws (quota), the
-      // next visit will still fetch from network and try again.
-      void cache.put(req, res.clone());
+  // Stale-while-revalidate: serve cached HTML immediately so the
+  // user never sees a blank screen on flaky networks. Refresh the
+  // cache in the background, up to 5s. If the network is actually
+  // down the user still gets the cached shell; no blank screen.
+  void (async () => {
+    try {
+      const res = await fetch(req, { cache: 'no-cache', signal: AbortSignal.timeout(5_000) });
+      if (res.ok) void cache.put(req, res.clone());
+    } catch {
+      // Background refresh failed — user already got the cached shell.
     }
-    return res;
-  } catch {
-    // Offline: serve from the runtime cache first (most recent
-    // online visit), then the precache bucket (the version the
-    // SW installed with). The runtime cache might be empty on
-    // the very first offline visit.
-    const cached = await cache.match(req);
-    if (cached) return cached;
-    const precache = await caches.open(precacheName);
-    const hit = await precache.match('/');
-    if (hit) return hit;
-    throw new Error('navigation: no network and no cached HTML');
-  }
+  })();
+  // Serve from cache first; fall back to precache on a cold start.
+  const cached = await cache.match(req);
+  if (cached) return cached;
+  const precache = await caches.open(precacheName);
+  const hit = await precache.match('/');
+  if (hit) return hit;
+  throw new Error('navigation: no network and no cached HTML');
 }
 
 /**
@@ -102,15 +101,19 @@ export async function networkFirstFeedsJson(
   runtimeFeedsCacheName: RuntimeCacheName,
 ): Promise<Response> {
   const cache = await caches.open(runtimeFeedsCacheName);
-  try {
-    const res = await fetch(req, { cache: 'no-cache' });
-    if (res.ok) {
-      void cache.put(req, res.clone());
+  // Stale-while-revalidate: serve cached feeds.json immediately,
+  // refresh in background. 5s timeout — if the network is slow
+  // the cached feed list is still useful (5 min edge TTL means it
+  // was fresh moments ago anyway).
+  void (async () => {
+    try {
+      const res = await fetch(req, { cache: 'no-cache', signal: AbortSignal.timeout(5_000) });
+      if (res.ok) void cache.put(req, res.clone());
+    } catch {
+      // Background refresh failed — user already got the cached list.
     }
-    return res;
-  } catch {
-    const cached = await cache.match(req);
-    if (cached) return cached;
-    throw new Error('feeds.json: no network and no cached copy');
-  }
+  })();
+  const cached = await cache.match(req);
+  if (cached) return cached;
+  throw new Error('feeds.json: no network and no cached copy');
 }
