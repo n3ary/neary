@@ -85,7 +85,11 @@ export class RtUnavailableError extends Error {
  *  SQL fallback) lives in `domain/enrichObservations.ts` so it can
  *  prefer authoritative static-feed data when available. */
 export async function fetchVehiclePositions(feedId: string, url: string): Promise<VehiclePositionsSnapshot> {
-  const res = await fetch(url, { cache: 'no-store' });
+  // AbortSignal.timeout: on flaky 5G the server may stream a partial
+  // response that fails protobuf decode with a cryptic "missing required
+  // header" error. A timeout converts it to a clean AbortError, which
+  // the caller treats as a transient failure.
+  const res = await fetch(url, { cache: 'no-store', signal: AbortSignal.timeout(5_000) });
   // 404 from the proxy means the new gtfs-rt server has no snapshot
   // for this feed yet (e.g. upstream unreachable, or feed has no
   // realtime configured). Treat as "no RT" — the caller stops
