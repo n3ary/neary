@@ -160,6 +160,26 @@ describe('networkFirstNavigation', () => {
     expect(await result.text()).toBe('<html>precached</html>');
   });
 
+  it('fetches in the foreground when both caches are cold (first online visit)', async () => {
+    // Regression: the SWR conversion used to fire the fetch in the
+    // background and throw on the cache miss while that fetch was
+    // still in flight — failing every first SW-controlled load even
+    // with a healthy network.
+    const req = new Request('https://app.n3ary.com/');
+    const fresh = makeResponse('<html>fresh</html>');
+    vi.mocked(globalThis.fetch).mockResolvedValueOnce(fresh);
+
+    const result = await networkFirstNavigation(req, PRECACHE, RUNTIME_HTML);
+
+    expect(await result.text()).toBe('<html>fresh</html>');
+    // The foreground response also warms the runtime cache for the
+    // next offline read.
+    const runtime = await caches.open(RUNTIME_HTML);
+    const cached = await runtime.match(req);
+    expect(cached).not.toBeNull();
+    expect(await cached!.text()).toBe('<html>fresh</html>');
+  });
+
   it('throws when offline with neither cache populated (browser shows its offline UI)', async () => {
     const req = new Request('https://app.n3ary.com/');
     vi.mocked(globalThis.fetch).mockRejectedValueOnce(new TypeError('Load failed'));
@@ -247,9 +267,36 @@ describe('networkFirstFeedsJson', () => {
     expect(await result.text()).toBe('{"feeds":[]}');
   });
 
+  it('fetches in the foreground and caches when the cache is cold (online)', async () => {
+    // Regression: a cold runtime cache used to throw while the
+    // background fetch was still in flight, so the first
+    // SW-controlled load of the registry always failed — online
+    // included — and the feed bind never happened.
+    const req = new Request('https://gtfs.n3ary.com/feeds.json');
+    const fresh = makeResponse('{"feeds":[{"id":"x"}]}', 200, { 'content-type': 'application/json' });
+    vi.mocked(globalThis.fetch).mockResolvedValueOnce(fresh);
+
+    const result = await networkFirstFeedsJson(req, RUNTIME_FEEDS);
+
+    expect(await result.text()).toBe('{"feeds":[{"id":"x"}]}');
+    const cache = await caches.open(RUNTIME_FEEDS);
+    const cached = await cache.match(req);
+    expect(cached).not.toBeNull();
+    expect(await cached!.text()).toBe('{"feeds":[{"id":"x"}]}');
+  });
+
   it('throws when offline with no cached copy (no network, no cache)', async () => {
     const req = new Request('https://gtfs.n3ary.com/feeds.json');
     vi.mocked(globalThis.fetch).mockRejectedValueOnce(new TypeError('Load failed'));
+
+    await expect(networkFirstFeedsJson(req, RUNTIME_FEEDS)).rejects.toThrow(
+      'feeds.json: no network and no cached copy',
+    );
+  });
+
+  it('throws when the cold-path fetch returns a non-ok status', async () => {
+    const req = new Request('https://gtfs.n3ary.com/feeds.json');
+    vi.mocked(globalThis.fetch).mockResolvedValueOnce(makeResponse('oops', 500));
 
     await expect(networkFirstFeedsJson(req, RUNTIME_FEEDS)).rejects.toThrow(
       'feeds.json: no network and no cached copy',

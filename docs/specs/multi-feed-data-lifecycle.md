@@ -38,6 +38,9 @@ When `userPrefs.feedId` changes:
 4. Else (cold or stale): worker streams `feed.files.sqlite_gz` from
    `gtfs.n3ary.com` (Cloudflare R2), decompresses, writes OPFS,
    updates `feeds-meta.json`, opens it. 4–20 MB → 1–5 s on a phone.
+   If the stream fails (e.g. offline) but an older snapshot of the
+   same feed exists in OPFS, the worker opens that snapshot instead
+   of failing the bind — a day-old schedule beats a dead app.
 5. Old feed's OPFS file is **not deleted**. Eviction handled below.
 
 ## Freshness check

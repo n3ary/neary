@@ -18,7 +18,7 @@ import sqlite3InitModule, {
 } from '@sqlite.org/sqlite-wasm';
 
 import type { Feed } from '$lib/data/feeds';
-import { opfsFileFor, pruneStaleFeedFiles } from '../opfsFilenames';
+import { feedDbFiles, opfsFileFor, pruneStaleFeedFiles } from '../opfsFilenames';
 import { shapeCache } from './shapeCache';
 import { resetLiveSnapshot, stopLiveTimer } from './livePipeline';
 import { state } from './state';
@@ -242,135 +242,168 @@ async function buildImportStream(
   return rebuilt.pipeThrough(decompressor).pipeThrough(coalescer);
 }
 
+/** Download the seed blob for `feed` and stream-import it into OPFS
+ *  as `opfsFile`, pruning older snapshots of the same feed on success.
+ *  Throws — leaving no partial file behind — on network, import, or
+ *  truncation failure. Extracted from bootstrap() so the seed step can
+ *  be wrapped in a single try/catch whose fallback opens a previous
+ *  OPFS generation when the network is unreachable. */
+async function downloadSeed(
+  poolUtil: Awaited<ReturnType<typeof getPool>>,
+  feed: Feed,
+  opfsFile: string,
+  onProgress?: (bytesReceived: number, totalBytes: number | null) => void,
+): Promise<void> {
+  const url = seedUrlFor(feed);
+  console.log(`[gtfs.worker] Seeding OPFS for feed ${feed.id} from`, url);
+  // 10-minute hard timeout: covers the largest published sqlite_gz
+  // (currently ~120 MB compressed) on a slow connection with
+  // headroom. Without this, a stalled fetch would hang forever with
+  // no user-visible signal — precisely the class of failure that
+  // made large feeds appear "silently empty".
+  //
+  // The controller is also stored on `state.currentDownloadAbort`
+  // so `closeCurrent()` can cancel an in-flight download when the
+  // user switches feeds mid-stream. Different abort
+  // reasons let the catch block produce accurate error prefixes.
+  const controller = new AbortController();
+  state.currentDownloadAbort = controller;
+  const timeoutId = setTimeout(() => controller.abort(ABORT_REASON_TIMEOUT), 10 * 60_000);
+  const clearDownloadState = () => {
+    clearTimeout(timeoutId);
+    if (state.currentDownloadAbort === controller) {
+      state.currentDownloadAbort = null;
+    }
+  };
+  const abortPrefix = (fallback: string) => {
+    if (!controller.signal.aborted) return fallback;
+    switch (controller.signal.reason) {
+      case ABORT_REASON_TIMEOUT:
+        return `Seed download for feed "${feed.id}" timed out`;
+      case ABORT_REASON_FEED_SWITCH:
+        return `Seed download for feed "${feed.id}" was cancelled (feed switched)`;
+      default:
+        return `Seed download for feed "${feed.id}" was aborted`;
+    }
+  };
+  let res: Response;
+  let attempt = 0;
+  const MAX_RETRIES = 3;
+  const RETRY_DELAYS_MS = [1_000, 2_000, 4_000];
+  while (true) {
+    attempt++;
+    try {
+      res = await fetch(url, { signal: controller.signal });
+    } catch (e) {
+      clearDownloadState();
+      throw new Error(`${abortPrefix(`Seed download for feed "${feed.id}" failed with network error`)}: ${(e as Error).message}`);
+    }
+    if (res.ok) break;
+    if (attempt >= MAX_RETRIES || res.status === 0) {
+      clearDownloadState();
+      throw new Error(`Seed download for feed "${feed.id}" failed (HTTP ${res.status})`);
+    }
+    console.log(`[gtfs.worker] ${feed.id}: HTTP ${res.status}, retrying in ${RETRY_DELAYS_MS[attempt - 1] ?? 4000}ms (${attempt}/${MAX_RETRIES})`);
+    await new Promise((r) => setTimeout(r, RETRY_DELAYS_MS[attempt - 1] ?? 4000));
+  }
+  if (!res.body) {
+    clearDownloadState();
+    throw new Error(`Seed download for feed "${feed.id}" returned empty body (HTTP ${res.status})`);
+  }
+
+  // The largest published feeds uncompress to multi-hundred-MB sqlite
+  // blobs. Buffering the full blob in the worker heap before calling
+  // importDb pushes iOS Safari past its per-tab ceiling and the tab is
+  // killed. Instead: pipe fetch → (optional) DecompressionStream →
+  // importDb's chunked-callback form, so at any moment we only hold
+  // one stream chunk (~64 KB) beyond what SQLite writes to the SAH
+  // file. Content-Length comes from R2's response; progress is
+  // reported over compressed bytes (matches the UI's byte-count
+  // convention).
+  const totalHeader = res.headers.get('content-length');
+  const totalBytes = totalHeader ? Number(totalHeader) : null;
+
+  let compressedRead = 0;
+  const decompressed = await buildImportStream(res.body, (compressedBytes) => {
+    compressedRead = compressedBytes;
+    if (!onProgress) return;
+    try { onProgress(compressedBytes, Number.isFinite(totalBytes) ? totalBytes : null); } catch {}
+  });
+
+  const reader = decompressed.getReader();
+  let imported = 0;
+  console.log(`[gtfs.worker] Streaming import into ${opfsFile}…`);
+  try {
+    await poolUtil.importDb(opfsFile, async () => {
+      // Bail cheaply if the user switched feeds mid-import. SAH pool
+      // writes aren't cancellable, but returning undefined here stops
+      // any further writes and the outer catch cleans up the OPFS file.
+      if (controller.signal.aborted) throw new Error(String(controller.signal.reason ?? 'aborted'));
+      const { done, value } = await reader.read();
+      if (done) return undefined;
+      imported += value.byteLength;
+      return value;
+    });
+  } catch (e) {
+    clearDownloadState();
+    try { await reader.cancel(); } catch {}
+    // Best-effort cleanup: leave nothing partial in OPFS so a retry
+    // isn't blocked by a corrupt file that seems to already exist.
+    try { poolUtil.unlink(opfsFile); } catch {}
+    throw new Error(`${abortPrefix(`Import into OPFS failed for feed "${feed.id}"`)}: ${(e as Error).message}`);
+  }
+  clearDownloadState();
+  console.log(`[gtfs.worker] Imported ${imported} bytes into ${opfsFile}`);
+  // Truncation guard. importDb only checks that the total bytes written
+  // is >=512 and a multiple of 512; a short-but-page-aligned read can
+  // therefore slip through and produce an OPFS file that opens cleanly
+  // but has empty data pages (the downstream integrity check catches
+  // this, but only after we've marked the file as available). Compare
+  // what we actually pulled off the wire against Content-Length so we
+  // fail fast, unlink the partial file, and force a fresh re-download.
+  if (
+    totalBytes !== null &&
+    Number.isFinite(totalBytes) &&
+    compressedRead < totalBytes
+  ) {
+    try { poolUtil.unlink(opfsFile); } catch {}
+    throw new Error(
+      `Seed download for feed "${feed.id}" was truncated: received ${compressedRead} of ${totalBytes} compressed bytes`,
+    );
+  }
+  // After a successful import, drop any older snapshot of THIS feed
+  // so OPFS doesn't fill with one file per upstream rebuild.
+  const removed = pruneStaleFeedFiles(poolUtil, feed.id, opfsFile);
+  if (removed > 0) console.log(`[gtfs.worker] Pruned ${removed} stale OPFS file(s) for ${feed.id}`);
+}
+
 export async function bootstrap(
   feed: Feed,
   onProgress?: (bytesReceived: number, totalBytes: number | null) => void,
 ): Promise<Database> {
   const poolUtil = await getPool();
-  const opfsFile = opfsFileFor(feed);
+  let opfsFile = opfsFileFor(feed);
 
   if (!poolUtil.getFileNames().includes(opfsFile)) {
-    const url = seedUrlFor(feed);
-    console.log(`[gtfs.worker] Seeding OPFS for feed ${feed.id} from`, url);
-    // 10-minute hard timeout: covers the largest published sqlite_gz
-    // (currently ~120 MB compressed) on a slow connection with
-    // headroom. Without this, a stalled fetch would hang forever with
-    // no user-visible signal — precisely the class of failure that
-    // made large feeds appear "silently empty".
-    //
-    // The controller is also stored on `state.currentDownloadAbort`
-    // so `closeCurrent()` can cancel an in-flight download when the
-    // user switches feeds mid-stream. Different abort
-    // reasons let the catch block produce accurate error prefixes.
-    const controller = new AbortController();
-    state.currentDownloadAbort = controller;
-    const timeoutId = setTimeout(() => controller.abort(ABORT_REASON_TIMEOUT), 10 * 60_000);
-    const clearDownloadState = () => {
-      clearTimeout(timeoutId);
-      if (state.currentDownloadAbort === controller) {
-        state.currentDownloadAbort = null;
-      }
-    };
-    const abortPrefix = (fallback: string) => {
-      if (!controller.signal.aborted) return fallback;
-      switch (controller.signal.reason) {
-        case ABORT_REASON_TIMEOUT:
-          return `Seed download for feed "${feed.id}" timed out`;
-        case ABORT_REASON_FEED_SWITCH:
-          return `Seed download for feed "${feed.id}" was cancelled (feed switched)`;
-        default:
-          return `Seed download for feed "${feed.id}" was aborted`;
-      }
-    };
-    let res: Response;
-    let attempt = 0;
-    const MAX_RETRIES = 3;
-    const RETRY_DELAYS_MS = [1_000, 2_000, 4_000];
-    while (true) {
-      attempt++;
-      try {
-        res = await fetch(url, { signal: controller.signal });
-      } catch (e) {
-        clearDownloadState();
-        throw new Error(`${abortPrefix(`Seed download for feed "${feed.id}" failed with network error`)}: ${(e as Error).message}`);
-      }
-      if (res.ok) break;
-      if (attempt >= MAX_RETRIES || res.status === 0) {
-        clearDownloadState();
-        throw new Error(`Seed download for feed "${feed.id}" failed (HTTP ${res.status})`);
-      }
-      console.log(`[gtfs.worker] ${feed.id}: HTTP ${res.status}, retrying in ${RETRY_DELAYS_MS[attempt - 1] ?? 4000}ms (${attempt}/${MAX_RETRIES})`);
-      await new Promise((r) => setTimeout(r, RETRY_DELAYS_MS[attempt - 1] ?? 4000));
-    }
-    if (!res.body) {
-      clearDownloadState();
-      throw new Error(`Seed download for feed "${feed.id}" returned empty body (HTTP ${res.status})`);
-    }
-
-    // The largest published feeds uncompress to multi-hundred-MB sqlite
-    // blobs. Buffering the full blob in the worker heap before calling
-    // importDb pushes iOS Safari past its per-tab ceiling and the tab is
-    // killed. Instead: pipe fetch → (optional) DecompressionStream →
-    // importDb's chunked-callback form, so at any moment we only hold
-    // one stream chunk (~64 KB) beyond what SQLite writes to the SAH
-    // file. Content-Length comes from R2's response; progress is
-    // reported over compressed bytes (matches the UI's byte-count
-    // convention).
-    const totalHeader = res.headers.get('content-length');
-    const totalBytes = totalHeader ? Number(totalHeader) : null;
-
-    let compressedRead = 0;
-    const decompressed = await buildImportStream(res.body, (compressedBytes) => {
-      compressedRead = compressedBytes;
-      if (!onProgress) return;
-      try { onProgress(compressedBytes, Number.isFinite(totalBytes) ? totalBytes : null); } catch {}
-    });
-
-    const reader = decompressed.getReader();
-    let imported = 0;
-    console.log(`[gtfs.worker] Streaming import into ${opfsFile}…`);
     try {
-      await poolUtil.importDb(opfsFile, async () => {
-        // Bail cheaply if the user switched feeds mid-import. SAH pool
-        // writes aren't cancellable, but returning undefined here stops
-        // any further writes and the outer catch cleans up the OPFS file.
-        if (controller.signal.aborted) throw new Error(String(controller.signal.reason ?? 'aborted'));
-        const { done, value } = await reader.read();
-        if (done) return undefined;
-        imported += value.byteLength;
-        return value;
-      });
+      await downloadSeed(poolUtil, feed, opfsFile, onProgress);
     } catch (e) {
-      clearDownloadState();
-      try { await reader.cancel(); } catch {}
-      // Best-effort cleanup: leave nothing partial in OPFS so a retry
-      // isn't blocked by a corrupt file that seems to already exist.
-      try { poolUtil.unlink(opfsFile); } catch {}
-      throw new Error(`${abortPrefix(`Import into OPFS failed for feed "${feed.id}"`)}: ${(e as Error).message}`);
-    }
-    clearDownloadState();
-    console.log(`[gtfs.worker] Imported ${imported} bytes into ${opfsFile}`);
-    // Truncation guard. importDb only checks that the total bytes written
-    // is >=512 and a multiple of 512; a short-but-page-aligned read can
-    // therefore slip through and produce an OPFS file that opens cleanly
-    // but has empty data pages (the downstream integrity check catches
-    // this, but only after we've marked the file as available). Compare
-    // what we actually pulled off the wire against Content-Length so we
-    // fail fast, unlink the partial file, and force a fresh re-download.
-    if (
-      totalBytes !== null &&
-      Number.isFinite(totalBytes) &&
-      compressedRead < totalBytes
-    ) {
-      try { poolUtil.unlink(opfsFile); } catch {}
-      throw new Error(
-        `Seed download for feed "${feed.id}" was truncated: received ${compressedRead} of ${totalBytes} compressed bytes`,
+      // The registry the app binds against can name a build newer than
+      // anything on the device: the SW's feeds.json runtime cache
+      // refreshes in the background, so it can sit one nightly publish
+      // ahead of the downloaded sqlite. Offline the re-download always
+      // fails — but an older snapshot of the same feed may still be in
+      // OPFS, and a day-old schedule beats a dead app. The wanted file
+      // is never a candidate (a failed import already unlinked it), so
+      // any match is by construction a previous generation.
+      const fallback = feedDbFiles(poolUtil, feed.id).find((name) => name !== opfsFile);
+      if (!fallback) throw e;
+      console.warn(
+        `[gtfs.worker] Seed for feed "${feed.id}" unavailable (${(e as Error).message}); ` +
+        `falling back to previous OPFS snapshot ${fallback}`,
       );
+      opfsFile = fallback;
     }
-    // After a successful import, drop any older snapshot of THIS feed
-    // so OPFS doesn't fill with one file per upstream rebuild.
-    const removed = pruneStaleFeedFiles(poolUtil, feed.id, opfsFile);
-    if (removed > 0) console.log(`[gtfs.worker] Pruned ${removed} stale OPFS file(s) for ${feed.id}`);
   }
 
   let db: Database | undefined;

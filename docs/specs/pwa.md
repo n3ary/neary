@@ -94,9 +94,13 @@ workbox). It's ~100 lines and easy to audit. Two strategies:
 
 ### Runtime cache: feeds.json only
 
-- `https://gtfs.n3ary.com/feeds.json` is served NetworkFirst with a
-  background cache update. Cold-start offline (no network, no SW
-  cache yet) then falls back to the cached copy from a prior visit.
+- `https://gtfs.n3ary.com/feeds.json` is served from the SW runtime
+  cache when present (revalidated in the background); on a cache miss
+  the SW fetches in the foreground and caches the response. The app
+  also persists the last fetched registry in localStorage
+  (`neary-feeds-registry`) and falls back to it when the fetch fails,
+  so a cold-start offline open can still bind a feed whose sqlite is
+  already in OPFS.
 - /api/rt/* was a same-origin Pages Function in the old
   architecture; now removed. The app calls
   `gtfs-rt.n3ary.com/rt/<feed>/vehicle_positions` directly from
@@ -129,7 +133,7 @@ What's offline-safe and what isn't:
 
 | Scenario | Outcome |
 | --- | --- |
-| User has OPFS sqlite for a feed, opens app offline | **Works.** SW precache serves the shell, OPFS read returns the schedule. Live data shows the last good snapshot. StatusBar shows "Refresh failed." |
+| User has OPFS sqlite for a feed, opens app offline | **Works.** SW precache serves the shell, OPFS read returns the schedule (the previous snapshot when the registry has advanced past the downloaded sqlite). Live data shows the last good snapshot. StatusBar shows "Refresh failed." |
 | User has feeds.json cached, never picked a feed, opens offline | **Partial.** Shell + feed picker load, but no sqlite is downloaded. They can't pick a feed. |
 | User has never visited, opens offline | **Fails.** No shell, no data, no fallback. |
 | Saved PWA user, post-deploy, opens online | **Works.** SW detects new version, activates, claims clients, next paint uses new shell. |

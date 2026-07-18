@@ -85,8 +85,38 @@ export interface FeedsRegistry {
   feeds: Feed[];
 }
 
+const REGISTRY_STORAGE_KEY = 'neary-feeds-registry';
+
+/** Best-effort read of the last successfully fetched registry.
+ *  null when absent or unparsable (partial write, manual edit). */
+function readPersistedRegistry(): FeedsRegistry | null {
+  if (typeof localStorage === 'undefined') return null;
+  try {
+    const raw = localStorage.getItem(REGISTRY_STORAGE_KEY);
+    return raw ? (JSON.parse(raw) as FeedsRegistry) : null;
+  } catch {
+    return null;
+  }
+}
+
+/** Persist every successfully fetched registry so a later offline
+ *  launch can still bind a feed. The registry entry carries the hash
+ *  the OPFS filename is derived from — without a local copy, a
+ *  cold-start offline open can't call setFeed at all, even when the
+ *  feed's sqlite is already on the device. */
+function persistRegistry(reg: FeedsRegistry): void {
+  if (typeof localStorage === 'undefined') return;
+  try {
+    localStorage.setItem(REGISTRY_STORAGE_KEY, JSON.stringify(reg));
+  } catch {
+    // Quota / privacy mode — the online path is unaffected.
+  }
+}
+
 /**
- * Fetch and parse the live registry. Throws on network/parse failure.
+ * Fetch and parse the live registry. On network/parse failure, falls
+ * back to the last successfully fetched copy in localStorage; throws
+ * only when no copy exists at all.
  *
  * `cache: 'no-cache'` forces the browser to revalidate with the
  * server (`If-None-Match` on the ETag) instead of silently serving a
@@ -96,8 +126,15 @@ export interface FeedsRegistry {
  * top is what makes repeat reads free — see `feedsStore`.
  */
 export async function fetchFeeds(): Promise<Feed[]> {
-  const res = await fetch(FEEDS_REGISTRY_URL, { cache: 'no-cache' });
-  if (!res.ok) throw new Error(`Feed registry fetch failed (${res.status})`);
-  const reg = (await res.json()) as FeedsRegistry;
-  return reg.feeds;
+  try {
+    const res = await fetch(FEEDS_REGISTRY_URL, { cache: 'no-cache' });
+    if (!res.ok) throw new Error(`Feed registry fetch failed (${res.status})`);
+    const reg = (await res.json()) as FeedsRegistry;
+    persistRegistry(reg);
+    return reg.feeds;
+  } catch (e) {
+    const persisted = readPersistedRegistry();
+    if (persisted && Array.isArray(persisted.feeds)) return persisted.feeds;
+    throw e;
+  }
 }

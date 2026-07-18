@@ -51,21 +51,43 @@ export async function networkFirstNavigation(
   // user never sees a blank screen on flaky networks. Refresh the
   // cache in the background, up to 10s. If the network is actually
   // down the user still gets the cached shell; no blank screen.
-  void (async () => {
-    try {
-      const res = await fetch(req, { cache: 'no-cache', signal: AbortSignal.timeout(10_000) });
-      if (res.ok) void cache.put(req, res.clone());
-    } catch {
-      // Background refresh failed — user already got the cached shell.
-    }
-  })();
+  const refreshInBackground = () => {
+    void (async () => {
+      try {
+        const res = await fetch(req, { cache: 'no-cache', signal: AbortSignal.timeout(10_000) });
+        if (res.ok) void cache.put(req, res.clone());
+      } catch {
+        // Background refresh failed — user already got the cached shell.
+      }
+    })();
+  };
   // Serve from cache first; fall back to precache on a cold start.
   const cached = await cache.match(req);
-  if (cached) return cached;
+  if (cached) {
+    refreshInBackground();
+    return cached;
+  }
   const precache = await caches.open(precacheName);
   const hit = await precache.match('/');
-  if (hit) return hit;
-  throw new Error('navigation: no network and no cached HTML');
+  if (hit) {
+    // Warm the runtime cache so the next offline read serves the
+    // most recent online HTML instead of the install-time shell.
+    refreshInBackground();
+    return hit;
+  }
+  // Both caches cold: the foreground request is the only remaining
+  // source of HTML. Firing it in the background and throwing here
+  // would fail the navigation even with a healthy network. 15s
+  // timeout so lie-fi hangs surface as an error the browser can
+  // render its own offline UI for.
+  try {
+    const res = await fetch(req, { cache: 'no-cache', signal: AbortSignal.timeout(15_000) });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    void cache.put(req, res.clone());
+    return res;
+  } catch {
+    throw new Error('navigation: no network and no cached HTML');
+  }
 }
 
 /**
@@ -101,19 +123,34 @@ export async function networkFirstFeedsJson(
   runtimeFeedsCacheName: RuntimeCacheName,
 ): Promise<Response> {
   const cache = await caches.open(runtimeFeedsCacheName);
-  // Stale-while-revalidate: serve cached feeds.json immediately,
-  // refresh in background. 5s timeout — if the network is slow
-  // the cached feed list is still useful (5 min edge TTL means it
-  // was fresh moments ago anyway).
-  void (async () => {
-    try {
-      const res = await fetch(req, { cache: 'no-cache', signal: AbortSignal.timeout(5_000) });
-      if (res.ok) void cache.put(req, res.clone());
-    } catch {
-      // Background refresh failed — user already got the cached list.
-    }
-  })();
   const cached = await cache.match(req);
-  if (cached) return cached;
-  throw new Error('feeds.json: no network and no cached copy');
+  if (cached) {
+    // Stale-while-revalidate: serve cached feeds.json immediately,
+    // refresh in background. 5s timeout — if the network is slow
+    // the cached feed list is still useful (5 min edge TTL means it
+    // was fresh moments ago anyway).
+    void (async () => {
+      try {
+        const res = await fetch(req, { cache: 'no-cache', signal: AbortSignal.timeout(5_000) });
+        if (res.ok) void cache.put(req, res.clone());
+      } catch {
+        // Background refresh failed — user already got the cached list.
+      }
+    })();
+    return cached;
+  }
+  // Cold cache: the foreground request is the ONLY chance to get the
+  // registry. An earlier version fired the fetch in the background and
+  // threw on the cache miss while that fetch was still in flight —
+  // which failed every first SW-controlled load, online included.
+  // 15s timeout so lie-fi hangs surface as an error instead of a
+  // forever-pending request.
+  try {
+    const res = await fetch(req, { cache: 'no-cache', signal: AbortSignal.timeout(15_000) });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    void cache.put(req, res.clone());
+    return res;
+  } catch {
+    throw new Error('feeds.json: no network and no cached copy');
+  }
 }

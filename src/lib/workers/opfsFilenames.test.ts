@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import {
+  feedDbFiles,
   opfsFileFor,
   opfsFileForLegacy,
   pruneStaleFeedFiles,
@@ -124,5 +125,39 @@ describe('pruneStaleFeedFiles', () => {
     const removed = pruneStaleFeedFiles(pool, 'cluj-napoca', '/cluj-napoca-79e19efee5c2.sqlite3');
     expect(removed).toBe(0);
     expect(pool.files.size).toBe(1);
+  });
+});
+
+describe('feedDbFiles', () => {
+  it('lists the legacy file and every versioned snapshot of the feed', () => {
+    const pool = fakePool([
+      '/cluj-napoca.sqlite3',
+      '/cluj-napoca-79e19efee5c2.sqlite3',
+      '/cluj-napoca-aaaaaaaaaaaa.sqlite3',
+    ]);
+    expect(feedDbFiles(pool, 'cluj-napoca').sort()).toEqual([
+      '/cluj-napoca-79e19efee5c2.sqlite3',
+      '/cluj-napoca-aaaaaaaaaaaa.sqlite3',
+      '/cluj-napoca.sqlite3',
+    ]);
+  });
+
+  it('leaves other feeds and same-prefix siblings out', () => {
+    const pool = fakePool([
+      '/cluj-napoca-79e19efee5c2.sqlite3',
+      '/cluj-napoca-night.sqlite3',
+      '/cluj-napoca-night-aaaaaaaaaaaa.sqlite3',
+      '/bucuresti-ilfov.sqlite3',
+    ]);
+    expect(feedDbFiles(pool, 'cluj-napoca')).toEqual(['/cluj-napoca-79e19efee5c2.sqlite3']);
+  });
+
+  it('rejects malformed versioned names (non-hex or wrong-length tail)', () => {
+    const pool = fakePool([
+      '/cluj-napoca-xyzxyzxyzxyz.sqlite3',
+      '/cluj-napoca-79e19efee5c2ff.sqlite3',
+      '/cluj-napoca-79e19efee5.sqlite3',
+    ]);
+    expect(feedDbFiles(pool, 'cluj-napoca')).toEqual([]);
   });
 });

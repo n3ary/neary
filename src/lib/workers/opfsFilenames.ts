@@ -39,28 +39,32 @@ export function opfsFileFor(feed: Feed): string {
   return slice ? `/${feed.id}-${slice}.sqlite3` : opfsFileForLegacy(feed.id);
 }
 
-/** Remove every OPFS entry belonging to `feedId` except `keep`.
+/** Every OPFS entry belonging to `feedId` — the legacy hash-less file
+ *  plus every hash-versioned snapshot.
  *
  *  Match rule: a filename belongs to `feedId` when it is either
  *  the legacy `/<feedId>.sqlite3` or a versioned
  *  `/<feedId>-<12-hex>.sqlite3`. The strict 12-hex tail prevents
  *  the prefix `/cluj-napoca-` from accidentally matching a
  *  hypothetical sibling feed like `/cluj-napoca-night.sqlite3`. */
-export function pruneStaleFeedFiles(
-  pool: SahPoolLike,
-  feedId: string,
-  keep: string,
-): number {
+export function feedDbFiles(pool: SahPoolLike, feedId: string): string[] {
   const legacy = opfsFileForLegacy(feedId);
   // Escape `feedId` because a future id could contain regex
   // metacharacters even though today's feed ids are all kebab-case.
   const escaped = feedId.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
   const versionedRe = new RegExp(`^/${escaped}-[0-9a-f]{12}\\.sqlite3$`);
+  return pool.getFileNames().filter((name) => name === legacy || versionedRe.test(name));
+}
+
+/** Remove every OPFS entry belonging to `feedId` except `keep`. */
+export function pruneStaleFeedFiles(
+  pool: SahPoolLike,
+  feedId: string,
+  keep: string,
+): number {
   let removed = 0;
-  for (const name of pool.getFileNames()) {
+  for (const name of feedDbFiles(pool, feedId)) {
     if (name === keep) continue;
-    const belongsToFeed = name === legacy || versionedRe.test(name);
-    if (!belongsToFeed) continue;
     if (pool.unlink(name)) removed += 1;
   }
   return removed;
