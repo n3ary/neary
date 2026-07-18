@@ -49,14 +49,16 @@ export async function networkFirstNavigation(
   const cache = await caches.open(runtimeHtmlCacheName);
   // Stale-while-revalidate: serve cached HTML immediately so the
   // user never sees a blank screen on flaky networks. Refresh the
-  // cache in the background, up to 5s. If the network is actually
+  // cache in the background, up to 10s. If the network is actually
   // down the user still gets the cached shell; no blank screen.
   void (async () => {
     try {
-      const res = await fetch(req, { cache: 'no-cache', signal: AbortSignal.timeout(5_000) });
+      const res = await fetch(req, { cache: 'no-cache', signal: AbortSignal.timeout(10_000) });
       if (res.ok) void cache.put(req, res.clone());
     } catch {
       // Background refresh failed — user already got the cached shell.
+    }
+  })();
     }
   })();
   // Serve from cache first; fall back to precache on a cold start.
@@ -101,6 +103,7 @@ export async function networkFirstFeedsJson(
   runtimeFeedsCacheName: RuntimeCacheName,
 ): Promise<Response> {
   const cache = await caches.open(runtimeFeedsCacheName);
+<<<<<<< HEAD
   // Stale-while-revalidate: serve cached feeds.json immediately,
   // refresh in background. 5s timeout — if the network is slow
   // the cached feed list is still useful (5 min edge TTL means it
@@ -111,6 +114,12 @@ export async function networkFirstFeedsJson(
       if (res.ok) void cache.put(req, res.clone());
     } catch {
       // Background refresh failed — user already got the cached list.
+=======
+  try {
+    const res = await fetch(req, { cache: 'no-cache', signal: AbortSignal.timeout(10_000) });
+    if (res.ok) {
+      void cache.put(req, res.clone());
+>>>>>>> 7fedb76 (fix: retry transient HTTP errors on seed download)
     }
   })();
   const cached = await cache.match(req);

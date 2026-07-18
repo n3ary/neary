@@ -283,15 +283,28 @@ export async function bootstrap(
       }
     };
     let res: Response;
-    try {
-      res = await fetch(url, { signal: controller.signal });
-    } catch (e) {
-      clearDownloadState();
-      throw new Error(`${abortPrefix(`Seed download for feed "${feed.id}" failed with network error`)}: ${(e as Error).message}`);
+    let attempt = 0;
+    const MAX_RETRIES = 3;
+    const RETRY_DELAYS_MS = [1_000, 2_000, 4_000];
+    while (true) {
+      attempt++;
+      try {
+        res = await fetch(url, { signal: controller.signal });
+      } catch (e) {
+        clearDownloadState();
+        throw new Error(`${abortPrefix(`Seed download for feed "${feed.id}" failed with network error`)}: ${(e as Error).message}`);
+      }
+      if (res.ok) break;
+      if (attempt >= MAX_RETRIES || res.status === 0) {
+        clearDownloadState();
+        throw new Error(`Seed download for feed "${feed.id}" failed (HTTP ${res.status})`);
+      }
+      console.log(`[gtfs.worker] ${feed.id}: HTTP ${res.status}, retrying in ${RETRY_DELAYS_MS[attempt - 1] ?? 4000}ms (${attempt}/${MAX_RETRIES})`);
+      await new Promise((r) => setTimeout(r, RETRY_DELAYS_MS[attempt - 1] ?? 4000));
     }
-    if (!res.ok || !res.body) {
+    if (!res.body) {
       clearDownloadState();
-      throw new Error(`Seed download for feed "${feed.id}" failed (HTTP ${res.status})`);
+      throw new Error(`Seed download for feed "${feed.id}" returned empty body (HTTP ${res.status})`);
     }
 
     // The largest published feeds uncompress to multi-hundred-MB sqlite
