@@ -49,11 +49,11 @@ export async function networkFirstNavigation(
   const cache = await caches.open(runtimeHtmlCacheName);
   // Stale-while-revalidate: serve cached HTML immediately so the
   // user never sees a blank screen on flaky networks. Refresh the
-  // cache in the background, up to 5s. If the network is actually
+  // cache in the background, up to 10s. If the network is actually
   // down the user still gets the cached shell; no blank screen.
   void (async () => {
     try {
-      const res = await fetch(req, { cache: 'no-cache', signal: AbortSignal.timeout(5_000) });
+      const res = await fetch(req, { cache: 'no-cache', signal: AbortSignal.timeout(10_000) });
       if (res.ok) void cache.put(req, res.clone());
     } catch {
       // Background refresh failed — user already got the cached shell.
