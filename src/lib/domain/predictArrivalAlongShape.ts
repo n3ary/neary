@@ -232,7 +232,12 @@ export function predictArrivalFromGps(
   input: PredictArrivalFromGpsInputs,
 ): PredictArrivalFromGpsResult {
   const measured = measurePolyline(input.polyline);
-  const dr = deadReckonGpsAlongShape(input.obs, measured, input.nowMs, input.ctx);
+  // The walk consumes the same stop list + dwell the ETA prices below,
+  // so a bus can't be walked "for free" past stops it must dwell at.
+  const dr = deadReckonGpsAlongShape(input.obs, measured, input.nowMs, input.ctx, {
+    stopDistAlongM: input.dwellStopDistAlongM,
+    dwellSecondsPerStop: input.dwellSecondsPerStop,
+  });
   const livePos: LatLon = dr?.position ?? { lat: input.obs.lat, lon: input.obs.lon };
   const arrival = predictArrivalAlongShape({
     vehiclePos: livePos,

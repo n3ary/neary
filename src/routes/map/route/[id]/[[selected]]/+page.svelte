@@ -20,7 +20,7 @@
   } from '$lib/domain/types';
   import { dateKeyInTz, minSinceMidnightInTz } from '$lib/domain/pipeline/timeUtils';
   import {
-    buildTripShapePlan, predictPosition, predictPositionOnShape, predictPositionFromGps,
+    buildTripShapePlan, deadReckonGpsAlongShape, predictPosition, predictPositionOnShape, predictPositionFromGps,
     type TripShapePlan,
   } from '$lib/domain/predictPosition';
   import { predictArrivalFromGps } from '$lib/domain/predictArrivalAlongShape';
@@ -319,9 +319,8 @@
     };
 
     // Hard cap on GPS-fix age before we stop showing the orphan marker
-    // at all — orphans don't go through `predictPositionFromGps` (no
-    // shape projection without a trip plan), so we enforce the same
-    // 15-min ceiling here.
+    // at all — the same 15-min ceiling `deadReckonGpsAlongShape`
+    // enforces for tracked vehicles.
     const STALE_HARD_MAX_MS = 15 * 60_000;
 
     // Index reconciled vehicles by their (static) tripId so each
@@ -352,6 +351,7 @@
           { lat: pos.lat, lon: pos.lon, speedMs: pos.speedMs ?? null, asOfMs: pos.asOf },
           nowMs,
           { timezone: tz },
+          feedConfigStore.dwellSec,
         );
         if (gps) {
           p = gps;
@@ -360,10 +360,11 @@
             : gps.freshness === 'stale' ? 'stale'
             : 'very-stale';
         }
-        // No `else` fallback: predictPositionFromGps already extrapolates
-        // out to 15 min via the cascade. Anything older returns null and
-        // we fall through to schedule prediction so the marker doesn't
-        // freeze on a 30-min-old GPS sample.
+        // No `else` fallback: predictPositionFromGps already walks the
+        // fix forward within the dead-reckon window. Anything older
+        // than 15 min returns null and we fall through to schedule
+        // prediction so the marker doesn't freeze on a 30-min-old
+        // GPS sample.
       }
       if (!p) {
         p = plan
@@ -420,11 +421,38 @@
       const age = nowMs - v.position.asOf;
       if (age > STALE_HARD_MAX_MS) continue;
       const tripId = v.tripId ?? v.id;
+      // Orphans carry route + direction, so they get the same
+      // dead-reckon walk as tracked vehicles — on the view's shape,
+      // with the view's stop distances for dwell. The marker then
+      // agrees with its own popup ETA (which already walked) instead
+      // of sitting at the raw fix while the ETA claims it arrived.
+      const orphanStopDistAlongM = stopDistAlongM(tripId, curView.stops);
+      const walked = measuredShape
+        ? deadReckonGpsAlongShape(
+            {
+              lat: v.position.lat,
+              lon: v.position.lon,
+              speedMs: v.position.speedMs ?? null,
+              asOfMs: v.position.asOf,
+            },
+            measuredShape,
+            nowMs,
+            {
+              feedConfig: feedConfigStore.speedConfig,
+              timezone: tz,
+              todProfile: feedConfigStore.todProfile,
+            },
+            {
+              stopDistAlongM: orphanStopDistAlongM,
+              dwellSecondsPerStop: feedConfigStore.dwellSec,
+            },
+          )
+        : null;
       out.push({
         tripId,
         headsign: v.headsign ?? null,
-        lat: v.position.lat,
-        lon: v.position.lon,
+        lat: walked?.position.lat ?? v.position.lat,
+        lon: walked?.position.lon ?? v.position.lon,
         opacity: 0.9,
         selected: tripId === selectedTripId,
         // Worker sets schedule.tripStartMin on orphans when the live
@@ -433,8 +461,7 @@
         tripStartMin: v.schedule?.tripStartMin ?? nowMin,
         scheduled: false,
         // Orphan freshness mirrors the reconciled bands so the marker
-        // styling matches. We don't have a trip plan to extrapolate
-        // along, but we still age the badge.
+        // styling matches.
         gpsConfidence:
           age < 3 * 60_000 ? 'good'
           : age < 5 * 60_000 ? 'stale'
@@ -452,7 +479,9 @@
           gpsAsOfMs: v.position.asOf,
           directionId: v.directionId ?? -1,
           scheduledFromArrivalMin: null,
-          dwellStopDistAlongM: null,
+          // Same stop list the orphan marker walks against, so the
+          // ETA's dwell term matches the walked position.
+          dwellStopDistAlongM: orphanStopDistAlongM,
         }),
       });
     }

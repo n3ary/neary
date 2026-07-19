@@ -1,6 +1,11 @@
 import { describe, expect, it } from 'vitest';
+import { measurePolyline } from '@n3ary/gtfs-spec/shape';
+import { DEFAULT_FEED_SPEED_CONFIG } from './speedCascade';
+import { clockToBucket, DEFAULT_TOD_PROFILE } from './timeOfDay';
+import { minSinceMidnightInTz } from './pipeline/timeUtils';
 import {
   buildTripShapePlan,
+  deadReckonGpsAlongShape,
   predictPosition,
   predictPositionFromGps,
   predictPositionOnShape,
@@ -178,24 +183,95 @@ describe('predictPositionFromGps', () => {
     expect(out?.status).toBe('active');
   });
 
-  it("flags a 3–5 min fix as 'stale' and still extrapolates via cascade", () => {
-    // Bus stopped at the time of the fix — obs.speedMs is null/0 —
-    // so the cascade falls back to the TOD-bucket speed and walks
-    // forward along the shape across the stale window.
-    const fix = { lat: 0, lon: 0, speedMs: 0, asOfMs: NOW - 4 * 60_000 };
-    const stale = predictPositionFromGps(plan, fix, NOW)!;
-    expect(stale.freshness).toBe('stale');
-    // The TOD walk should have advanced the marker from the projected
-    // origin point further along the shape (lon increases monotonically).
-    expect(stale.lon).toBeGreaterThan(0);
+  it('holds an observed stop while the fix is fresh (one dwell cycle)', () => {
+    // Bus reported stopped 30 s ago (speedMs 0). Walking it forward
+    // at the TOD speed would skate it past the stop it's sitting at
+    // and flip the board to the next trip — so it holds.
+    const fix = { lat: 0, lon: 0, speedMs: 0, asOfMs: NOW - 30_000 };
+    const fresh = predictPositionFromGps(plan, fix, NOW)!;
+    expect(fresh.freshness).toBe('fresh');
+    expect(fresh.lon).toBeCloseTo(0, 10);
   });
 
-  it("flags a 5–15 min fix as 'very-stale' and still extrapolates", () => {
+  it('resumes the TOD walk once a stopped report is past its hold', () => {
+    // Same stopped report, now 90 s old: the bus has likely left, so
+    // it walks at the TOD speed for the time past STOP_HOLD_MS.
+    const held = predictPositionFromGps(
+      plan,
+      { lat: 0, lon: 0, speedMs: 0, asOfMs: NOW - 30_000 },
+      NOW,
+    )!;
+    const resumed = predictPositionFromGps(
+      plan,
+      { lat: 0, lon: 0, speedMs: 0, asOfMs: NOW - 90_000 },
+      NOW,
+    )!;
+    expect(held.lon).toBeCloseTo(0, 10);
+    expect(resumed.lon).toBeGreaterThan(0);
+    // ...and a 10-min-old stopped report keeps advancing at the TOD
+    // speed like any silent bus — the hold only sets it 45 s back,
+    // it never freezes in place.
+    const longAgo = predictPositionFromGps(
+      plan,
+      { lat: 0, lon: 0, speedMs: 0, asOfMs: NOW - 10 * 60_000 },
+      NOW,
+    )!;
+    expect(longAgo.lon).toBeGreaterThan(resumed.lon);
+  });
+
+  it("flags a 5–15 min fix as 'very-stale' and still extrapolates at the TOD speed", () => {
     const fix = { lat: 0, lon: 0, speedMs: null, asOfMs: NOW - 10 * 60_000 };
     const out = predictPositionFromGps(plan, fix, NOW)!;
     expect(out.freshness).toBe('very-stale');
     expect(out.status).toBe('active');
     expect(out.lon).toBeGreaterThan(0);
+  });
+
+  it('walks the full fix age — observed speed first, TOD beyond the horizon', () => {
+    // Feed glitches routinely last minutes; freezing at 90 s would
+    // show stale-high ETAs during the silence, then jump on recovery.
+    // Same explicit speed: the 10-min fix must advance well past the
+    // 91-s one (90 s observed + the rest at TOD), never freeze.
+    const justPast = predictPositionFromGps(
+      plan,
+      { lat: 0, lon: 0, speedMs: 20, asOfMs: NOW - 91_000 },
+      NOW,
+    )!;
+    const longAgo = predictPositionFromGps(
+      plan,
+      { lat: 0, lon: 0, speedMs: 20, asOfMs: NOW - 10 * 60_000 },
+      NOW,
+    )!;
+    expect(longAgo.lon).toBeGreaterThan(justPast.lon);
+    // But the far past is still abandoned to the schedule fallback.
+    expect(
+      predictPositionFromGps(
+        plan,
+        { lat: 0, lon: 0, speedMs: 20, asOfMs: NOW - 16 * 60_000 },
+        NOW,
+      ),
+    ).toBeNull();
+  });
+
+  it('uses the TOD speed, not the stale observed speed, past the horizon', () => {
+    // Fix 100 s old at an observed 5 m/s: segment 1 (90 s) reaches the
+    // 400 m stop mid-dwell (80 s drive + 10 s into the 20 s dwell);
+    // segment 2 (10 s) must advance at the TOD bucket speed, not the
+    // observed 5 m/s — a minutes-old observed speed is obsolete.
+    const measured = measurePolyline([{ lat: 0, lon: 0 }, { lat: 0, lon: 1 }]);
+    const out = deadReckonGpsAlongShape(
+      { lat: 0, lon: 0, speedMs: 5, asOfMs: NOW - 100_000 },
+      measured,
+      NOW,
+      {},
+      { stopDistAlongM: [400], dwellSecondsPerStop: 20 },
+    )!;
+    const bucket = clockToBucket(minSinceMidnightInTz(NOW, 'UTC'), DEFAULT_TOD_PROFILE);
+    const todKmh = DEFAULT_FEED_SPEED_CONFIG[`kmh_${bucket}`];
+    expect(out.distAlongM).toBeCloseTo(400 + 10 * (todKmh / 3.6), 0);
+    // All default TOD buckets (15/25/30 km/h) differ from 5 m/s, so
+    // this pins the segment-2 speed unambiguously.
+    expect(out.distAlongM).not.toBeCloseTo(450, 0);
   });
 
   it('dead-reckons faster with an explicit speed than with the TOD fallback', () => {
@@ -215,6 +291,50 @@ describe('predictPositionFromGps', () => {
     // fallback (~22 km/h offpeak default).
     expect(todWalk.lon).toBeGreaterThan(0);
     expect(moving.lon).toBeGreaterThan(todWalk.lon);
+  });
+
+  it('pays dwell at stops the walk crosses instead of skating past for free', () => {
+    // ~111 km straight line; fix at the start, 90 s old, 5 m/s.
+    // Naive walk would cover 450 m and cross the 400 m stop.
+    // Dwell-aware: drive 400 m = 80 s, then the remaining 10 s is
+    // inside the 20 s dwell → the bus is AT the 400 m stop, not
+    // 50 m past it.
+    const measured = measurePolyline([{ lat: 0, lon: 0 }, { lat: 0, lon: 1 }]);
+    const out = deadReckonGpsAlongShape(
+      { lat: 0, lon: 0, speedMs: 5, asOfMs: NOW - 90_000 },
+      measured,
+      NOW,
+      {},
+      { stopDistAlongM: [400, 800, 1200], dwellSecondsPerStop: 20 },
+    )!;
+    expect(out.distAlongM).toBeCloseTo(400, 0);
+  });
+
+  it('consumes dwell at every crossed stop when the budget allows several', () => {
+    // Same line; stops at 100/200/300 m, 90 s budget at 5 m/s.
+    // Naive: 450 m. Dwell-aware: 20 s drive + 20 s dwell per stop →
+    // 100 m (rem 50) → 200 m (rem 10) → 50 m past it = 250 m.
+    const measured = measurePolyline([{ lat: 0, lon: 0 }, { lat: 0, lon: 1 }]);
+    const out = deadReckonGpsAlongShape(
+      { lat: 0, lon: 0, speedMs: 5, asOfMs: NOW - 90_000 },
+      measured,
+      NOW,
+      {},
+      { stopDistAlongM: [100, 200, 300], dwellSecondsPerStop: 20 },
+    )!;
+    expect(out.distAlongM).toBeCloseTo(250, 0);
+  });
+
+  it('falls back to the naive walk when no stop distances are known', () => {
+    // Orphans / feeds without per-stop distances keep the plain
+    // speed × time walk: 90 s × 5 m/s = 450 m.
+    const measured = measurePolyline([{ lat: 0, lon: 0 }, { lat: 0, lon: 1 }]);
+    const out = deadReckonGpsAlongShape(
+      { lat: 0, lon: 0, speedMs: 5, asOfMs: NOW - 90_000 },
+      measured,
+      NOW,
+    )!;
+    expect(out.distAlongM).toBeCloseTo(450, 0);
   });
 
   it('caps dead-reckoning so an outlier speed cannot overshoot the terminus', () => {

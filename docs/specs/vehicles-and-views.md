@@ -118,10 +118,20 @@ point: [`predictArrivalFromGps`](../../src/lib/domain/predictArrivalAlongShape.t
 It encapsulates the raw-GPS dead-reckon + per-segment + dwell walk so
 the two views can't disagree. Views MUST NOT call
 `deadReckonGpsAlongShape` + `predictArrivalAlongShape` themselves —
-doing so risks double extrapolation. Station feeds the predictor
-per-trip stop distances via the repo's `getStopDistancesForTrips`;
-the map feeds them inline from `getRouteMapView`. Non-GPS rows keep
-the schedule-based ETA.
+doing so risks double extrapolation. The dead-reckon walk is capped
+at the fix's own speed for `OBSERVED_WALK_MS` (90 s ≈ 6 live-poll
+cycles) and at the TOD-bucket speed beyond it — the expected
+trajectory, so multi-minute feed gaps don't freeze the marker
+stale-high and then jump on recovery. The walk is dwell-aware
+(every crossed stop costs the feed's dwell seconds — the same stop
+list the ETA prices), and an observed-stopped fix holds only for
+one dwell cycle (`STOP_HOLD_MS`, 45 s) before the TOD walk resumes,
+so dwelling buses don't skate past their stop and departed buses
+don't linger either. Orphan markers walk the same way (they carry
+route + direction), on the view's shape. Station feeds
+the predictor per-trip stop distances via the repo's
+`getStopDistancesForTrips`; the map feeds them inline from
+`getRouteMapView`. Non-GPS rows keep the schedule-based ETA.
 
 ### Map view bypasses the cap
 

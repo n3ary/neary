@@ -80,7 +80,14 @@ domain entry point in both views:
 [`predictArrivalFromGps`](../../src/lib/domain/predictArrivalAlongShape.ts).
 It encapsulates raw-GPS dead-reckon + per-segment + dwell walk. Views
 MUST NOT call `deadReckonGpsAlongShape` + `predictArrivalAlongShape`
-themselves — that risks double extrapolation.
+themselves — that risks double extrapolation. The dead-reckon walk is
+at the observed speed for `OBSERVED_WALK_MS` (90 s ≈ 6 live-poll
+cycles) and at the TOD-bucket speed beyond it (up to the 15-min
+cutoff) — the expected trajectory, so multi-minute feed gaps don't
+freeze and jump. The walk is dwell-aware (crossed stops cost the
+feed's dwell seconds), and an observed-stopped fix holds only for
+one dwell cycle (`STOP_HOLD_MS`, 45 s) before the TOD walk resumes
+(see [prediction.md](../concepts/prediction.md)).
 
 Inputs joined per trip:
 
