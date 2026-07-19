@@ -154,3 +154,81 @@ export async function networkFirstFeedsJson(
     throw new Error('feeds.json: no network and no cached copy');
   }
 }
+
+/* ------------------------------------------------------------------ */
+/* OSM map tiles: CacheFirst with a bounded FIFO bucket.              */
+/* ------------------------------------------------------------------ */
+
+/** Fixed cache name (not versioned by app version) so tiles survive
+ *  SW updates — tile imagery is data, not shell code. The activate
+ *  prune only deletes `precache-v*` and `runtime-html-v*` buckets. */
+export const OSM_TILE_CACHE_NAME = 'runtime-osm-tiles-v1';
+
+/** Storage cap. At ~10–30 KB per PNG this bounds the bucket around
+ *  ~25 MB; the bbox prefetch budget (see lib/map/offlineTiles.ts)
+ *  stays well under it, and cache-on-view fills the rest. */
+export const OSM_TILE_CACHE_MAX_ENTRIES = 1200;
+
+/** Re-fetch a cached tile in the background once it's older than
+ *  this. OSM tiles are immutable enough that stale-while-revalidate
+ *  is always the right trade; 30 days tracks map improvements
+ *  without churning mobile data. */
+export const OSM_TILE_MAX_AGE_MS = 30 * 24 * 60 * 60_000;
+
+async function fetchAndStampTile(req: Request, cache: Cache): Promise<Response> {
+  const res = await fetch(req);
+  // Don't cache failures — a 429/404 served now would otherwise be
+  // replayed offline for 30 days.
+  if (!res.ok) return res;
+  // Stamp the put-time on the stored copy. The tile servers' own
+  // Expires/ETag can't be trusted to reflect data changes, and the
+  // freshness check below needs SOME clock; Date.now() at put is the
+  // only honest one available in a SW.
+  const body = await res.clone().blob();
+  const headers = new Headers(res.headers);
+  headers.set('x-sw-cached-at', String(Date.now()));
+  await cache.put(
+    req,
+    new Response(body, { status: res.status, statusText: res.statusText, headers }),
+  );
+  return res;
+}
+
+/** Drop the oldest-inserted entries beyond the cap. Cache API keys()
+ *  come back in insertion order, so this is a cheap FIFO — crude
+ *  (a frequently viewed old tile can get evicted), but the
+ *  alternative (an IDB LRU index) is a lot of machinery to guard a
+ *  25 MB bucket. */
+async function trimTileCache(cache: Cache, maxEntries: number): Promise<void> {
+  const keys = await cache.keys();
+  for (let i = 0; i < keys.length - maxEntries; i++) {
+    await cache.delete(keys[i]!);
+  }
+}
+
+/**
+ * CacheFirst for {s}.tile.openstreetmap.org.
+ *   cached + fresh  -> serve from cache, no network at all (offline OK)
+ *   cached + stale  -> serve from cache, revalidate in background
+ *   miss            -> fetch, cache stamped copy, trim bucket
+ */
+export async function cacheFirstOsmTile(
+  req: Request,
+  cacheName: string,
+  maxEntries: number = OSM_TILE_CACHE_MAX_ENTRIES,
+): Promise<Response> {
+  const cache = await caches.open(cacheName);
+  const cached = await cache.match(req);
+  if (cached) {
+    const cachedAt = Number(cached.headers.get('x-sw-cached-at') ?? 0);
+    if (Date.now() - cachedAt > OSM_TILE_MAX_AGE_MS) {
+      void fetchAndStampTile(req, cache).catch(() => {
+        // Background revalidate failed — user keeps the stale tile.
+      });
+    }
+    return cached;
+  }
+  const res = await fetchAndStampTile(req, cache);
+  if (res.ok) void trimTileCache(cache, maxEntries);
+  return res;
+}

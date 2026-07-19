@@ -18,6 +18,7 @@
   import { statusBus } from '$lib/stores/statusBus.svelte';
   import { userPrefs } from '$lib/stores/userPrefs.svelte';
   import { getGtfsRepo } from '$lib/data/gtfs/repo';
+  import { scheduleTilePrefetch } from '$lib/map/offlineTiles';
 
   let { children } = $props();
 
@@ -221,6 +222,10 @@
         // the main-thread store to receive every tick. Idempotent across
         // feed switches.
         reconciledVehiclesStore.bind();
+        // Warm the OSM tile cache for this feed's bbox so the map view
+        // works offline. Budget- and policy-guarded, idle-time, no-op
+        // when offline or metered (see lib/map/offlineTiles.ts).
+        scheduleTilePrefetch(feed);
         untrack(() => {
           statusBus.push({
             id: 'gtfs-bind',

@@ -662,6 +662,12 @@
         Lref.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
           maxZoom: 19,
           attribution: '© OpenStreetMap contributors',
+          // CORS mode so tile responses are readable: the SW's tile
+          // cache (cacheFirstOsmTile) can then stamp put-time for
+          // freshness and serve the SAME response to both Leaflet's
+          // requests and the bbox prefetch's cors fetches. OSM sends
+          // Access-Control-Allow-Origin: *.
+          crossOrigin: 'anonymous',
         }).addTo(mapInstance);
         stopsLayer = Lref.layerGroup().addTo(mapInstance);
         vehiclesLayer = Lref.layerGroup().addTo(mapInstance);

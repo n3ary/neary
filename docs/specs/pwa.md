@@ -97,6 +97,22 @@ workbox). It's ~100 lines and easy to audit. Two strategies:
   and the live pipeline handle their own offline behavior (see
   [data-lifecycle.md](multi-feed-data-lifecycle.md)).
 
+### Runtime cache: OSM tiles
+
+- `{s}.tile.openstreetmap.org` tiles are CacheFirst in a fixed-name
+  bucket (`runtime-osm-tiles-v1`) that survives SW updates, capped at
+  1200 entries (~25 MB, FIFO trim). Cached tiles revalidate in the
+  background after 30 days; failures are never cached.
+- After a feed binds, `lib/map/offlineTiles.ts` prefetches the feed's
+  bbox at idle time — budget-capped at 600 tiles, picking the highest
+  zooms z10–z14 that fit (city feeds get the full range; regional
+  bboxes get coarse zooms only). Higher zooms are cached lazily as the
+  user browses. The prefetch runs at most once per 24 h per feed, is
+  skipped on Save-Data / 2g / offline, and re-arms on every `online`
+  event. Budget + throttling keep this inside the OSM Tile Usage
+  Policy; Leaflet loads tiles in CORS mode so the SW can stamp
+  put-time and share entries with the prefetch.
+
 ### Runtime cache: feeds.json only
 
 - `https://gtfs.n3ary.com/feeds.json` is served from the SW runtime
@@ -140,6 +156,7 @@ What's offline-safe and what isn't:
 | --- | --- |
 | User has OPFS sqlite for a feed, opens app offline | **Works.** SW precache serves the shell, OPFS read returns the schedule (the previous snapshot when the registry has advanced past the downloaded sqlite). Live data shows the last good snapshot. StatusBar shows "Refresh failed." |
 | User has feeds.json cached, never picked a feed, opens offline | **Partial.** Shell + feed picker load, but no sqlite is downloaded. They can't pick a feed. |
+| Map view, offline | **Works** for the feed's bbox at prefetched zooms and for any tile the user previously viewed; uncached areas show the gray grid. Route shapes, stops and vehicles are local data and always render. |
 | User has never visited, opens offline | **Fails.** No shell, no data, no fallback. |
 | Saved PWA user, post-deploy, opens online | **Works.** SW detects new version, activates, claims clients, next paint uses new shell. |
 | Saved PWA user, post-deploy, opens offline (new shell not yet precached) | **Degraded but recoverable.** Old shell from HTTP cache loads, points at asset paths the network can't serve. User sees 500/white screen until they reconnect and refresh. The new SW fixes this on the next online open. |

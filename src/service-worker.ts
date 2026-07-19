@@ -69,6 +69,8 @@ import {
   networkFirstNavigation,
   serveFromPrecache,
   networkFirstFeedsJson,
+  cacheFirstOsmTile,
+  OSM_TILE_CACHE_NAME,
 } from './lib/sw/handlers.js';
 
 /** Precache the shell entries the plugin injected. */
@@ -172,6 +174,14 @@ self.addEventListener('fetch', (event) => {
   // feeds.json: NetworkFirst with cache fallback.
   if (url.origin === 'https://gtfs.n3ary.com' && url.pathname === '/feeds.json') {
     event.respondWith(networkFirstFeedsJson(req, RUNTIME_FEEDS_CACHE));
+    return;
+  }
+
+  // OSM map tiles: CacheFirst into a fixed-name bucket that survives
+  // SW updates. The bbox prefetch (lib/map/offlineTiles.ts) and the
+  // map view both flow through here.
+  if (url.hostname.endsWith('.tile.openstreetmap.org')) {
+    event.respondWith(cacheFirstOsmTile(req, OSM_TILE_CACHE_NAME));
     return;
   }
 
