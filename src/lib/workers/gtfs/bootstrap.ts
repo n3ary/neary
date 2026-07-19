@@ -58,6 +58,35 @@ function seedUrlFor(feed: Feed): string {
 
 let poolPromise: Promise<Awaited<ReturnType<Sqlite3Static['installOpfsSAHPoolVfs']>>> | null = null;
 
+/** Bound on OPFS access-handle acquisition. A contested handle
+ *  (another tab, a frozen zombie session from a previous instance)
+ *  leaves `createSyncAccessHandle` pending forever — without a
+ *  timeout the whole bootstrap hangs silently and the page sits on a
+ *  permanent loading state. 10 s is far above honest acquisition
+ *  time and well under the boot watchdog's stall window. */
+const SAH_ACQUIRE_TIMEOUT_MS = 10_000;
+
+/** No single stream read may take this long. A half-dead socket that
+ *  stops delivering mid-body fails the attempt (and retries on a
+ *  fresh connection) instead of hanging until the overall timeout. */
+const SEED_READ_STALL_MS = 20_000;
+
+/** Rejects with a descriptive error if `p` doesn't settle within `ms`.
+ *  The wrapped promise is left to settle on its own; callers treat the
+ *  operation as failed and retry (the pool init is re-entrant via
+ *  `forceReinitIfPreviouslyFailed`). */
+function withTimeout<T>(p: Promise<T>, ms: number, what: string): Promise<T> {
+  return Promise.race([
+    p,
+    new Promise<T>((_, reject) =>
+      setTimeout(
+        () => reject(new Error(`${what} timed out after ${Math.round(ms / 1000)}s`)),
+        ms,
+      ),
+    ),
+  ]);
+}
+
 export async function getPool() {
   if (poolPromise) return poolPromise;
   poolPromise = (async () => {
@@ -89,12 +118,20 @@ export async function getPool() {
       verbosity: 0,
     } as const;
     try {
-      return await sqlite3.installOpfsSAHPoolVfs(opts);
+      return await withTimeout(
+        sqlite3.installOpfsSAHPoolVfs(opts),
+        SAH_ACQUIRE_TIMEOUT_MS,
+        'OPFS access-handle acquisition',
+      );
     } catch (firstErr) {
       console.warn('[gtfs.worker] OPFS pool init failed, retrying in 250ms…', firstErr);
       await new Promise((r) => setTimeout(r, 250));
       try {
-        return await sqlite3.installOpfsSAHPoolVfs(opts);
+        return await withTimeout(
+          sqlite3.installOpfsSAHPoolVfs(opts),
+          SAH_ACQUIRE_TIMEOUT_MS,
+          'OPFS access-handle acquisition',
+        );
       } catch (secondErr) {
         throw new Error(
           'Unable to open the offline schedule database. Another browser ' +
@@ -286,28 +323,73 @@ async function downloadSeed(
         return `Seed download for feed "${feed.id}" was aborted`;
     }
   };
+
+  // Retry the WHOLE download — connect failures AND mid-body stream
+  // failures alike. On patchy signal a socket dies mid-body at least
+  // as often as at connect time, and previously the streaming phase
+  // had no retry at all. Restarting from byte 0 is wasteful but
+  // correct (importDb writes the sqlite in one streaming pass, so a
+  // Range resume isn't an option); the per-read stall bound keeps
+  // each doomed attempt cheap. 5 attempts with backoff, bounded
+  // overall by the 10-minute abort above.
+  const MAX_ATTEMPTS = 5;
+  const RETRY_DELAYS_MS = [1_000, 2_000, 4_000, 8_000];
+  let lastError: Error | null = null;
+  try {
+    for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+      if (controller.signal.aborted) break;
+      try {
+        await downloadSeedAttempt(poolUtil, feed, url, opfsFile, controller, onProgress);
+        return;
+      } catch (e) {
+        const err = e instanceof Error ? e : new Error(String(e));
+        // Our own aborts (10-min timeout, feed switch/suspend) and
+        // explicitly non-retryable failures (e.g. HTTP 0) surface
+        // immediately, with the accurate abort prefix.
+        if (controller.signal.aborted || (err as { retryable?: boolean }).retryable === false) {
+          throw new Error(abortPrefix(err.message));
+        }
+        lastError = err;
+        console.warn(
+          `[gtfs.worker] ${feed.id}: seed attempt ${attempt}/${MAX_ATTEMPTS} failed: ${err.message}`,
+        );
+        if (attempt < MAX_ATTEMPTS) {
+          await new Promise((r) => setTimeout(r, RETRY_DELAYS_MS[attempt - 1] ?? 8_000));
+        }
+      }
+    }
+    throw new Error(
+      abortPrefix(lastError?.message ?? `Seed download for feed "${feed.id}" failed`),
+    );
+  } finally {
+    clearDownloadState();
+  }
+}
+
+/** One seed-download attempt: fetch, stream (with a per-read stall
+ *  bound), import, truncation check, stale-file prune. Throws raw
+ *  (unprefixed) errors; the caller decides retry vs. abort-prefix. */
+async function downloadSeedAttempt(
+  poolUtil: Awaited<ReturnType<typeof getPool>>,
+  feed: Feed,
+  url: string,
+  opfsFile: string,
+  controller: AbortController,
+  onProgress?: (bytesReceived: number, totalBytes: number | null) => void,
+): Promise<void> {
   let res: Response;
-  let attempt = 0;
-  const MAX_RETRIES = 3;
-  const RETRY_DELAYS_MS = [1_000, 2_000, 4_000];
-  while (true) {
-    attempt++;
-    try {
-      res = await fetch(url, { signal: controller.signal });
-    } catch (e) {
-      clearDownloadState();
-      throw new Error(`${abortPrefix(`Seed download for feed "${feed.id}" failed with network error`)}: ${(e as Error).message}`);
-    }
-    if (res.ok) break;
-    if (attempt >= MAX_RETRIES || res.status === 0) {
-      clearDownloadState();
-      throw new Error(`Seed download for feed "${feed.id}" failed (HTTP ${res.status})`);
-    }
-    console.log(`[gtfs.worker] ${feed.id}: HTTP ${res.status}, retrying in ${RETRY_DELAYS_MS[attempt - 1] ?? 4000}ms (${attempt}/${MAX_RETRIES})`);
-    await new Promise((r) => setTimeout(r, RETRY_DELAYS_MS[attempt - 1] ?? 4000));
+  try {
+    res = await fetch(url, { signal: controller.signal });
+  } catch (e) {
+    throw new Error(`Seed download for feed "${feed.id}" failed with network error: ${(e as Error).message}`);
+  }
+  if (!res.ok) {
+    const err = new Error(`Seed download for feed "${feed.id}" failed (HTTP ${res.status})`) as Error & { retryable?: boolean };
+    // Status 0 (opaque failure) never improves on retry.
+    if (res.status === 0) err.retryable = false;
+    throw err;
   }
   if (!res.body) {
-    clearDownloadState();
     throw new Error(`Seed download for feed "${feed.id}" returned empty body (HTTP ${res.status})`);
   }
 
@@ -339,20 +421,27 @@ async function downloadSeed(
       // writes aren't cancellable, but returning undefined here stops
       // any further writes and the outer catch cleans up the OPFS file.
       if (controller.signal.aborted) throw new Error(String(controller.signal.reason ?? 'aborted'));
-      const { done, value } = await reader.read();
+      // Per-read stall bound: a half-dead socket that stops delivering
+      // mid-body would otherwise hang until the 10-minute overall
+      // abort — 20 s without a chunk fails the attempt so the retry
+      // loop can try a fresh connection (and the boot watchdog's
+      // progress beats keep flowing on patchy signal).
+      const { done, value } = await withTimeout(
+        reader.read(),
+        SEED_READ_STALL_MS,
+        `Seed download for feed "${feed.id}" stalled (no data)`,
+      );
       if (done) return undefined;
       imported += value.byteLength;
       return value;
     });
   } catch (e) {
-    clearDownloadState();
     try { await reader.cancel(); } catch {}
     // Best-effort cleanup: leave nothing partial in OPFS so a retry
     // isn't blocked by a corrupt file that seems to already exist.
     try { poolUtil.unlink(opfsFile); } catch {}
-    throw new Error(`${abortPrefix(`Import into OPFS failed for feed "${feed.id}"`)}: ${(e as Error).message}`);
+    throw new Error(`Import into OPFS failed for feed "${feed.id}": ${(e as Error).message}`);
   }
-  clearDownloadState();
   console.log(`[gtfs.worker] Imported ${imported} bytes into ${opfsFile}`);
   // Truncation guard. importDb only checks that the total bytes written
   // is >=512 and a multiple of 512; a short-but-page-aligned read can
@@ -382,6 +471,12 @@ export async function bootstrap(
   onProgress?: (bytesReceived: number, totalBytes: number | null) => void,
 ): Promise<Database> {
   const poolUtil = await getPool();
+  // Resume from a background suspend: re-acquire the access handles
+  // suspendForBackground() released. Contention gets the same bound
+  // as initial acquisition so a zombie holder can't hang the resume.
+  if (poolUtil.isPaused()) {
+    await withTimeout(poolUtil.unpauseVfs(), SAH_ACQUIRE_TIMEOUT_MS, 'OPFS pool unpause');
+  }
   let opfsFile = opfsFileFor(feed);
 
   if (!poolUtil.getFileNames().includes(opfsFile)) {
@@ -496,4 +591,39 @@ export function closeCurrent(): void {
   // stale vehicles.
   stopLiveTimer();
   resetLiveSnapshot();
+}
+
+/** Background suspend. Closes the current DB (and aborts any in-flight
+ *  seed download) via closeCurrent(), then releases the SAH pool's OPFS
+ *  sync-access handles so this session — likely about to be frozen by
+ *  the OS — never blocks another instance's bootstrap. Without this, a
+ *  frozen-but-not-killed page keeps the handles indefinitely and the
+ *  next cold start's pool init hangs (or, with SAH_ACQUIRE_TIMEOUT_MS,
+ *  fails) until the user fully kills the app. The OPFS files stay put;
+ *  bootstrap() unpauses the pool and re-opens the DB on resume, so a
+ *  resume costs a pool re-acquire + DB open, not a re-seed.
+ *
+ *  Best-effort and idempotent — safe to call on every backgrounding,
+ *  including mid-bootstrap: the aborted bootstrap is awaited so no Db
+ *  can be opened after the pause (pauseVfs requires all DBs closed). */
+export async function suspendForBackground(): Promise<void> {
+  // Capture before closeCurrent() nulls it.
+  const inFlight = state.bootstrapping;
+  closeCurrent();
+  if (inFlight) {
+    try {
+      await inFlight;
+    } catch {
+      // Aborted by closeCurrent() — expected.
+    }
+  }
+  if (!poolPromise) return; // pool never created — nothing holds handles
+  const poolUtil = await poolPromise;
+  if (!poolUtil.isPaused()) {
+    try {
+      poolUtil.pauseVfs();
+    } catch (e) {
+      console.warn('[gtfs.worker] pauseVfs failed', e);
+    }
+  }
 }

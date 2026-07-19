@@ -20,7 +20,11 @@
  *   - skipWaiting + clientsClaim: take over immediately. Stale
  *     shell = 500/white screen, so the trade-off is "existing tabs
  *     may reload mid-interaction" vs "app is broken". We pick the
- *     reload.
+ *     reload — and it's deliberate, not accidental: the layout
+ *     listens for controllerchange and runs the hidden-first
+ *     update flow (appUpdate.ts) the moment a new SW claims the
+ *     page, so the swap never leaves a tab running on a pruned
+ *     precache.
  *   - Navigation requests (req.mode === 'navigate') are
  *     NetworkFirst, with the precache bucket as a fallback. This
  *     bypasses the browser's HTTP cache for HTML -- the staleness

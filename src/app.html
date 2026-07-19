@@ -35,6 +35,155 @@
     <meta name="twitter:image" content="https://branding.n3ary.com/neary-1024.png" />
 
     %sveltekit.head%
+    <!--
+      Boot-stall watchdog. INLINE and dependency-free on purpose: it
+      must run even when the JS bundle itself fails to load (precache
+      evicted, stalled chunk fetch, SW asset mismatch) — exactly the
+      failure class it exists to catch.
+
+      The app calls window.__nearyBoot.done() once it reaches a
+      healthy state (feed bound, feed picker shown, or a bind error
+      surfaced), and .beat() on download progress. If that doesn't
+      happen within the stall window, the watchdog auto-reloads —
+      bounded to a few reloads per 10 min so a persistent failure
+      can't loop forever — and then shows a blocking overlay with a
+      manual Reload instead. The decision logic mirrors
+      src/lib/sw/bootWatchdog.ts (unit-tested); keep the two in sync.
+      It also re-arms on every resume re-bind (layout calls .arm()).
+    -->
+    <script>
+      (function () {
+        'use strict';
+        // Mirror of src/lib/sw/bootWatchdog.ts — keep in sync.
+        var STORAGE_KEY = 'neary-boot-reloads';
+        var STALL_MS = 15000; // BOOT_STALL_MS
+        var BIND_STALL_MS = 60000; // BOOT_BIND_STALL_MS
+        var MAX_AUTO_RELOADS = 2; // BOOT_MAX_AUTO_RELOADS
+        var WINDOW_MS = 10 * 60 * 1000; // BOOT_RELOAD_WINDOW_MS
+
+        var timer = null;
+        var overlay = null;
+        // The window the current arm is running on. Defaults to the
+        // boot window; the app widens it to BIND_STALL_MS while a feed
+        // bind (possibly a 21 MB seed download on patchy signal) is in
+        // flight, so honest download stalls don't trigger a reload.
+        var currentMs = STALL_MS;
+
+        function history() {
+          try {
+            return JSON.parse(sessionStorage.getItem(STORAGE_KEY) || '[]');
+          } catch (e) {
+            return [];
+          }
+        }
+        function decide(now) {
+          var recent = history().filter(function (t) {
+            return now - t < WINDOW_MS;
+          });
+          return recent.length < MAX_AUTO_RELOADS ? 'reload' : 'overlay';
+        }
+        function record(now) {
+          var recent = history().filter(function (t) {
+            return now - t < WINDOW_MS;
+          });
+          recent.push(now);
+          try {
+            sessionStorage.setItem(STORAGE_KEY, JSON.stringify(recent));
+          } catch (e) {}
+        }
+        function clearHistory() {
+          try {
+            sessionStorage.removeItem(STORAGE_KEY);
+          } catch (e) {}
+        }
+        function hideOverlay() {
+          if (overlay) {
+            overlay.remove();
+            overlay = null;
+          }
+        }
+        function showOverlay() {
+          if (overlay || !document.body) return;
+          overlay = document.createElement('div');
+          overlay.setAttribute(
+            'style',
+            'position:fixed;inset:0;z-index:9999;display:flex;align-items:center;' +
+              'justify-content:center;background:rgba(0,0,0,.55);padding:24px;',
+          );
+          var card = document.createElement('div');
+          card.setAttribute(
+            'style',
+            'max-width:340px;background:#fff;color:#1a1a1a;border-radius:12px;' +
+              'padding:20px;font:14px/1.45 system-ui,sans-serif;box-shadow:0 8px 30px rgba(0,0,0,.3);',
+          );
+          var title = document.createElement('div');
+          title.setAttribute('style', 'font-weight:600;font-size:16px;margin-bottom:8px;');
+          title.textContent = "Neary couldn't finish starting";
+          var body = document.createElement('div');
+          body.setAttribute('style', 'margin-bottom:16px;');
+          body.textContent =
+            'Something stalled while loading. Reloading usually fixes it — ' +
+            'if it keeps happening, fully close the app and try again on a stable connection.';
+          var btn = document.createElement('button');
+          btn.textContent = 'Reload';
+          btn.setAttribute(
+            'style',
+            'background:#4F46E5;color:#fff;border:0;border-radius:8px;' +
+              'padding:10px 18px;font:600 14px system-ui,sans-serif;cursor:pointer;',
+          );
+          btn.onclick = function () {
+            location.reload();
+          };
+          card.appendChild(title);
+          card.appendChild(body);
+          card.appendChild(btn);
+          overlay.appendChild(card);
+          document.body.appendChild(overlay);
+        }
+        function onStall() {
+          if (window.__nearyBootHealthy) return;
+          var now = Date.now();
+          if (decide(now) === 'reload') {
+            record(now);
+            location.reload();
+          } else {
+            showOverlay();
+          }
+        }
+        window.__nearyBoot = {
+          // (Re)start the stall clock. Called at boot and on every
+          // resume that triggers a worker re-bind. Optional ms widens
+          // the window (feed bind in flight — see BIND_STALL_MS);
+          // beats reuse the same window until the next arm().
+          arm: function (ms) {
+            currentMs = typeof ms === 'number' && ms > 0 ? ms : STALL_MS;
+            window.__nearyBootHealthy = false;
+            if (timer) clearTimeout(timer);
+            timer = setTimeout(onStall, currentMs);
+          },
+          // Boot reached a healthy state — disarm and reset the
+          // auto-reload budget so a future stall gets a fresh one.
+          done: function () {
+            window.__nearyBootHealthy = true;
+            currentMs = STALL_MS;
+            if (timer) {
+              clearTimeout(timer);
+              timer = null;
+            }
+            clearHistory();
+            hideOverlay();
+          },
+          // Real progress happened (download bytes) — give the boot
+          // another full window without disarming.
+          beat: function () {
+            if (window.__nearyBootHealthy) return;
+            if (timer) clearTimeout(timer);
+            timer = setTimeout(onStall, currentMs);
+          },
+        };
+        window.__nearyBoot.arm();
+      })();
+    </script>
   </head>
   <body>
     <div style="display: contents">%sveltekit.body%</div>

@@ -8,6 +8,7 @@
   import * as Comlink from 'comlink';
   import { AppLayout, Button, InfoCard, type HeaderHealth } from '$lib/ui';
   import { handleAppUpdate } from '$lib/sw/appUpdate';
+  import { BOOT_BIND_STALL_MS } from '$lib/sw/bootWatchdog';
   import { connectionStore } from '$lib/stores/connectionStore.svelte';
   import { feedsStore } from '$lib/stores/feedsStore.svelte';
   import { favoritesStore } from '$lib/stores/favoritesStore.svelte';
@@ -18,7 +19,7 @@
   import { stationsViewStore } from '$lib/stores/stationsViewStore.svelte';
   import { statusBus } from '$lib/stores/statusBus.svelte';
   import { userPrefs } from '$lib/stores/userPrefs.svelte';
-  import { getGtfsRepo } from '$lib/data/gtfs/repo';
+  import { getGtfsRepo, suspendGtfs } from '$lib/data/gtfs/repo';
   import { scheduleTilePrefetch } from '$lib/map/offlineTiles';
 
   let { children } = $props();
@@ -31,9 +32,14 @@
   // a visible tab gets a banner with a manual Reload and the update
   // applies itself on the next backgrounding (see appUpdate.ts).
   let updateAvailable = $state(false);
-  $effect(() => {
-    if (!updated.current || typeof window === 'undefined') return;
-    return handleAppUpdate({
+  // Dedupe: the version poll AND controllerchange can discover the same
+  // update; whichever fires first owns the flow (a second trigger would
+  // double-register the visibility watcher / re-show the banner).
+  let updateFlowStarted = false;
+  function startUpdateFlow() {
+    if (updateFlowStarted) return;
+    updateFlowStarted = true;
+    handleAppUpdate({
       isHidden: () => document.visibilityState === 'hidden',
       onVisibilityChange: (cb) => {
         document.addEventListener('visibilitychange', cb);
@@ -44,6 +50,10 @@
         updateAvailable = true;
       },
     });
+  }
+  $effect(() => {
+    if (!updated.current || typeof window === 'undefined') return;
+    startUpdateFlow();
   });
 
   // PWA service worker registration. Prod only — in dev the SW
@@ -88,6 +98,82 @@
       });
     }, 0);
     return () => window.clearTimeout(handle);
+  });
+
+  // SW version swap mid-session. Our SW skipWaiting()s and
+  // clients.claim()s existing pages, and its activate handler deletes
+  // the old precache bucket — so the moment our controller changes,
+  // this page's lazy chunks (the GTFS worker bundle, route splits)
+  // may no longer exist anywhere. Run the same hidden-first update
+  // flow the version poll uses. First-install claims are ignored: the
+  // page loaded uncontrolled, its assets came from the network, and
+  // the new SW pruned nothing of ours.
+  $effect(() => {
+    if (typeof navigator === 'undefined') return;
+    if (!('serviceWorker' in navigator)) return;
+    if (!import.meta.env.PROD) return;
+    if (navigator.serviceWorker.controller == null) return;
+    const onClaim = () => startUpdateFlow();
+    navigator.serviceWorker.addEventListener('controllerchange', onClaim);
+    return () => navigator.serviceWorker.removeEventListener('controllerchange', onClaim);
+  });
+
+  // Background suspend / resume. When the page goes hidden — and in
+  // particular when the OS is about to FREEZE it (Android freezes
+  // standalone PWAs within seconds of backgrounding; it does not kill
+  // them) — close the GTFS database and release the worker's OPFS
+  // access handles. A frozen session that keeps them blocks the next
+  // cold start's bootstrap until the user fully kills the app (the
+  // "black screen on open, white on reopen" bug). Resume re-binds from
+  // the already-seeded OPFS file: pool re-acquire + DB open, no
+  // re-download. The worker-side suspend is fire-and-forget: if the
+  // page freezes before the message is processed, it runs on thaw,
+  // still ahead of the resume's setFeed on the same channel.
+  let gtfsSuspended = false;
+  function suspendGtfsSession() {
+    if (gtfsSuspended) return;
+    gtfsSuspended = true;
+    // Stop pages from querying a suspending worker, and force the
+    // bind effect into a full re-bind on resume.
+    feedsStore.boundFeedId = null;
+    lastBoundFeedKey = null;
+    void suspendGtfs().catch((e) => {
+      console.warn('[pwa] GTFS suspend failed', e);
+    });
+  }
+  function resumeGtfsSession() {
+    if (!gtfsSuspended) return;
+    gtfsSuspended = false;
+    // No feed selected: the picker is a healthy state, nothing
+    // re-binds — don't arm the watchdog (nothing is coming to
+    // disarm it).
+    if (userPrefs.feedId == null) return;
+    // The re-bind is a boot-class operation again: re-arm the stall
+    // watchdog so a wedged resume can't hang silently.
+    window.__nearyBoot?.arm();
+    bindEpoch++;
+  }
+  $effect(() => {
+    if (typeof document === 'undefined') return;
+    const onVisibility = () => {
+      if (document.visibilityState === 'hidden') suspendGtfsSession();
+      else resumeGtfsSession();
+    };
+    document.addEventListener('visibilitychange', onVisibility);
+    window.addEventListener('pagehide', suspendGtfsSession);
+    // Page Lifecycle API `freeze`: fires right before the OS freezes
+    // the page — our last chance to release the OPFS handles. Not in
+    // the TS DOM event map; register structurally.
+    const freezeTarget = document as unknown as {
+      addEventListener(type: string, listener: () => void): void;
+      removeEventListener(type: string, listener: () => void): void;
+    };
+    freezeTarget.addEventListener('freeze', suspendGtfsSession);
+    return () => {
+      document.removeEventListener('visibilitychange', onVisibility);
+      window.removeEventListener('pagehide', suspendGtfsSession);
+      freezeTarget.removeEventListener('freeze', suspendGtfsSession);
+    };
   });
 
 // Dev/debug console hooks. Lets the user pin a fake GPS location from
@@ -150,10 +236,33 @@
   // needs the newer .sqlite3). Progress + errors are surfaced through
   // the global StatusBar so the user sees them regardless of route.
   let lastBoundFeedKey = $state<string | null>(null);
+  // Bumped on every resume-from-background: re-fires the bind effect
+  // even though (feedId, registry) are unchanged, so the feed re-binds
+  // after a suspend released the worker's OPFS handles.
+  let bindEpoch = $state(0);
+  // Set when a bind attempt failed and the error was surfaced. Feeds
+  // the boot watchdog's healthy check: a visible error is a terminal
+  // state, not a hang.
+  let bindFailed = $state(false);
   $effect(() => {
     void feedsStore.load();
   });
+
+  // Boot-stall watchdog healthy signal (inline script in app.html —
+  // see window.__nearyBoot). Healthy = nothing left that can hang
+  // silently: no feed selected (the picker is interactive), a feed
+  // bound, or a bind failure already surfaced via StatusBar. Until
+  // one of these holds, the watchdog keeps its stall clock running
+  // (reset by download progress beats below).
   $effect(() => {
+    if (typeof window === 'undefined') return;
+    if (userPrefs.feedId == null || feedsStore.boundFeedId != null || bindFailed) {
+      window.__nearyBoot?.done();
+    }
+  });
+
+  $effect(() => {
+    void bindEpoch; // resume trigger — see suspendGtfsSession/resumeGtfsSession
     const id = userPrefs.feedId;
     if (id == null) {
       // User deselected (e.g. deleted the active feed from Settings).
@@ -183,9 +292,13 @@
     // New feed = new geography. Drop the previous selection so the
     // user doesn't land on a stale "expanded stop" that isn't in the
     // new feed's stop table (issue #203: state should not leak across
-    // feed swaps).
-    stationsViewStore.reset();
+    // feed swaps). Not on a resume re-bind (lastBoundFeedKey was
+    // nulled by the suspend): same feed, the expansion stays.
+    if (lastBoundFeedKey != null && lastBoundFeedKey !== key) {
+      stationsViewStore.reset();
+    }
     lastBoundFeedKey = key;
+    bindFailed = false;
     const repo = getGtfsRepo();
     // Mark this feed as in-flight so the Settings feed row can render
     // a download spinner instead of a (false) "delete local data"
@@ -211,6 +324,9 @@
     // omits Content-Length (totalBytes is null) we leave the bar at
     // its last determinate value rather than jumping around.
     const onProgress = Comlink.proxy((bytes: number, total: number | null) => {
+      // Real download progress — the boot watchdog gives the bind
+      // another full stall window per beat.
+      window.__nearyBoot?.beat();
       if (total && total > 0) {
         const pct = Math.min(100, Math.round((bytes / total) * 100));
         untrack(() => {
@@ -219,6 +335,12 @@
         feedsStore.bindingProgress = pct;
       }
     });
+    // A bind may mean a 21 MB seed download on patchy signal: widen
+    // the watchdog window for its duration (beats fire per chunk;
+    // done() on success/error restores the default). Without this a
+    // stalled-but-retrying download would trigger a reload that
+    // throws its progress away.
+    window.__nearyBoot?.arm(BOOT_BIND_STALL_MS);
       repo
       .setFeed($state.snapshot(feed) as typeof feed, onProgress)
       .then(() => {
@@ -249,6 +371,15 @@
       .catch((e: Error) => {
         feedsStore.bindingFeedId = null;
         feedsStore.bindingProgress = null;
+        // Our own suspend aborts an in-flight seed download with this
+        // exact reason (see bootstrap.ts ABORT_REASON_FEED_SWITCH) —
+        // lifecycle, not failure: the resume re-bind restarts the
+        // download. Surface nothing.
+        const msg = e?.message ?? '';
+        if (msg.includes('feed-switch-cancelled') || msg.includes('cancelled (feed switched)')) {
+          return;
+        }
+        bindFailed = true; // disarms the boot watchdog: error shown, not a hang
         untrack(() => {
           statusBus.push({
             id: 'gtfs-bind',

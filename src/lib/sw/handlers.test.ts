@@ -236,6 +236,19 @@ describe('serveFromPrecache', () => {
 
     expect(await result.text()).toBe('<html>fresh</html>');
   });
+
+  it('bounds the fallback fetch with an abort signal', async () => {
+    // Browsers apply no timeout to respondWith: without an explicit
+    // AbortSignal a wedged socket would hang the page forever. The
+    // fallback fetch must therefore carry one, and its rejection must
+    // propagate (so the browser shows its own error and the boot
+    // watchdog can reload).
+    vi.mocked(globalThis.fetch).mockRejectedValueOnce(new DOMException('timed out', 'TimeoutError'));
+
+    await expect(serveFromPrecache('/_app/', PRECACHE)).rejects.toThrow('timed out');
+    const init = vi.mocked(globalThis.fetch).mock.calls[0]?.[1];
+    expect(init?.signal).toBeInstanceOf(AbortSignal);
+  });
 });
 
 describe('networkFirstFeedsJson', () => {

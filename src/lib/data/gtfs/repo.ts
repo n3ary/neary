@@ -33,6 +33,14 @@ export function getGtfsRepo(): Comlink.Remote<GtfsRepo> {
   return cached;
 }
 
+/** Suspend the GTFS worker for a backgrounding page — WITHOUT spawning
+ *  it if it was never started (routes that never touched the repo
+ *  must not pay the worker boot just to be told to sleep). */
+export async function suspendGtfs(): Promise<void> {
+  if (!cached) return;
+  await cached.suspend();
+}
+
 if (import.meta.hot) {
   // Self-accept so Vite doesn't escalate updates here to a full page
   // reload (which would force the feed-bind cold path).

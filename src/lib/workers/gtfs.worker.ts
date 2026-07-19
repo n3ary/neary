@@ -25,7 +25,7 @@ import * as Comlink from 'comlink';
 import type { Feed } from '$lib/data/feeds';
 import type { GtfsRepo } from '$lib/data/gtfs/types';
 
-import { bootstrap, closeCurrent, deleteFeedCache, getCachedFeedIds } from './gtfs/bootstrap';
+import { bootstrap, closeCurrent, deleteFeedCache, getCachedFeedIds, suspendForBackground } from './gtfs/bootstrap';
 import {
   ensureLiveTimer,
   subscribeReconciled,
@@ -102,6 +102,15 @@ const api: GtfsRepo = {
     // tick.
     ensureLiveTimer();
     void tickLive();
+  },
+
+  async suspend(): Promise<void> {
+    // Page is going to the background (and may be frozen before this
+    // message is even processed — it runs on thaw, which is still
+    // correct: it precedes the resume setFeed on the same channel).
+    // Close the DB and release the OPFS access handles so a frozen
+    // session never blocks another instance's bootstrap.
+    await suspendForBackground();
   },
 
 

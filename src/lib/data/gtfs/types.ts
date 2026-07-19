@@ -77,6 +77,13 @@ export interface GtfsRepo {
     onProgress?: (bytesReceived: number, totalBytes: number | null) => void,
   ): Promise<void>;
 
+  /** Background suspend: close the current DB and release the SAH
+   *  pool's OPFS sync-access handles so a frozen session never blocks
+   *  another instance's bootstrap. Idempotent and safe to call when
+   *  nothing is bound. The next setFeed() unpauses the pool and
+   *  re-opens the OPFS file — no re-download. */
+  suspend(): Promise<void>;
+
   /** All routes, sorted by short_name (numeric where possible). */
   getRoutes(): Promise<Route[]>;
 

@@ -108,7 +108,15 @@ export async function serveFromPrecache(
   // The SW should have precached this on install. If the
   // browser evicted between install and fetch, fall through
   // to the network so the page still loads.
-  return fetch(pathname);
+  //
+  // Timeout is load-bearing: browsers apply NO timeout to a SW's
+  // respondWith, so a wedged socket here (flaky radio, captive
+  // portal) would hang the render-blocking asset request — and with
+  // it the whole page — forever. Fail fast instead so the browser
+  // can surface its own error and the boot watchdog can reload.
+  // 15 s matches the other foreground fetches in this file and leaves
+  // headroom for honestly-slow 2G links.
+  return fetch(pathname, { signal: AbortSignal.timeout(15_000) });
 }
 
 /**

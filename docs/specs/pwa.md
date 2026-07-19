@@ -144,13 +144,74 @@ workbox). It's ~100 lines and easy to audit. Two strategies:
 - `activate` → delete any other `precache-v*` cache, then
   `clients.claim` so the new SW takes over the current page.
   The next paint uses the new shell, fixing the saved-PWA crash
-  on first open after a deploy.
+  on first open after a deploy. Because claiming also deletes the
+  running page's precache out from under it, the layout listens for
+  `controllerchange` and runs the hidden-first update flow
+  ([appUpdate.ts](../../src/lib/sw/appUpdate.ts)) the moment a new SW
+  takes over — a claimed page never keeps running on pruned assets.
+  First-install claims are ignored (nothing of ours was pruned).
 
 ### Registration
 
 Registered in [src/routes/+layout.svelte](../../src/routes/+layout.svelte)
 on the client only, in production only. Dev mode skips registration
 so Vite HMR isn't fighting the SW cache.
+
+## Boot-stall recovery
+
+The failure class this guards against: a wedged start that never
+reaches first content — a stalled SW fetch (browsers apply no timeout
+to `respondWith`), a missing chunk after cache eviction, a frozen
+zombie session holding the OPFS access handles, a hung socket. Every
+one of these used to present as a permanent black (pre-paint) or
+white (post-paint, unstyled) screen that only a full app kill
+cleared. Four mechanisms, each covering a different wedge:
+
+- **Watchdog** (inline script in
+  [src/app.html](../../src/app.html), decision logic in
+  [src/lib/sw/bootWatchdog.ts](../../src/lib/sw/bootWatchdog.ts)).
+  Inline and dependency-free so it runs even when the bundle itself
+  fails to load. The layout reports a healthy state
+  (`window.__nearyBoot.done()`) once nothing can hang silently — feed
+  bound, feed picker shown, or a bind error surfaced — and beats on
+  download progress. Otherwise, after 15 s the watchdog auto-reloads,
+  bounded to 2 reloads per 10 min (crash-loop budget), then shows a
+  blocking overlay with a manual Reload. It re-arms on every
+  background-resume re-bind. The stall window widens to 60 s while a
+  feed bind is in flight, so an honestly-retrying seed download on
+  patchy signal never triggers a progress-destroying reload (beats
+  fire per downloaded chunk; the worst honest beat gap is the 20 s
+  per-read stall bound plus retry backoff).
+- **Background suspend / resume** (+layout ↔
+  `suspendForBackground()` in
+  [bootstrap.ts](../../src/lib/workers/gtfs/bootstrap.ts)). On
+  `visibilitychange`→hidden / `pagehide` / the Page Lifecycle
+  `freeze` event, the worker closes the DB and `pauseVfs()`-releases
+  the SAH pool's OPFS sync-access handles — Android *freezes*
+  standalone PWAs within seconds of backgrounding rather than
+  killing them, and a frozen holder blocks every future bootstrap
+  until process death. (`freeze` is Chromium-only; on iOS the
+  `visibilitychange`/`pagehide` pair covers the same transition, and
+  the suspend message is processed on thaw ahead of the resume
+  re-bind if the process was frozen first.) Resume unpauses and
+  re-opens the already-seeded OPFS file: pool re-acquire + DB open,
+  no re-download.
+- **SAH acquisition timeout** (bootstrap.ts). A contested
+  `createSyncAccessHandle` stays pending forever; both the initial
+  pool install and the resume-side `unpauseVfs()` are bounded to
+  10 s, after which the bootstrap rejects into the existing
+  user-readable error instead of hanging.
+- **Precache fallback fetch timeout**
+  ([handlers.ts](../../src/lib/sw/handlers.ts)). The
+  `serveFromPrecache` network fall-through carries a 15 s
+  `AbortSignal`, so a wedged socket fails the request (and lets the
+  watchdog reload) instead of hanging the page forever.
+
+- **Seed-download resilience** (bootstrap.ts). The whole download —
+  not just the connect — retries on failure (5 attempts, backoff),
+  and every stream read is bounded to 20 s, so a socket that dies
+  mid-body on patchy signal fails one attempt and retries on a fresh
+  connection instead of hanging to the 10-minute overall timeout.
 
 ## Offline behavior
 
@@ -163,7 +224,7 @@ What's offline-safe and what isn't:
 | Map view, offline | **Works** for the feed's bbox at prefetched zooms and for any tile the user previously viewed; uncached areas show the gray grid. Route shapes, stops and vehicles are local data and always render. |
 | User has never visited, opens offline | **Fails.** No shell, no data, no fallback. |
 | Saved PWA user, post-deploy, opens online | **Works.** SW detects new version, activates, claims clients, next paint uses new shell. |
-| Saved PWA user, post-deploy, opens offline (new shell not yet precached) | **Degraded but recoverable.** Old shell from HTTP cache loads, points at asset paths the network can't serve. User sees 500/white screen until they reconnect and refresh. The new SW fixes this on the next online open. |
+| Saved PWA user, post-deploy, opens offline (new shell not yet precached) | **Degraded but recoverable.** Old shell loads, points at asset paths the network can't serve. The boot watchdog auto-reloads twice, then shows a blocking Reload overlay instead of a dead white screen; once reconnected the next open repairs itself. |
 
 ## Cache headers
 
