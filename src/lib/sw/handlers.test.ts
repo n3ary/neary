@@ -104,13 +104,43 @@ describe('networkFirstNavigation', () => {
     await cache.put(req, stale);
     vi.mocked(globalThis.fetch).mockResolvedValueOnce(fresh);
 
-    const result = await networkFirstNavigation(req, PRECACHE, RUNTIME_HTML);
+    const result = await networkFirstNavigation(req, { precacheName: PRECACHE, runtimeHtmlCacheName: RUNTIME_HTML });
 
     // Stale served immediately.
     expect(await result.text()).toBe('<html>stale</html>');
     // Background refresh fired and cached the fresh response.
     const cached = await cache.match(req);
     expect(cached).not.toBeNull();
+    expect(await cached!.text()).toBe('<html>fresh</html>');
+  });
+
+  it('hands the background refresh to waitUntil so the SW stays alive for it', async () => {
+    // Without FetchEvent.waitUntil the browser may kill the SW the
+    // instant respondWith settles (iOS does this aggressively) — the
+    // refresh dies mid-flight and the cached shell stays stale
+    // forever, which is what made the update banner reappear after
+    // every reload. The handler must give its background work to the
+    // caller's waitUntil.
+    const req = new Request('https://app.n3ary.com/');
+    const stale = makeResponse('<html>stale</html>');
+    const fresh = makeResponse('<html>fresh</html>');
+    const cache = await caches.open(RUNTIME_HTML);
+    await cache.put(req, stale);
+    vi.mocked(globalThis.fetch).mockResolvedValueOnce(fresh);
+
+    const pending: Promise<unknown>[] = [];
+    const result = await networkFirstNavigation(req, {
+      precacheName: PRECACHE,
+      runtimeHtmlCacheName: RUNTIME_HTML,
+      waitUntil: (p) => {
+        pending.push(p);
+      },
+    });
+
+    expect(await result.text()).toBe('<html>stale</html>');
+    expect(pending).toHaveLength(1);
+    await Promise.all(pending);
+    const cached = await cache.match(req);
     expect(await cached!.text()).toBe('<html>fresh</html>');
   });
 
@@ -123,7 +153,7 @@ describe('networkFirstNavigation', () => {
     await cache.put(req, stale);
     vi.mocked(globalThis.fetch).mockResolvedValueOnce(makeResponse('<html>fresh</html>'));
 
-    await networkFirstNavigation(req, PRECACHE, RUNTIME_HTML);
+    await networkFirstNavigation(req, { precacheName: PRECACHE, runtimeHtmlCacheName: RUNTIME_HTML });
 
     const fetchMock = vi.mocked(globalThis.fetch);
     const init = fetchMock.mock.calls[0]?.[1] as RequestInit | undefined;
@@ -143,7 +173,7 @@ describe('networkFirstNavigation', () => {
     await cache.put(req, seed);
     vi.mocked(globalThis.fetch).mockRejectedValueOnce(new TypeError('Load failed'));
 
-    const result = await networkFirstNavigation(req, PRECACHE, RUNTIME_HTML);
+    const result = await networkFirstNavigation(req, { precacheName: PRECACHE, runtimeHtmlCacheName: RUNTIME_HTML });
 
     expect(await result.text()).toBe('<html>seeded</html>');
   });
@@ -160,7 +190,7 @@ describe('networkFirstNavigation', () => {
     await precache.put(new Request('https://app.n3ary.com/'), precached);
     vi.mocked(globalThis.fetch).mockRejectedValueOnce(new TypeError('Load failed'));
 
-    const result = await networkFirstNavigation(req, PRECACHE, RUNTIME_HTML);
+    const result = await networkFirstNavigation(req, { precacheName: PRECACHE, runtimeHtmlCacheName: RUNTIME_HTML });
 
     expect(await result.text()).toBe('<html>precached</html>');
   });
@@ -174,7 +204,7 @@ describe('networkFirstNavigation', () => {
     const fresh = makeResponse('<html>fresh</html>');
     vi.mocked(globalThis.fetch).mockResolvedValueOnce(fresh);
 
-    const result = await networkFirstNavigation(req, PRECACHE, RUNTIME_HTML);
+    const result = await networkFirstNavigation(req, { precacheName: PRECACHE, runtimeHtmlCacheName: RUNTIME_HTML });
 
     expect(await result.text()).toBe('<html>fresh</html>');
     // The foreground response also warms the runtime cache for the
@@ -189,7 +219,7 @@ describe('networkFirstNavigation', () => {
     const req = new Request('https://app.n3ary.com/');
     vi.mocked(globalThis.fetch).mockRejectedValueOnce(new TypeError('Load failed'));
 
-    await expect(networkFirstNavigation(req, PRECACHE, RUNTIME_HTML)).rejects.toThrow(
+    await expect(networkFirstNavigation(req, { precacheName: PRECACHE, runtimeHtmlCacheName: RUNTIME_HTML })).rejects.toThrow(
       'navigation: no network and no cached HTML',
     );
   });
@@ -207,7 +237,7 @@ describe('networkFirstNavigation', () => {
     await runtime.put(req, fresh);
     vi.mocked(globalThis.fetch).mockRejectedValueOnce(new TypeError('Load failed'));
 
-    const result = await networkFirstNavigation(req, PRECACHE, RUNTIME_HTML);
+    const result = await networkFirstNavigation(req, { precacheName: PRECACHE, runtimeHtmlCacheName: RUNTIME_HTML });
 
     expect(await result.text()).toBe('<html>new</html>');
   });
@@ -263,7 +293,7 @@ describe('networkFirstFeedsJson', () => {
     await cache.put(req, stale);
     vi.mocked(globalThis.fetch).mockResolvedValueOnce(fresh);
 
-    const result = await networkFirstFeedsJson(req, RUNTIME_FEEDS);
+    const result = await networkFirstFeedsJson(req, { runtimeFeedsCacheName: RUNTIME_FEEDS });
 
     // Stale served immediately.
     expect(await result.text()).toBe('{"feeds":[]}');
@@ -273,6 +303,28 @@ describe('networkFirstFeedsJson', () => {
     expect(await cached!.text()).toBe('{"feeds":[{"id":"x"}]}');
   });
 
+  it('hands the background refresh to waitUntil so the SW stays alive for it', async () => {
+    const req = new Request('https://gtfs.n3ary.com/feeds.json');
+    const stale = makeResponse('{"feeds":[]}', 200, { 'content-type': 'application/json' });
+    const fresh = makeResponse('{"feeds":[{"id":"x"}]}', 200, { 'content-type': 'application/json' });
+    const cache = await caches.open(RUNTIME_FEEDS);
+    await cache.put(req, stale);
+    vi.mocked(globalThis.fetch).mockResolvedValueOnce(fresh);
+
+    const pending: Promise<unknown>[] = [];
+    const result = await networkFirstFeedsJson(req, {
+      runtimeFeedsCacheName: RUNTIME_FEEDS,
+      waitUntil: (p) => {
+        pending.push(p);
+      },
+    });
+
+    expect(await result.text()).toBe('{"feeds":[]}');
+    expect(pending).toHaveLength(1);
+    await Promise.all(pending);
+    expect(await (await cache.match(req))!.text()).toBe('{"feeds":[{"id":"x"}]}');
+  });
+
   it('falls back to the runtime cache when the network is unreachable', async () => {
     const req = new Request('https://gtfs.n3ary.com/feeds.json');
     const seed = makeResponse('{"feeds":[]}', 200, { 'content-type': 'application/json' });
@@ -280,7 +332,7 @@ describe('networkFirstFeedsJson', () => {
     await cache.put(req, seed);
     vi.mocked(globalThis.fetch).mockRejectedValueOnce(new TypeError('Load failed'));
 
-    const result = await networkFirstFeedsJson(req, RUNTIME_FEEDS);
+    const result = await networkFirstFeedsJson(req, { runtimeFeedsCacheName: RUNTIME_FEEDS });
 
     expect(await result.text()).toBe('{"feeds":[]}');
   });
@@ -294,7 +346,7 @@ describe('networkFirstFeedsJson', () => {
     const fresh = makeResponse('{"feeds":[{"id":"x"}]}', 200, { 'content-type': 'application/json' });
     vi.mocked(globalThis.fetch).mockResolvedValueOnce(fresh);
 
-    const result = await networkFirstFeedsJson(req, RUNTIME_FEEDS);
+    const result = await networkFirstFeedsJson(req, { runtimeFeedsCacheName: RUNTIME_FEEDS });
 
     expect(await result.text()).toBe('{"feeds":[{"id":"x"}]}');
     const cache = await caches.open(RUNTIME_FEEDS);
@@ -307,7 +359,7 @@ describe('networkFirstFeedsJson', () => {
     const req = new Request('https://gtfs.n3ary.com/feeds.json');
     vi.mocked(globalThis.fetch).mockRejectedValueOnce(new TypeError('Load failed'));
 
-    await expect(networkFirstFeedsJson(req, RUNTIME_FEEDS)).rejects.toThrow(
+    await expect(networkFirstFeedsJson(req, { runtimeFeedsCacheName: RUNTIME_FEEDS })).rejects.toThrow(
       'feeds.json: no network and no cached copy',
     );
   });
@@ -316,7 +368,7 @@ describe('networkFirstFeedsJson', () => {
     const req = new Request('https://gtfs.n3ary.com/feeds.json');
     vi.mocked(globalThis.fetch).mockResolvedValueOnce(makeResponse('oops', 500));
 
-    await expect(networkFirstFeedsJson(req, RUNTIME_FEEDS)).rejects.toThrow(
+    await expect(networkFirstFeedsJson(req, { runtimeFeedsCacheName: RUNTIME_FEEDS })).rejects.toThrow(
       'feeds.json: no network and no cached copy',
     );
   });
@@ -335,7 +387,7 @@ describe('cacheFirstOsmTile', () => {
     const cache = await caches.open(OSM_TILE_CACHE_NAME);
     await cache.put(tileReq(), tileResponse('OLD', Date.now()));
 
-    const result = await cacheFirstOsmTile(tileReq(), OSM_TILE_CACHE_NAME);
+    const result = await cacheFirstOsmTile(tileReq(), { cacheName: OSM_TILE_CACHE_NAME });
 
     expect(await result.text()).toBe('OLD');
     expect(globalThis.fetch).not.toHaveBeenCalled();
@@ -346,7 +398,7 @@ describe('cacheFirstOsmTile', () => {
     await cache.put(tileReq(), tileResponse('OLD', Date.now() - OSM_TILE_MAX_AGE_MS - 1));
     vi.mocked(globalThis.fetch).mockResolvedValueOnce(tileResponse('NEW'));
 
-    const result = await cacheFirstOsmTile(tileReq(), OSM_TILE_CACHE_NAME);
+    const result = await cacheFirstOsmTile(tileReq(), { cacheName: OSM_TILE_CACHE_NAME });
 
     expect(await result.text()).toBe('OLD');
     // Background revalidate fired and replaced the stored copy.
@@ -359,7 +411,7 @@ describe('cacheFirstOsmTile', () => {
   it('miss: fetches, stamps put-time, caches, and serves', async () => {
     vi.mocked(globalThis.fetch).mockResolvedValueOnce(tileResponse('PNG'));
 
-    const result = await cacheFirstOsmTile(tileReq(), OSM_TILE_CACHE_NAME);
+    const result = await cacheFirstOsmTile(tileReq(), { cacheName: OSM_TILE_CACHE_NAME });
 
     expect(await result.text()).toBe('PNG');
     const cache = await caches.open(OSM_TILE_CACHE_NAME);
@@ -371,7 +423,7 @@ describe('cacheFirstOsmTile', () => {
   it('miss with a non-ok response: returned but not cached', async () => {
     vi.mocked(globalThis.fetch).mockResolvedValueOnce(makeResponse('slow down', 429));
 
-    const result = await cacheFirstOsmTile(tileReq(), OSM_TILE_CACHE_NAME);
+    const result = await cacheFirstOsmTile(tileReq(), { cacheName: OSM_TILE_CACHE_NAME });
 
     expect(result.status).toBe(429);
     const cache = await caches.open(OSM_TILE_CACHE_NAME);
@@ -387,7 +439,7 @@ describe('cacheFirstOsmTile', () => {
     }
 
     for (const u of urls) {
-      await cacheFirstOsmTile(new Request(u), OSM_TILE_CACHE_NAME, 2);
+      await cacheFirstOsmTile(new Request(u), { cacheName: OSM_TILE_CACHE_NAME, maxEntries: 2 });
     }
     await new Promise((r) => setTimeout(r, 0));
 
