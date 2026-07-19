@@ -79,10 +79,10 @@
   #                            via Comlink, schedule export blobs, etc.)
   #   - https://branding.n3ary.com   favicons + social card (see src/app.html)
   #   - https://gtfs.n3ary.com       GTFS feed manifest + binary blobs
-  #   - https://*.tile.openstreetmap.org   Leaflet map tiles. OSM rotates
-  #                            across a/b/c subdomains; the wildcard covers
-  #                            all three. Attribution is set in code at
+  #   - https://*.tile.openstreetmap.org   Leaflet map tiles + SW tile prefetch.
+  #                            OSM rotates across a/b/c subdomains; the wildcard
+  #                            covers all three. Attribution is set in code at
   #                            src/routes/map/route/[id]/[[selected]]/+page.svelte
   #                            ("OpenStreetMap contributors") so the
   #                            upstream tile usage policy is honoured.
-  Content-Security-Policy: default-src 'self'; script-src 'self' 'unsafe-inline' 'wasm-unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https://branding.n3ary.com https://gtfs.n3ary.com https://*.tile.openstreetmap.org; font-src 'self' data:; connect-src 'self' https://gtfs.n3ary.com https://gtfs-rt.n3ary.com; worker-src 'self' blob:; manifest-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'; upgrade-insecure-requests
+  Content-Security-Policy: default-src 'self'; script-src 'self' 'unsafe-inline' 'wasm-unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https://branding.n3ary.com https://gtfs.n3ary.com https://*.tile.openstreetmap.org; font-src 'self' data:; connect-src 'self' https://gtfs.n3ary.com https://gtfs-rt.n3ary.com https://*.tile.openstreetmap.org; worker-src 'self' blob:; manifest-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'; upgrade-insecure-requests
