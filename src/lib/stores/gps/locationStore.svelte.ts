@@ -2,6 +2,7 @@
 
 import { userPrefs } from '../userPrefs.svelte';
 import { DEFAULT_CONFIG } from '$lib/domain/config';
+import { writeLastKnownPosition } from './lastKnownPosition';
 
 export type FreshState = 'off' | 'idle' | 'ok' | 'stale' | 'error';
 export type PermissionState = 'unknown' | 'prompt' | 'granted' | 'denied';
@@ -66,6 +67,8 @@ class LocationStore {
         this.error = null;
         // Safari iOS doesn't fire Permissions API change events for geolocation, so a successful fix is the only reliable permission grant signal.
         this.permission = 'granted';
+        // Feeds the stalled-GPS fallback on the Stations page (airplane mode / indoor cold start).
+        writeLastKnownPosition(pos.coords.latitude, pos.coords.longitude);
       },
       (err) => {
         this.error = err;
@@ -113,6 +116,16 @@ class LocationStore {
     this.stopPolling();
   }
 
+  /** User-triggered "try again" from the stalled-GPS escape card:
+   *  drops the current watch and error state and re-registers, so a
+   *  wedged acquisition gets a clean start. No-op when unsupported. */
+  retry(): void {
+    if (!this.isSupported) return;
+    this.stop();
+    this.error = null;
+    this.start();
+  }
+
   /** Per-view GPS polling. Starts a GPS_POLL_MS getCurrentPosition loop so a stalled watch (iOS Safari with enableHighAccuracy:false) can't leave the UI anchored to a stale fix. Watch stays alive underneath. Idempotent. */
   startPolling(): void {
     if (typeof navigator === 'undefined' || !('geolocation' in navigator)) return;
@@ -137,6 +150,7 @@ class LocationStore {
         this.position = pos;
         this.lastUpdated = plausibleLastUpdated(pos.timestamp, Date.now());
         this.error = null;
+        writeLastKnownPosition(pos.coords.latitude, pos.coords.longitude);
       },
       // Polling failures are non-fatal: the underlying watch is still running. Surfacing them would flap the dot on a flaky connection.
       () => { /* swallow */ },
