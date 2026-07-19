@@ -70,6 +70,9 @@
         return () => document.removeEventListener('visibilitychange', cb);
       },
       reload: () => window.location.reload(),
+      preReload: () => {
+        navigator.serviceWorker.controller?.postMessage({ type: 'SKIP_PRECACHE' });
+      },
       now: () => Date.now(),
       readLastActedAt,
       writeLastActedAt,

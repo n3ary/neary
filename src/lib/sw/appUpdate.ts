@@ -38,6 +38,11 @@ export interface AppUpdateEnv {
    *  the UI must call THIS (not a bare location.reload) or the grace
    *  window never learns the user acted and the banner returns. */
   showPrompt(reload: () => void): void;
+  /** Called immediately before reload. Use to post a message to the SW
+   *  so it skips its precache on the next navigation (the old SW is
+   *  still in control after location.reload and would serve stale
+   *  precache before the new SW activates). */
+  preReload?(): void;
   /** Clock + persistence for the grace window. Optional: without
    *  persistence there is no suppression (legacy behavior). */
   now?(): number;
@@ -64,6 +69,7 @@ export function handleAppUpdate(env: AppUpdateEnv): (() => void) | void {
   }
   const actAndReload = () => {
     env.writeLastActedAt?.(now());
+    env.preReload?.();
     env.reload();
   };
   if (env.isHidden()) {
