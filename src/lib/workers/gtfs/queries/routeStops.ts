@@ -41,6 +41,28 @@ export function getStopsAlongTrip(db: Database, tripId: string): ScheduleTripSto
   }));
 }
 
+/** Representative stop sequence for a route+direction — same LIMIT 1
+ *  rep-trip selection as `findRepresentativeTripId` in routeMapView.
+ *  Exists for orphan (`gps-only`) vehicles: they have no static trip,
+ *  but route + direction still determine which stops come after the
+ *  rider's station. The scheduled times belong to the rep trip, NOT
+ *  to the orphan — callers must not present them as the orphan's. */
+export function getStopsAlongRouteDir(
+  db: Database,
+  routeId: string,
+  directionId: 0 | 1,
+): ScheduleTripStop[] {
+  type Row = { trip_id: string };
+  const rows = selectAll<Row>(
+    db,
+    `SELECT trip_id FROM trips
+     WHERE route_id = ? AND direction_id = ? LIMIT 1;`,
+    [routeId, directionId],
+  );
+  const repTripId = rows[0]?.trip_id;
+  return repTripId ? getStopsAlongTrip(db, repTripId) : [];
+}
+
 export function getStopDistancesForTrips(
   db: Database,
   tripIds: readonly string[],

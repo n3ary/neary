@@ -5,11 +5,12 @@
     Card, CardContent, SelectFeedCard, Spinner, Stack, StationCard, Typography,
   } from '$lib/ui';
   import { getGtfsRepo } from '$lib/data/gtfs/repo';
-  import { getUpcomingStops } from '$lib/data/gtfs/upcomingStops';
+  import { getUpcomingStops, getUpcomingStopsForRouteDir } from '$lib/data/gtfs/upcomingStops';
   import { createStationBoardsController } from '$lib/data/stationBoardsController.svelte';
   import type { StationBoardInput } from '$lib/data/stationBoardsController.svelte';
   import { DEFAULT_CONFIG } from '$lib/domain/config';
   import { feedsStore } from '$lib/stores/feedsStore.svelte';
+  import { feedConfigStore } from '$lib/stores/feedConfigStore.svelte';
   import { favoritesStore } from '$lib/stores/favoritesStore.svelte';
   import type { StationMarker } from '$lib/stores/favoritesStore.svelte';
   import { refreshBus } from '$lib/stores/refreshBus.svelte';
@@ -116,6 +117,15 @@
     favoriteRouteIds={favoritesStore.routeIds}
     originRouteIds={originRouteIds}
     getUpcomingStops={getUpcomingStops}
+    getUpcomingStopsForRouteDir={(routeId, directionId, currentStopId, obs) =>
+      getUpcomingStopsForRouteDir(routeId, directionId, currentStopId, {
+        obs,
+        nowMs: Date.now(),
+        timezone: feedsStore.activeTimezone,
+        feedConfig: feedConfigStore.speedConfig,
+        todProfile: feedConfigStore.todProfile,
+        dwellSecondsPerStop: feedConfigStore.dwellSec,
+      })}
     expanded={true}
     ontoggle={() => {}}
     onChangeMarker={(id: string, next: StationMarker | null) => favoritesStore.setMarker(id, next)}

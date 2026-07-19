@@ -93,6 +93,18 @@
      *  receives the trip id and current stop id; the caller slices the stop
      *  list so the first returned stop is the one after the current station. */
     getUpcomingStops?: (tripId: string, currentStopId: string) => Promise<ScheduleTripStop[]>;
+    /** Route+direction variant for orphan (`gps-only`) vehicles, which
+     *  have no static trip id: the route's representative stop sequence
+     *  stands in. `obs` is the orphan's live fix — the helper uses it
+     *  to replace times with dead-reckoned estimates (flagged "~");
+     *  without a usable fix the times are hidden (they would belong
+     *  to the representative trip, not the orphan). */
+    getUpcomingStopsForRouteDir?: (
+      routeId: string,
+      directionId: 0 | 1,
+      currentStopId: string,
+      obs: { lat: number; lon: number; speedMs: number | null; asOfMs: number },
+    ) => Promise<ScheduleTripStop[]>;
     class?: string;
   };
 
@@ -110,6 +122,7 @@
     favoriteRouteIds,
     originRouteIds,
     getUpcomingStops,
+    getUpcomingStopsForRouteDir,
     marker,
     onChangeMarker,
     class: className,
@@ -135,7 +148,27 @@
 
   async function toggleStops(vehicle: Vehicle) {
     const tid = vehicle.schedule?.tripId;
-    if (!tid || !getUpcomingStops) return;
+    // Orphans have no trip id; route + direction pick the
+    // representative stop sequence instead.
+    const orphanDir =
+      vehicle.kind === 'gps-only' &&
+      vehicle.directionId != null &&
+      vehicle.directionId !== -1
+        ? (vehicle.directionId as 0 | 1)
+        : null;
+    const fetchStops =
+      tid != null && getUpcomingStops
+        ? () => getUpcomingStops(tid, station.id)
+        : orphanDir != null && getUpcomingStopsForRouteDir != null && vehicle.position != null
+          ? () =>
+              getUpcomingStopsForRouteDir(vehicle.route.id, orphanDir, station.id, {
+                lat: vehicle.position!.lat,
+                lon: vehicle.position!.lon,
+                speedMs: vehicle.position!.speedMs ?? null,
+                asOfMs: vehicle.position!.asOf,
+              })
+          : undefined;
+    if (!fetchStops) return;
     if (expandedVehicleId === vehicle.id) {
       expandedVehicleId = null;
       vehicleStops = null;
@@ -143,7 +176,7 @@
     }
     loadingVehicleId = vehicle.id;
     try {
-      const stops = await getUpcomingStops(tid, station.id);
+      const stops = await fetchStops();
       if (loadingVehicleId !== vehicle.id) return; // superseded by another tap
       vehicleStops = stops;
       expandedVehicleId = vehicle.id;
@@ -487,18 +520,33 @@
                        routesWithSchedule.ts). -->
                   {@const actionable = hasTripId && phase !== 'later'}
                   {@const hasSchedule = vehicle.route.hasSchedule !== false}
-                  {@const stopsEligible = getUpcomingStops != null
-                    && actionable
-                    && !vehicle.schedule?.isLastStop}
+                  <!-- Orphans (kind 'gps-only') have no static trip,
+                       but route + direction + the RT trip id are all
+                       known: the route schedule board, the route map
+                       (which selects the orphan marker by that id) and
+                       stop-expansion (via the representative trip's
+                       sequence, times hidden) all work. -->
+                  {@const isOrphan = vehicle.kind === 'gps-only'}
+                  {@const dirId = vehicle.schedule?.directionId
+                    ?? (vehicle.directionId != null && vehicle.directionId !== -1 ? vehicle.directionId : 0)}
+                  {@const stopsEligible = (getUpcomingStops != null
+                      && actionable
+                      && !vehicle.schedule?.isLastStop)
+                    || (isOrphan
+                      && vehicle.directionId != null
+                      && vehicle.directionId !== -1
+                      && getUpcomingStopsForRouteDir != null)}
                   <Box class="flex flex-col gap-1">
                     <VehicleCard
                       {vehicle}
                       urgency={etaUrgency(row.bucket, vehicle.eta?.minutes ?? 0)}
                       atStationLabel={row.atStationLabel}
-                      scheduleHref={actionable && hasSchedule ? `/schedule/route/${vehicle.route.id}_${vehicle.schedule?.directionId ?? 0}` : undefined}
+                      scheduleHref={(actionable || isOrphan) && hasSchedule ? `/schedule/route/${vehicle.route.id}_${dirId}` : undefined}
                       mapHref={actionable
-                        ? `/map/route/${vehicle.route.id}_${vehicle.schedule?.directionId ?? 0}${vehicle.schedule?.tripId ? `/${encodeURIComponent(vehicle.schedule.tripId)}` : ''}?from=${station.id}`
-                        : undefined}
+                        ? `/map/route/${vehicle.route.id}_${dirId}${vehicle.schedule?.tripId ? `/${encodeURIComponent(vehicle.schedule.tripId)}` : ''}?from=${station.id}`
+                        : isOrphan
+                          ? `/map/route/${vehicle.route.id}_${dirId}/${encodeURIComponent(vehicle.tripId ?? vehicle.id)}?from=${station.id}`
+                          : undefined}
                       onStopsExpand={stopsEligible ? () => toggleStops(vehicle) : undefined}
                       stopsExpanded={expandedVehicleId === vehicle.id || loadingVehicleId === vehicle.id}
                       headsignStopIds={vehicleHeadStopIds.get(vehicle.id)}
@@ -519,7 +567,7 @@
                       <Collapsible in={expandedVehicleId === vehicle.id} reduced>
                         {#if vehicleStops != null && expandedVehicleId === vehicle.id}
                           <div class="rounded-md border border-[color:var(--color-border)]/40 bg-[color:var(--color-surface-raised,var(--color-surface))] overflow-hidden">
-                            <TripStopList stops={vehicleStops} markers={favoritesStore.markers} class="py-1" />
+                            <TripStopList stops={vehicleStops} markers={favoritesStore.markers} hideTimes={vehicle.kind === 'gps-only'} class="py-1" />
                           </div>
                         {/if}
                       </Collapsible>

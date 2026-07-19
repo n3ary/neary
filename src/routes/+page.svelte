@@ -9,7 +9,7 @@
     Typography,
   } from '$lib/ui';
   import { getGtfsRepo } from '$lib/data/gtfs/repo';
-  import { getUpcomingStops } from '$lib/data/gtfs/upcomingStops';
+  import { getUpcomingStops, getUpcomingStopsForRouteDir } from '$lib/data/gtfs/upcomingStops';
   import { createStationBoardsController } from '$lib/data/stationBoardsController.svelte';
   import type { StationBoardInput } from '$lib/data/stationBoardsController.svelte';
   import type { StopWithDistance } from '$lib/data/gtfs/types';
@@ -20,6 +20,7 @@
   import { DEFAULT_CONFIG } from '$lib/domain/config';
   import { isPositionInFeedBbox, distanceToFeedBboxKm, findNearestFeed } from '$lib/domain/feedCoverage';
   import { feedsStore } from '$lib/stores/feedsStore.svelte';
+  import { feedConfigStore } from '$lib/stores/feedConfigStore.svelte';
   import { locationStore } from '$lib/stores/gps/locationStore.svelte';
   import { readLastKnownPosition, type LastKnownPosition } from '$lib/stores/gps/lastKnownPosition';
   import { enableLocationPromptDismissedStore } from '$lib/stores/gps/enableLocationPromptDismissedStore.svelte';
@@ -633,6 +634,15 @@
             onRouteClick={(rid: string) => stationsViewStore.applyRouteBadgeTap(stop.id, rid)}
             favoriteRouteIds={favoritesStore.routeIds}
             getUpcomingStops={getUpcomingStops}
+            getUpcomingStopsForRouteDir={(routeId, directionId, currentStopId, obs) =>
+              getUpcomingStopsForRouteDir(routeId, directionId, currentStopId, {
+                obs,
+                nowMs: Date.now(),
+                timezone: feedsStore.activeTimezone,
+                feedConfig: feedConfigStore.speedConfig,
+                todProfile: feedConfigStore.todProfile,
+                dwellSecondsPerStop: feedConfigStore.dwellSec,
+              })}
             expanded={effectiveExpandedStopId === stop.id}
             ontoggle={() => stationsViewStore.pickExpand(
               effectiveExpandedStopId === stop.id ? null : stop.id,

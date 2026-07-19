@@ -28,10 +28,15 @@
     /** When provided, a matching StationMarkerBadge renders next to
      *  the stop name. Stops without an entry render without a badge. */
     markers?: ReadonlyMap<string, StationMarker>;
+    /** Hide the per-stop times — used for orphan vehicles, where the
+     *  stop sequence comes from a representative trip the vehicle
+     *  isn't actually running, so its times would mislead. Stops
+     *  flagged `estimated` still show, with a "~" prefix. */
+    hideTimes?: boolean;
     class?: string;
   };
 
-  let { stops, showDepartureMarker = false, markers, class: className }: Props = $props();
+  let { stops, showDepartureMarker = false, markers, hideTimes = false, class: className }: Props = $props();
 </script>
 
 <Stack spacing={0.5} class={className}>
@@ -55,12 +60,14 @@
           <StationMarkerBadge marker={markers.get(s.stopId)!} size={12} />
         {/if}
         <span class="flex-1 min-w-0 text-xs truncate">{s.stopName}</span>
-        <span class="flex items-center gap-0.5 text-[color:var(--color-fg-muted)] font-mono text-xs shrink-0">
-          {#if showDepartureMarker && i === 0}
-            <ArrowUpRight size={12} class="text-[color:var(--color-danger)]" aria-label="Departure" />
-          {/if}
-          {formatHHMM(s.arrivalMin)}
-        </span>
+        {#if !hideTimes || s.estimated}
+          <span class="flex items-center gap-0.5 text-[color:var(--color-fg-muted)] font-mono text-xs shrink-0">
+            {#if showDepartureMarker && i === 0}
+              <ArrowUpRight size={12} class="text-[color:var(--color-danger)]" aria-label="Departure" />
+            {/if}
+            {s.estimated ? '~' : ''}{formatHHMM(s.arrivalMin)}
+          </span>
+        {/if}
         <ExternalLink
           size={16}
           class="shrink-0 text-[color:var(--color-fg-muted)]"

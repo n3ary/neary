@@ -256,6 +256,25 @@ export interface GtfsRepo {
   getStopsAlongTrip(tripId: string): Promise<ScheduleTripStop[]>;
 
   /**
+   * Representative stop sequence for a route+direction. Used for
+   * orphan (`gps-only`) vehicles, which have no static trip: route +
+   * direction still determine which stops come after the rider's
+   * station. Times belong to the representative trip, not the
+   * orphan — don't present them as the orphan's.
+   */
+  getStopsAlongRouteDir(routeId: string, directionId: 0 | 1): Promise<ScheduleTripStop[]>;
+
+  /**
+   * Shape polyline for a route+direction (same representative-trip
+   * selection as getStopsAlongRouteDir). Used to estimate per-stop
+   * ETAs for orphan vehicles.
+   */
+  getShapeForRouteDir(
+    routeId: string,
+    directionId: 0 | 1,
+  ): Promise<Array<{ lat: number; lon: number }> | null>;
+
+  /**
    * Distinct route_ids with at least one trip departing in
    * [nowMin, nowMin + windowMin] on the given local date. Used by
    * the /favorites Routes tab to rank "routes running right now"
@@ -471,6 +490,10 @@ export interface ScheduleTripStop {
   arrivalTime: string;
   /** Minutes since local midnight at this stop, for sorting + ETA. */
   arrivalMin: number;
+  /** True when arrivalMin is a live estimate (dead-reckoned vehicle
+   *  position + speed cascade), not a scheduled time — the UI marks
+   *  it with "~". Used for orphan-vehicle expansions. */
+  estimated?: boolean;
   /** 1-based stop_sequence as in GTFS. */
   stopSequence: number;
   /** GTFS `shape_dist_traveled` — cumulative distance along the trip's

@@ -17,6 +17,27 @@ import type { Database } from '@sqlite.org/sqlite-wasm';
 import { shapeCache } from '../shapeCache';
 import { selectAll } from '../sqlHelpers';
 
+/** Shape polyline for a route+direction — same LIMIT 1 rep-trip
+ *  selection as `getStopsAlongRouteDir` (routeStops.ts). Used to
+ *  estimate per-stop ETAs for orphan (`gps-only`) vehicles, which
+ *  have no static trip of their own. */
+export function getShapeForRouteDir(
+  db: Database,
+  routeId: string,
+  directionId: 0 | 1,
+): Array<{ lat: number; lon: number }> | null {
+  type Row = { trip_id: string };
+  const rows = selectAll<Row>(
+    db,
+    `SELECT trip_id FROM trips
+     WHERE route_id = ? AND direction_id = ? LIMIT 1;`,
+    [routeId, directionId],
+  );
+  const repTripId = rows[0]?.trip_id;
+  if (!repTripId) return null;
+  return getShapesForTrips(db, [repTripId])[repTripId] ?? null;
+}
+
 export function getShapesForTrips(
   db: Database,
   tripIds: readonly string[],
