@@ -67,7 +67,7 @@ engaged then cleanly disabled.
 
 - `denied`: permission is `'denied'` (recoverable via browser settings)
 - `gpsUnsupported`: browser has no geolocation API at all (unrecoverable)
-- transient error: watch errored but API exists (next attempt may succeed; no UI banner — header dot only)
+- transient error: watch errored but API exists (next attempt may succeed). While it persists it follows the same stall path as `pending` — see the escape hatch below.
 
 ## Home page banner-stack matrix
 
@@ -88,6 +88,19 @@ The home page also adds:
 - `wrongFeedFor` banner when GPS is on but the user is outside the active feed's bbox.
 - The Position-me FAB when `gpsState === 'available'`.
 - The StationCard list (with the proximity query) when feed is bound + GPS available + position inside feed bbox.
+- GPS stall escape hatch: after `GPS_STALL_MS` (12 s) in `pending` with
+  no fix, or a short `GPS_STALL_AFTER_ERROR_MS` (1.5 s) grace once the
+  watch itself has already errored (its own 10 s timeout has elapsed) —
+  the classic airplane-mode case, where
+  A-GPS is dead and a cold GNSS fix can take minutes — the spinner
+  becomes an escape card (Retry GPS + Search stations); if a persisted
+  last-known position exists, the StationCard list loads for it instead,
+  under a "Using your last known location" banner, and switches back to
+  live location automatically when a real fix arrives. Persistence lives
+  in `src/lib/stores/gps/lastKnownPosition.ts` (written by every
+  successful fix in `locationStore`); `locationStore.retry()` re-arms
+  acquisition. The feed bbox centroid is deliberately NOT used as the
+  fallback — a regional centroid can sit 100+ km from the rider.
 
 ## Settings privacy-section matrix
 

@@ -21,6 +21,7 @@
   import { isPositionInFeedBbox, distanceToFeedBboxKm, findNearestFeed } from '$lib/domain/feedCoverage';
   import { feedsStore } from '$lib/stores/feedsStore.svelte';
   import { locationStore } from '$lib/stores/gps/locationStore.svelte';
+  import { readLastKnownPosition, type LastKnownPosition } from '$lib/stores/gps/lastKnownPosition';
   import { enableLocationPromptDismissedStore } from '$lib/stores/gps/enableLocationPromptDismissedStore.svelte';
   import { favoritesStore } from '$lib/stores/favoritesStore.svelte';
   import { refreshBus } from '$lib/stores/refreshBus.svelte';
@@ -63,17 +64,78 @@
   // (rendered only when GPS is available and the user is outside it).
   const activeFeed = $derived(feedsStore.byId(feedsStore.boundFeedId));
 
+  // GPS-stall escape hatch. With no A-GPS (airplane mode) or indoors,
+  // a cold fix can take minutes — the spinner must not be the end
+  // state. After GPS_STALL_MS without a fix we (a) fall back to the
+  // last known position when one exists — a rider-useful proxy,
+  // unlike the feed centroid (a regional bbox centroid can sit 100+
+  // km from the rider) — and (b) otherwise swap the spinner for a
+  // Retry/Search card. When a real fix lands, gpsState flips to
+  // 'available' and everything switches back to live location.
+  const GPS_STALL_MS = 12_000; // the watch timeout is 10s; small grace
+  // Once the watch has already errored (transientError — typically its
+  // own 10s timeout) the wait has effectively happened in the store; a
+  // full second wait would leave the spinner up ~22s total.
+  const GPS_STALL_AFTER_ERROR_MS = 1_500;
+  let gpsStalled = $state(false);
+  let lastKnown = $state<LastKnownPosition | null>(null);
+  let gpsRetryTick = $state(0);
+  const transientError = $derived(
+    gpsState === 'unavailable' &&
+      locationStore.isSupported &&
+      locationStore.permission !== 'denied',
+  );
+  $effect(() => {
+    void gpsRetryTick; // a manual Retry re-arms the timer
+    if (gpsState !== 'pending' && !transientError) {
+      gpsStalled = false;
+      lastKnown = null;
+      return;
+    }
+    gpsStalled = false;
+    lastKnown = null;
+    const t = setTimeout(
+      () => {
+        gpsStalled = true;
+        lastKnown = readLastKnownPosition();
+      },
+      transientError ? GPS_STALL_AFTER_ERROR_MS : GPS_STALL_MS,
+    );
+    return () => clearTimeout(t);
+  });
+  const usingLastKnown = $derived(!locationStore.position && gpsStalled && lastKnown != null);
+
+  function retryGps() {
+    locationStore.retry();
+    gpsRetryTick++; // re-arms the stall timer even if gpsState didn't change
+  }
+
+  function lastKnownAge(t: number): string {
+    const s = Math.max(0, Math.round((Date.now() - t) / 1000));
+    if (s < 90) return 'just now';
+    const m = Math.round(s / 60);
+    if (m < 60) return `${m} min ago`;
+    const h = Math.round(m / 60);
+    if (h < 48) return `${h} h ago`;
+    return `${Math.round(h / 24)} d ago`;
+  }
+
   // Round to 4 decimals so GPS jitter doesn't refire the SQLite query.
-  // No GPS means no boards — see the gpsState gate in the boards effect.
+  // No live GPS means no boards until the stall timer fires — see the
+  // gate in the boards effect.
   const queryLat = $derived(
     locationStore.position
       ? Math.round(locationStore.position.coords.latitude * 1e4) / 1e4
-      : null,
+      : usingLastKnown
+        ? Math.round(lastKnown!.lat * 1e4) / 1e4
+        : null,
   );
   const queryLon = $derived(
     locationStore.position
       ? Math.round(locationStore.position.coords.longitude * 1e4) / 1e4
-      : null,
+      : usingLastKnown
+        ? Math.round(lastKnown!.lon * 1e4) / 1e4
+        : null,
   );
 
   // Seed `boards` from the cross-mount cache so a remount (returning from
@@ -128,7 +190,7 @@
   // `entries` (findIndex for dedupe), so without it the effect would
   // re-run on every push and loop infinitely — effect_update_depth.
   $effect(() => {
-    const pending = gpsState === 'pending';
+    const pending = gpsState === 'pending' && !gpsStalled;
     untrack(() => {
       if (pending) {
         statusBus.push({
@@ -168,12 +230,12 @@
     // the page can race the bind and briefly flash a 'not bound' error.
     const fid = feedsStore.boundFeedId;
     if (!fid) return;
-    // Nearby boards require GPS. Without it the page shows the
-    // opt-in / denied card instead — see the markup below. We don't
-    // fall back to the feed centroid: distance from a bbox center
-    // isn't rider-useful and seeded a confusing 'no stations within
-    // 2 km of the fallback location' message.
-    if (gpsState !== 'available') return;
+    // Nearby boards require a position: live GPS, or — only after
+    // GPS_STALL_MS without a fix — the last known position. We still
+    // don't fall back to the feed centroid: distance from a bbox
+    // center isn't rider-useful and seeded a confusing 'no stations
+    // within 2 km of the fallback location' message.
+    if (gpsState !== 'available' && !usingLastKnown) return;
     if (queryLat == null || queryLon == null) return;
     // Subscribe to manual-refresh ticks so the header refresh button
     // re-fires this effect.
@@ -511,7 +573,21 @@
          satisfied AND the user is inside the selected feed's bbox.
          Otherwise the banners above carry the page. -->
 
-    {#if userPrefs.feedId != null && gpsState === 'available' && !wrongFeedFor}
+    {#if userPrefs.feedId != null && (gpsState === 'available' || usingLastKnown) && !wrongFeedFor}
+      {#if usingLastKnown && lastKnown}
+        {@const lk = lastKnown}
+        <InfoCard variant="primary" title="Using your last known location">
+          {#snippet icon()}<MapPin size={16} />{/snippet}
+          {#snippet body()}
+            No GPS signal right now — showing stops near your position
+            from {lastKnownAge(lk.t)}. This updates automatically
+            once GPS returns.
+          {/snippet}
+          {#snippet actions()}
+            <Button variant="contained" size="small" onclick={retryGps}>Retry GPS</Button>
+          {/snippet}
+        </InfoCard>
+      {/if}
       {#if boardsError}
         <InfoCard variant="danger" title="Failed to load nearby stations">
           {#snippet icon()}<AlertTriangle size={16} />{/snippet}
@@ -565,15 +641,32 @@
           />
         {/each}
       {/if}
-    {:else if userPrefs.feedId != null && gpsState === 'pending'}
-      <Card>
-        <CardContent>
-          <Stack direction="row" spacing={1} align="center">
-            <Spinner size={16} />
-            <Typography variant="caption">Determining your location…</Typography>
-          </Stack>
-        </CardContent>
-      </Card>
+    {:else if userPrefs.feedId != null && (gpsState === 'pending' || transientError)}
+      {#if gpsStalled}
+        <InfoCard title="Still no GPS fix">
+          {#snippet icon()}<MapPin size={16} />{/snippet}
+          {#snippet body()}
+            Location is taking longer than usual — offline or indoors it
+            may not arrive at all. Retry, or search for a station by
+            name.
+          {/snippet}
+          {#snippet actions()}
+            <Button variant="contained" size="small" onclick={retryGps}>Retry</Button>
+            <Button variant="outlined" size="small" onclick={() => searchOverlayStore.open()}>
+              Search stations
+            </Button>
+          {/snippet}
+        </InfoCard>
+      {:else}
+        <Card>
+          <CardContent>
+            <Stack direction="row" spacing={1} align="center">
+              <Spinner size={16} />
+              <Typography variant="caption">Determining your location…</Typography>
+            </Stack>
+          </CardContent>
+        </Card>
+      {/if}
     {/if}
 
   </Stack>
