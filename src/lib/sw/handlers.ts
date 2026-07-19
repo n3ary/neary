@@ -22,6 +22,16 @@ export type RuntimeCacheName = `runtime-${string}`;
  *  and fire-and-forget callers; the SW must always pass it. */
 export type WaitUntil = (p: Promise<unknown>) => void;
 
+/** Set by the SW via postMessage('SKIP_PRECACHE') when the banner's Reload
+ *  is clicked. The SW reads this before calling networkFirstNavigation and
+ *  passes it as the skipPrecacheOnNextNav option so the stale precache of
+ *  an old-SW-in-control reload can't serve old HTML after a new deploy.
+ *  Reset to false after the first navigation request. */
+export let skipPrecacheOnNextNav = false;
+export const setSkipPrecacheOnNextNav = (v: boolean) => {
+  skipPrecacheOnNextNav = v;
+};
+
 /* Handler parameter convention in this module: at most two required
  * params stay positional (serveFromPrecache); anything carrying an
  * optional param goes in an options bag — positional optionals force
@@ -47,12 +57,12 @@ export type WaitUntil = (p: Promise<unknown>) => void;
  * from the most recent install, which is the same shell the
  * user had online the last time they were online.
  *
- * Falls back to the precache bucket (not just the runtime
- * cache) because the runtime cache is only populated after
- * the first online visit. A user who opens the app for the
- * first time while offline has nothing in the runtime cache;
- * the precache is the only thing they have.
- */
+  * Falls back to the precache bucket (not just the runtime
+  * cache) because the runtime cache is only populated after
+  * the first online visit. A user who opens the app for the
+  * first time while offline has nothing in the runtime cache;
+  * the precache is the only thing they have.
+  */
 export interface NetworkFirstNavigationOptions {
   precacheName: string;
   runtimeHtmlCacheName: RuntimeCacheName;
@@ -61,8 +71,9 @@ export interface NetworkFirstNavigationOptions {
 
 export async function networkFirstNavigation(
   req: Request,
-  { precacheName, runtimeHtmlCacheName, waitUntil = () => {} }: NetworkFirstNavigationOptions,
+  opts: NetworkFirstNavigationOptions,
 ): Promise<Response> {
+  const { precacheName, runtimeHtmlCacheName, waitUntil = () => {} } = opts;
   const cache = await caches.open(runtimeHtmlCacheName);
   // Stale-while-revalidate: serve cached HTML immediately so the
   // user never sees a blank screen on flaky networks. Refresh the
@@ -90,13 +101,21 @@ export async function networkFirstNavigation(
     waitUntil(refreshInBackground());
     return cached;
   }
-  const precache = await caches.open(precacheName);
-  const hit = await precache.match('/');
-  if (hit) {
-    // Warm the runtime cache so the next offline read serves the
-    // most recent online HTML instead of the install-time shell.
-    waitUntil(refreshInBackground());
-    return hit;
+  // Skip precache when the banner's Reload was just clicked: the old-SW-in-
+  // control reload would otherwise serve its stale precache (precache-v<old>
+  // has the old HTML, the new HTML is in precache-v<new>). One-shot: reset
+  // after the first nav so normal offline fallback works on subsequent navs.
+  if (skipPrecacheOnNextNav) {
+    skipPrecacheOnNextNav = false;
+  } else {
+    const precache = await caches.open(precacheName);
+    const hit = await precache.match('/');
+    if (hit) {
+      // Warm the runtime cache so the next offline read serves the
+      // most recent online HTML instead of the install-time shell.
+      waitUntil(refreshInBackground());
+      return hit;
+    }
   }
   // Both caches cold: the foreground request is the only remaining
   // source of HTML. Firing it in the background and throwing here

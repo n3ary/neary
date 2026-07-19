@@ -75,6 +75,8 @@ import {
   networkFirstFeedsJson,
   cacheFirstOsmTile,
   OSM_TILE_CACHE_NAME,
+  setSkipPrecacheOnNextNav,
+  skipPrecacheOnNextNav,
 } from './lib/sw/handlers.js';
 
 /** Precache the shell entries the plugin injected. */
@@ -175,6 +177,9 @@ self.addEventListener('fetch', (event) => {
     // without it the SW can be killed the moment respondWith settles
     // and the cached shell stays stale forever (the "update banner
     // insists after updating" bug).
+    // without it the SW can be killed the moment respondWith settles
+    // and the cached shell stays stale forever (the "update banner
+    // insists after updating" bug).
     event.respondWith(
       networkFirstNavigation(req, {
         precacheName: PRECACHE_NAME,
@@ -225,4 +230,15 @@ self.addEventListener('fetch', (event) => {
   // SW doesn't double-cache large files). gtfs-rt.n3ary.com/rt/*
   // is also pass-through -- the live pipeline handles its own
   // offline fallback to the last good snapshot.
+});
+
+// When the banner's Reload is clicked, the layout posts this message
+// before reloading. The old-SW-in-control sets the skip-precache flag,
+// so the navigation fetch bypasses the precache and goes straight to
+// the network — the stale precache from an old-SW-in-control reload
+// can't serve old HTML after a new deploy.
+self.addEventListener('message', (event) => {
+  if (event.data?.type === 'SKIP_PRECACHE') {
+    setSkipPrecacheOnNextNav(true);
+  }
 });

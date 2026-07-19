@@ -15,6 +15,7 @@ function makeEnv(initialHidden: boolean) {
     },
     reload: vi.fn(),
     showPrompt: vi.fn(),
+    preReload: vi.fn(),
   };
   const fireVisibility = () => cbs.forEach((cb) => cb());
   return { state, cbs, env, fireVisibility };
@@ -26,6 +27,7 @@ describe('handleAppUpdate', () => {
     const cleanup = handleAppUpdate(env);
     expect(env.reload).toHaveBeenCalledTimes(1);
     expect(env.showPrompt).not.toHaveBeenCalled();
+    expect(env.preReload).toHaveBeenCalledTimes(1);
     expect(cbs).toHaveLength(0);
     expect(cleanup).toBeUndefined();
   });
@@ -123,6 +125,7 @@ describe('re-nag suppression (grace window)', () => {
     expect(typeof promptReload).toBe('function');
     promptReload!();
     expect(store.lastActedAt).toBe(NOW);
+    expect(env.preReload).toHaveBeenCalledTimes(1);
     expect(env.reload).toHaveBeenCalledTimes(1);
   });
 });
