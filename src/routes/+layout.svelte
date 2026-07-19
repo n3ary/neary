@@ -32,6 +32,30 @@
   // a visible tab gets a banner with a manual Reload and the update
   // applies itself on the next backgrounding (see appUpdate.ts).
   let updateAvailable = $state(false);
+  // The flow's own reload (marks the action for the re-nag grace
+  // window before reloading); the banner's Reload button must call
+  // this, not a bare location.reload, or the banner comes back.
+  let updateReload = $state<(() => void) | null>(null);
+  // sessionStorage: survives the reload the flow triggers (same tab
+  // session), resets on a genuinely new session — exactly the window
+  // in which a re-prompt would be noise.
+  const UPDATE_ACTED_KEY = 'neary-update-acted-at';
+  const readLastActedAt = (): number | null => {
+    try {
+      const raw = sessionStorage.getItem(UPDATE_ACTED_KEY);
+      const ts = raw == null ? NaN : Number(raw);
+      return Number.isFinite(ts) ? ts : null;
+    } catch {
+      return null;
+    }
+  };
+  const writeLastActedAt = (ts: number) => {
+    try {
+      sessionStorage.setItem(UPDATE_ACTED_KEY, String(ts));
+    } catch {
+      // storage unavailable — suppression just won't persist
+    }
+  };
   // Dedupe: the version poll AND controllerchange can discover the same
   // update; whichever fires first owns the flow (a second trigger would
   // double-register the visibility watcher / re-show the banner).
@@ -46,7 +70,11 @@
         return () => document.removeEventListener('visibilitychange', cb);
       },
       reload: () => window.location.reload(),
-      showPrompt: () => {
+      now: () => Date.now(),
+      readLastActedAt,
+      writeLastActedAt,
+      showPrompt: (reload) => {
+        updateReload = reload;
         updateAvailable = true;
       },
     });
@@ -573,7 +601,7 @@
         and come back, it updates on its own.
       {/snippet}
       {#snippet actions()}
-        <Button variant="contained" size="small" onclick={() => window.location.reload()}>
+        <Button variant="contained" size="small" onclick={() => (updateReload ?? (() => window.location.reload()))()}>
           Reload
         </Button>
       {/snippet}

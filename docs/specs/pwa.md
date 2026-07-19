@@ -66,6 +66,24 @@ update silently. Catches the edge case where the SW itself fails to
 claim (browser bug, private mode, etc.) — the update lands within a
 minute either way, without yanking the board mid-read.
 
+Two guards keep the banner honest:
+
+- **Re-nag suppression.** After acting on an update (any reload path —
+  the banner's Reload goes through the flow's own reload), the flow
+  stays quiet for 30 min even if the poll still reports a mismatch:
+  the served shell legitimately lags `version.json` while the new SW
+  installs (precaching is slow on patchy signal), so an immediate
+  re-prompt means "couldn't apply yet", not "another update". The
+  timestamp lives in `sessionStorage` (survives the reload the flow
+  triggers, resets on a new session).
+- **`waitUntil` for background refreshes.** Every piece of SW
+  background work (the runtime-HTML revalidate in particular) is
+  handed to `FetchEvent.waitUntil`. Without it the browser can kill
+  the SW the instant `respondWith` settles — iOS does this
+  aggressively — the refresh dies mid-flight, the cached shell stays
+  stale forever, and the banner reappears after every reload no
+  matter how often the user updates.
+
 ```js
 // svelte.config.js
 kit: {

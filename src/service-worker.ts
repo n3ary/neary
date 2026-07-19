@@ -171,13 +171,28 @@ self.addEventListener('fetch', (event) => {
   // the gatekeeper for HTML so the browser's HTTP cache can
   // never serve a stale shell.
   if (req.mode === 'navigate') {
-    event.respondWith(networkFirstNavigation(req, PRECACHE_NAME, RUNTIME_HTML_CACHE));
+    // waitUntil is load-bearing for the background HTML refresh —
+    // without it the SW can be killed the moment respondWith settles
+    // and the cached shell stays stale forever (the "update banner
+    // insists after updating" bug).
+    event.respondWith(
+      networkFirstNavigation(req, {
+        precacheName: PRECACHE_NAME,
+        runtimeHtmlCacheName: RUNTIME_HTML_CACHE,
+        waitUntil: event.waitUntil.bind(event),
+      }),
+    );
     return;
   }
 
   // feeds.json: NetworkFirst with cache fallback.
   if (url.origin === 'https://gtfs.n3ary.com' && url.pathname === '/feeds.json') {
-    event.respondWith(networkFirstFeedsJson(req, RUNTIME_FEEDS_CACHE));
+    event.respondWith(
+      networkFirstFeedsJson(req, {
+        runtimeFeedsCacheName: RUNTIME_FEEDS_CACHE,
+        waitUntil: event.waitUntil.bind(event),
+      }),
+    );
     return;
   }
 
@@ -185,7 +200,12 @@ self.addEventListener('fetch', (event) => {
   // SW updates. The bbox prefetch (lib/map/offlineTiles.ts) and the
   // map view both flow through here.
   if (url.hostname.endsWith('.tile.openstreetmap.org')) {
-    event.respondWith(cacheFirstOsmTile(req, OSM_TILE_CACHE_NAME));
+    event.respondWith(
+      cacheFirstOsmTile(req, {
+        cacheName: OSM_TILE_CACHE_NAME,
+        waitUntil: event.waitUntil.bind(event),
+      }),
+    );
     return;
   }
 

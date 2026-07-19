@@ -14,8 +14,19 @@
  *                   keep watching `visibilitychange`; the first
  *                   backgrounding applies the update silently.
  *
- * The env seam (isHidden / onVisibilityChange / reload / showPrompt)
- * keeps the module DOM-free so the flow is unit-testable in node.
+ * Re-nag suppression: after ACTING on an update (any reload path),
+ * stay quiet for UPDATE_REACT_GRACE_MS even if the poll still reports
+ * a mismatch. The served shell legitimately lags the live
+ * version.json — the new SW may still be installing (precaching is
+ * slow on patchy signal) or the runtime HTML cache refresh may not
+ * have landed yet — so an immediate re-prompt means "the update
+ * couldn't apply", not "there's another update". Reloading again
+ * can't help; nagging is worse. (Before this, the banner reappeared
+ * within a minute of the reload it asked for.)
+ *
+ * The env seam (isHidden / onVisibilityChange / reload / showPrompt /
+ * now / readLastActedAt / writeLastActedAt) keeps the module DOM-free
+ * so the flow is unit-testable in node.
  */
 
 export interface AppUpdateEnv {
@@ -23,21 +34,44 @@ export interface AppUpdateEnv {
   /** Register a visibility watcher; must return an unsubscribe. */
   onVisibilityChange(cb: () => void): () => void;
   reload(): void;
-  showPrompt(): void;
+  /** Show the manual-update prompt. Receives the flow's own reload —
+   *  the UI must call THIS (not a bare location.reload) or the grace
+   *  window never learns the user acted and the banner returns. */
+  showPrompt(reload: () => void): void;
+  /** Clock + persistence for the grace window. Optional: without
+   *  persistence there is no suppression (legacy behavior). */
+  now?(): number;
+  readLastActedAt?(): number | null;
+  writeLastActedAt?(ts: number): void;
 }
+
+/** See the file header. 30 min is far longer than any honest SW
+ *  install takes, short enough that a genuinely missed update still
+ *  surfaces the same day. */
+export const UPDATE_REACT_GRACE_MS = 30 * 60_000;
 
 /**
  * Run the update flow once `updated.current` is true. Returns the
  * visibility-listener unsubscribe when a prompt was shown (the caller
- * uses it as its effect cleanup), nothing when it reloaded outright.
+ * uses it as its effect cleanup), nothing when it reloaded outright
+ * or the grace window suppressed the flow.
  */
 export function handleAppUpdate(env: AppUpdateEnv): (() => void) | void {
-  if (env.isHidden()) {
+  const now = () => env.now?.() ?? Date.now();
+  const lastActedAt = env.readLastActedAt?.() ?? null;
+  if (lastActedAt != null && now() - lastActedAt < UPDATE_REACT_GRACE_MS) {
+    return; // recently acted — suppress both prompt and auto-reload
+  }
+  const actAndReload = () => {
+    env.writeLastActedAt?.(now());
     env.reload();
+  };
+  if (env.isHidden()) {
+    actAndReload();
     return;
   }
-  env.showPrompt();
+  env.showPrompt(actAndReload);
   return env.onVisibilityChange(() => {
-    if (env.isHidden()) env.reload();
+    if (env.isHidden()) actAndReload();
   });
 }

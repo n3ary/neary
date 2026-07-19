@@ -16,6 +16,18 @@
 
 export type RuntimeCacheName = `runtime-${string}`;
 
+/** FetchEvent.waitUntil, threaded through so background work survives
+ *  past respondWith (the SW can otherwise be killed the instant the
+ *  response settles — see networkFirstNavigation). Optional for tests
+ *  and fire-and-forget callers; the SW must always pass it. */
+export type WaitUntil = (p: Promise<unknown>) => void;
+
+/* Handler parameter convention in this module: at most two required
+ * params stay positional (serveFromPrecache); anything carrying an
+ * optional param goes in an options bag — positional optionals force
+ * callers to spell out defaults just to reach a later slot, which is
+ * how the waitUntil addition ended up looking worse than it is. */
+
 /**
  * NetworkFirst for HTML navigations.
  *
@@ -41,30 +53,41 @@ export type RuntimeCacheName = `runtime-${string}`;
  * first time while offline has nothing in the runtime cache;
  * the precache is the only thing they have.
  */
+export interface NetworkFirstNavigationOptions {
+  precacheName: string;
+  runtimeHtmlCacheName: RuntimeCacheName;
+  waitUntil?: WaitUntil;
+}
+
 export async function networkFirstNavigation(
   req: Request,
-  precacheName: string,
-  runtimeHtmlCacheName: RuntimeCacheName,
+  { precacheName, runtimeHtmlCacheName, waitUntil = () => {} }: NetworkFirstNavigationOptions,
 ): Promise<Response> {
   const cache = await caches.open(runtimeHtmlCacheName);
   // Stale-while-revalidate: serve cached HTML immediately so the
   // user never sees a blank screen on flaky networks. Refresh the
   // cache in the background, up to 10s. If the network is actually
   // down the user still gets the cached shell; no blank screen.
-  const refreshInBackground = () => {
-    void (async () => {
-      try {
-        const res = await fetch(req, { cache: 'no-cache', signal: AbortSignal.timeout(10_000) });
-        if (res.ok) void cache.put(req, res.clone());
-      } catch {
-        // Background refresh failed — user already got the cached shell.
-      }
-    })();
+  //
+  // The refresh MUST be handed to FetchEvent.waitUntil: without it
+  // the browser may kill the SW the instant respondWith settles
+  // (iOS does this aggressively), the refresh dies mid-flight, and
+  // the cached shell stays stale forever — the served version then
+  // lags the live version.json permanently and the update banner
+  // reappears after every reload no matter how often the user
+  // actually updates.
+  const refreshInBackground = async () => {
+    try {
+      const res = await fetch(req, { cache: 'no-cache', signal: AbortSignal.timeout(10_000) });
+      if (res.ok) await cache.put(req, res.clone());
+    } catch {
+      // Background refresh failed — user already got the cached shell.
+    }
   };
   // Serve from cache first; fall back to precache on a cold start.
   const cached = await cache.match(req);
   if (cached) {
-    refreshInBackground();
+    waitUntil(refreshInBackground());
     return cached;
   }
   const precache = await caches.open(precacheName);
@@ -72,7 +95,7 @@ export async function networkFirstNavigation(
   if (hit) {
     // Warm the runtime cache so the next offline read serves the
     // most recent online HTML instead of the install-time shell.
-    refreshInBackground();
+    waitUntil(refreshInBackground());
     return hit;
   }
   // Both caches cold: the foreground request is the only remaining
@@ -83,7 +106,7 @@ export async function networkFirstNavigation(
   try {
     const res = await fetch(req, { cache: 'no-cache', signal: AbortSignal.timeout(15_000) });
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    void cache.put(req, res.clone());
+    waitUntil(cache.put(req, res.clone()));
     return res;
   } catch {
     throw new Error('navigation: no network and no cached HTML');
@@ -126,9 +149,14 @@ export async function serveFromPrecache(
  * network still works as long as the user has visited at
  * least once.
  */
+export interface NetworkFirstFeedsJsonOptions {
+  runtimeFeedsCacheName: RuntimeCacheName;
+  waitUntil?: WaitUntil;
+}
+
 export async function networkFirstFeedsJson(
   req: Request,
-  runtimeFeedsCacheName: RuntimeCacheName,
+  { runtimeFeedsCacheName, waitUntil = () => {} }: NetworkFirstFeedsJsonOptions,
 ): Promise<Response> {
   const cache = await caches.open(runtimeFeedsCacheName);
   const cached = await cache.match(req);
@@ -136,15 +164,18 @@ export async function networkFirstFeedsJson(
     // Stale-while-revalidate: serve cached feeds.json immediately,
     // refresh in background. 5s timeout — if the network is slow
     // the cached feed list is still useful (5 min edge TTL means it
-    // was fresh moments ago anyway).
-    void (async () => {
-      try {
-        const res = await fetch(req, { cache: 'no-cache', signal: AbortSignal.timeout(5_000) });
-        if (res.ok) void cache.put(req, res.clone());
-      } catch {
-        // Background refresh failed — user already got the cached list.
-      }
-    })();
+    // was fresh moments ago anyway). waitUntil keeps the SW alive
+    // until the refresh lands (see networkFirstNavigation).
+    waitUntil(
+      (async () => {
+        try {
+          const res = await fetch(req, { cache: 'no-cache', signal: AbortSignal.timeout(5_000) });
+          if (res.ok) await cache.put(req, res.clone());
+        } catch {
+          // Background refresh failed — user already got the cached list.
+        }
+      })(),
+    );
     return cached;
   }
   // Cold cache: the foreground request is the ONLY chance to get the
@@ -156,7 +187,7 @@ export async function networkFirstFeedsJson(
   try {
     const res = await fetch(req, { cache: 'no-cache', signal: AbortSignal.timeout(15_000) });
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    void cache.put(req, res.clone());
+    waitUntil(cache.put(req, res.clone()));
     return res;
   } catch {
     throw new Error('feeds.json: no network and no cached copy');
@@ -220,23 +251,34 @@ async function trimTileCache(cache: Cache, maxEntries: number): Promise<void> {
  *   cached + stale  -> serve from cache, revalidate in background
  *   miss            -> fetch, cache stamped copy, trim bucket
  */
+export interface CacheFirstOsmTileOptions {
+  cacheName: string;
+  maxEntries?: number;
+  waitUntil?: WaitUntil;
+}
+
 export async function cacheFirstOsmTile(
   req: Request,
-  cacheName: string,
-  maxEntries: number = OSM_TILE_CACHE_MAX_ENTRIES,
+  {
+    cacheName,
+    maxEntries = OSM_TILE_CACHE_MAX_ENTRIES,
+    waitUntil = () => {},
+  }: CacheFirstOsmTileOptions,
 ): Promise<Response> {
   const cache = await caches.open(cacheName);
   const cached = await cache.match(req);
   if (cached) {
     const cachedAt = Number(cached.headers.get('x-sw-cached-at') ?? 0);
     if (Date.now() - cachedAt > OSM_TILE_MAX_AGE_MS) {
-      void fetchAndStampTile(req, cache).catch(() => {
-        // Background revalidate failed — user keeps the stale tile.
-      });
+      waitUntil(
+        fetchAndStampTile(req, cache).catch(() => {
+          // Background revalidate failed — user keeps the stale tile.
+        }),
+      );
     }
     return cached;
   }
   const res = await fetchAndStampTile(req, cache);
-  if (res.ok) void trimTileCache(cache, maxEntries);
+  if (res.ok) waitUntil(trimTileCache(cache, maxEntries));
   return res;
 }
