@@ -16,6 +16,9 @@ import {
   networkFirstNavigation,
   serveFromPrecache,
   networkFirstFeedsJson,
+  cacheFirstOsmTile,
+  OSM_TILE_CACHE_NAME,
+  OSM_TILE_MAX_AGE_MS,
 } from './handlers.js';
 
 const PRECACHE = 'precache-v42';
@@ -44,8 +47,10 @@ function makeMockCache(): Cache & { _store: Map<string, CacheEntry> } {
     put,
     add: vi.fn(),
     addAll: vi.fn(),
-    delete: vi.fn(),
-    keys: vi.fn(async () => []),
+    delete: vi.fn(async (req: Request | string) => store.delete(resolve(req))),
+    // Insertion order mirrors the real Cache API's keys() ordering,
+    // which the tile cache's FIFO trim relies on.
+    keys: vi.fn(async () => [...store.values()].map((e) => e.request)),
   };
   return mockCache as unknown as Cache & { _store: Map<string, CacheEntry> };
 }
@@ -301,5 +306,80 @@ describe('networkFirstFeedsJson', () => {
     await expect(networkFirstFeedsJson(req, RUNTIME_FEEDS)).rejects.toThrow(
       'feeds.json: no network and no cached copy',
     );
+  });
+});
+
+describe('cacheFirstOsmTile', () => {
+  const TILE_URL = 'https://a.tile.openstreetmap.org/13/4633/2888.png';
+  const tileReq = () => new Request(TILE_URL);
+  const tileResponse = (body: string, cachedAt?: number) =>
+    makeResponse(body, 200, {
+      'content-type': 'image/png',
+      ...(cachedAt !== undefined ? { 'x-sw-cached-at': String(cachedAt) } : {}),
+    });
+
+  it('serves a fresh cached tile without touching the network', async () => {
+    const cache = await caches.open(OSM_TILE_CACHE_NAME);
+    await cache.put(tileReq(), tileResponse('OLD', Date.now()));
+
+    const result = await cacheFirstOsmTile(tileReq(), OSM_TILE_CACHE_NAME);
+
+    expect(await result.text()).toBe('OLD');
+    expect(globalThis.fetch).not.toHaveBeenCalled();
+  });
+
+  it('serves a stale cached tile and revalidates in the background', async () => {
+    const cache = await caches.open(OSM_TILE_CACHE_NAME);
+    await cache.put(tileReq(), tileResponse('OLD', Date.now() - OSM_TILE_MAX_AGE_MS - 1));
+    vi.mocked(globalThis.fetch).mockResolvedValueOnce(tileResponse('NEW'));
+
+    const result = await cacheFirstOsmTile(tileReq(), OSM_TILE_CACHE_NAME);
+
+    expect(await result.text()).toBe('OLD');
+    // Background revalidate fired and replaced the stored copy.
+    await new Promise((r) => setTimeout(r, 0));
+    expect(globalThis.fetch).toHaveBeenCalledTimes(1);
+    const stored = await cache.match(tileReq());
+    expect(await stored!.text()).toBe('NEW');
+  });
+
+  it('miss: fetches, stamps put-time, caches, and serves', async () => {
+    vi.mocked(globalThis.fetch).mockResolvedValueOnce(tileResponse('PNG'));
+
+    const result = await cacheFirstOsmTile(tileReq(), OSM_TILE_CACHE_NAME);
+
+    expect(await result.text()).toBe('PNG');
+    const cache = await caches.open(OSM_TILE_CACHE_NAME);
+    const stored = await cache.match(tileReq());
+    expect(stored).not.toBeNull();
+    expect(Number(stored!.headers.get('x-sw-cached-at'))).toBeGreaterThan(0);
+  });
+
+  it('miss with a non-ok response: returned but not cached', async () => {
+    vi.mocked(globalThis.fetch).mockResolvedValueOnce(makeResponse('slow down', 429));
+
+    const result = await cacheFirstOsmTile(tileReq(), OSM_TILE_CACHE_NAME);
+
+    expect(result.status).toBe(429);
+    const cache = await caches.open(OSM_TILE_CACHE_NAME);
+    expect(await cache.match(tileReq())).toBeNull();
+  });
+
+  it('trims the oldest entries beyond the cap', async () => {
+    const urls = [0, 1, 2].map(
+      (i) => `https://b.tile.openstreetmap.org/12/100${i}/200${i}.png`,
+    );
+    for (const u of urls) {
+      vi.mocked(globalThis.fetch).mockResolvedValueOnce(tileResponse(`T-${u}`));
+    }
+
+    for (const u of urls) {
+      await cacheFirstOsmTile(new Request(u), OSM_TILE_CACHE_NAME, 2);
+    }
+    await new Promise((r) => setTimeout(r, 0));
+
+    const cache = await caches.open(OSM_TILE_CACHE_NAME);
+    const keys = await cache.keys();
+    expect(keys.map((r) => r.url)).toEqual([urls[1], urls[2]]);
   });
 });
