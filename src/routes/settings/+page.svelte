@@ -2,13 +2,14 @@
 <script lang="ts">
   import { onMount } from 'svelte';
   import { version } from '$app/environment';
-  import { Bug, Circle, CircleDot, ExternalLink, Locate, MapPin, Moon, Sun, Trash2 } from 'lucide-svelte';
+  import { Bug, Circle, CircleDot, ExternalLink, Locate, Map, MapPin, Moon, Sun, Trash2 } from 'lucide-svelte';
   import {
     Box, Button, Card, CardContent, Chip, Dialog, DialogContent, DialogTitle,
     IconButton, InfoCard, NoLocationCard, Spinner, Stack, Switch, ToggleGroup, Tooltip, Typography,
     formatBytes, formatWhen,
   } from '$lib/ui';
   import { getGtfsRepo } from '$lib/data/gtfs/repo';
+  import { deleteTileCache, getTileCacheStatus } from '$lib/map/offlineTiles';
   import type { Feed } from '$lib/data/feeds';
   import { feedsStore } from '$lib/stores/feedsStore.svelte';
   import { locationStore } from '$lib/stores/gps/locationStore.svelte';
@@ -76,6 +77,16 @@
    *  can show a loading state inside without re-creating mid-flight. */
   let confirmingDelete = $state<Feed | null>(null);
   let deleting = $state(false);
+
+  /** OSM tile cache status: entry count + estimated bytes. Refreshed on
+   *  mount and after a delete. Null means the Cache API isn't available
+   *  (dev without a SW, or private browsing with restricted APIs). */
+  let tileCacheStatus = $state<{ entries: number; estimatedBytes: number } | null>(null);
+  let tileCacheDeleting = $state(false);
+
+  async function refreshTileCacheStatus(): Promise<void> {
+    tileCacheStatus = await getTileCacheStatus();
+  }
 
   async function refreshCachedFeeds(): Promise<void> {
     const feeds = feedsStore.feeds;
@@ -161,6 +172,7 @@
   });
 
   onMount(() => {
+    void refreshTileCacheStatus();
     // Always re-check the registry when the user opens Settings
     // (rather than `load()`, which short-circuits when the in-memory
     // copy is already populated). SPA navigation here from anywhere
@@ -426,6 +438,63 @@
                 </div>
               </div>
             {/each}
+          </Stack>
+        {/if}
+      </Stack>
+    </CardContent>
+  </Card>
+
+  <!-- ===== Map tiles ===== -->
+  <Card>
+    <CardContent>
+      <Stack spacing={2}>
+        <Stack direction="row" spacing={1.5} align="center">
+          <Map size={16} class="shrink-0 text-[color:var(--color-fg-muted)]" />
+          <Typography variant="h6">Map tiles</Typography>
+        </Stack>
+        {#if tileCacheStatus === null}
+          <Typography variant="caption" class="text-[color:var(--color-fg-muted)]">
+            Tile cache not available in this browser.
+          </Typography>
+        {:else if tileCacheStatus.entries === 0}
+          <Stack direction="row" spacing={1} align="center">
+            <Typography variant="body2">No tiles cached</Typography>
+          </Stack>
+        {:else}
+          <Stack direction="row" spacing={1} align="center" justify="between">
+            <Box class="flex-1 min-w-0">
+              <Typography variant="body2">{tileCacheStatus.entries.toLocaleString()} tiles cached</Typography>
+              <Typography variant="caption" class="text-[color:var(--color-fg-muted)]">
+                ~{formatBytes(tileCacheStatus.estimatedBytes)} · OSM offline map
+              </Typography>
+            </Box>
+            {#if tileCacheDeleting}
+              <Spinner size={18} />
+            {:else}
+              <Tooltip title="Delete tile cache">
+                <IconButton
+                  size="small"
+                  color="danger"
+                  aria-label="Delete tile cache"
+                  onclick={async () => {
+                    tileCacheDeleting = true;
+                    const deleted = await deleteTileCache();
+                    await refreshTileCacheStatus();
+                    tileCacheDeleting = false;
+                    statusBus.push({
+                      id: 'tile-cache-deleted',
+                      kind: 'success',
+                      message:
+                        deleted > 0
+                          ? `Deleted ${deleted.toLocaleString()} cached tiles.`
+                          : 'Tile cache was already empty.',
+                    });
+                  }}
+                >
+                  <Trash2 size={16} />
+                </IconButton>
+              </Tooltip>
+            {/if}
           </Stack>
         {/if}
       </Stack>

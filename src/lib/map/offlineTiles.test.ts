@@ -14,6 +14,8 @@ import {
   pickPrefetchZooms,
   tileUrl,
   prefetchFeedTiles,
+  getTileCacheStatus,
+  deleteTileCache,
   PREFETCH_INTERVAL_MS,
 } from './offlineTiles.js';
 import { OSM_TILE_CACHE_NAME } from '$lib/sw/handlers';
@@ -108,24 +110,24 @@ describe('slippy map math', () => {
 });
 
 describe('pickPrefetchZooms', () => {
-  it('a city bbox gets z10–z14 within the budget', () => {
-    expect(pickPrefetchZooms(ORADEA_BBOX)).toEqual([10, 11, 12, 13, 14]);
+  it('a city bbox gets z13–z14 within the budget', () => {
+    expect(pickPrefetchZooms(ORADEA_BBOX)).toEqual([13, 14]);
   });
 
-  it('a regional bbox is capped at the coarse zoom', () => {
-    // cluj-napoca's bbox is ~300 km across: z10 alone is 192 tiles,
-    // z10+z11 would be 928 > 600.
-    expect(pickPrefetchZooms(CLUJ_BBOX)).toEqual([10]);
+  it('a regional bbox is capped at z13', () => {
+    // cluj-napoca's bbox is ~300 km across: z13 alone is 54 948 tiles,
+    // well over the 600-budget, so only z13 fits.
+    expect(pickPrefetchZooms(CLUJ_BBOX)).toEqual([13]);
   });
 
   it('a tiny bbox uses every zoom up to the max', () => {
     const tiny = { minLat: 46.77, minLon: 23.59, maxLat: 46.78, maxLon: 23.61 };
-    expect(pickPrefetchZooms(tiny)).toEqual([10, 11, 12, 13, 14]);
+    expect(pickPrefetchZooms(tiny)).toEqual([13, 14, 15, 16, 17]);
   });
 
   it('never returns an empty set', () => {
     const huge = { minLat: 0, minLon: 0, maxLat: 60, maxLon: 120 };
-    expect(pickPrefetchZooms(huge, 1)).toEqual([10]);
+    expect(pickPrefetchZooms(huge, 1)).toEqual([13]);
   });
 });
 
@@ -154,10 +156,10 @@ describe('prefetchFeedTiles', () => {
 
     const r = await prefetchFeedTiles(feed(ORADEA_BBOX), world.clock.now);
 
-    // oradea z10–z14 = 4+12+30+100+361 = 507 tiles.
-    expect(r).toEqual({ fetched: 507, skipped: 0, failed: 0 });
-    expect(world.fetchStub).toHaveBeenCalledTimes(507);
-    expect(world.tileStore.size).toBe(507);
+    // oradea z13 (100) + z14 (361) = 461 tiles.
+    expect(r).toEqual({ fetched: 461, skipped: 0, failed: 0 });
+    expect(world.fetchStub).toHaveBeenCalledTimes(461);
+    expect(world.tileStore.size).toBe(461);
     const stamps = JSON.parse(storage._store.get('neary-tile-prefetch-v1')!);
     expect(stamps['test-feed']).toBe(world.clock.now);
   });
@@ -172,19 +174,19 @@ describe('prefetchFeedTiles', () => {
     );
 
     expect(r).toBeNull();
-    expect(world.fetchStub).toHaveBeenCalledTimes(507);
+    expect(world.fetchStub).toHaveBeenCalledTimes(461);
   });
 
   it('re-run after the interval skips still-fresh tiles', async () => {
     const world = stubEnv();
     await prefetchFeedTiles(feed(ORADEA_BBOX), world.clock.now);
 
-    // 25h later: all 507 cached tiles are ~1 day old, far under the
+    // 25h later: all 461 cached tiles are ~1 day old, far under the
     // 30-day freshness window, so no network traffic at all.
     world.clock.now += 25 * 60 * 60_000;
     const r = await prefetchFeedTiles(feed(ORADEA_BBOX), world.clock.now);
 
-    expect(r).toEqual({ fetched: 0, skipped: 507, failed: 0 });
+    expect(r).toEqual({ fetched: 0, skipped: 461, failed: 0 });
   });
 
   it('does nothing when offline', async () => {
@@ -209,8 +211,77 @@ describe('prefetchFeedTiles', () => {
 
     const r = await prefetchFeedTiles(feed(ORADEA_BBOX), world.clock.now);
 
-    expect(r).toEqual({ fetched: 0, skipped: 0, failed: 507 });
+    expect(r).toEqual({ fetched: 0, skipped: 0, failed: 461 });
     const stamps = JSON.parse(storage._store.get('neary-tile-prefetch-v1')!);
     expect(stamps['test-feed']).toBe(world.clock.now);
+  });
+});
+
+
+/* ---------- tile cache management ---------- */
+
+describe('getTileCacheStatus', () => {
+  it('returns entry count and estimated bytes from the cache', async () => {
+    const tileStore = new Map<string, Response>();
+    const cache = {
+      async match() { return null; },
+      async keys() {
+        return Array.from(tileStore.keys()) as unknown as Request[];
+      },
+    };
+    const cachesStub = {
+      open: async () => cache,
+    };
+    // Seed 100 entries.
+    for (let i = 0; i < 100; i++) {
+      tileStore.set(`https://a.tile.openstreetmap.org/13/4633/${2888 + i}.png`, new Response());
+    }
+    vi.stubGlobal('caches', cachesStub);
+
+    const result = await getTileCacheStatus();
+
+    expect(result).toEqual({ entries: 100, estimatedBytes: 100 * 12 * 1024 });
+    vi.unstubAllGlobals();
+  });
+
+  it('returns null when Cache API is unavailable', async () => {
+    vi.stubGlobal('caches', undefined);
+    expect(await getTileCacheStatus()).toBeNull();
+    vi.unstubAllGlobals();
+  });
+});
+
+describe('deleteTileCache', () => {
+  it('deletes the cache store and clears the prefetch stamp', async () => {
+    const tileStore = new Map<string, Response>();
+    const cache = {
+      async match() { return null; },
+      async keys() {
+        return Array.from(tileStore.keys()) as unknown as Request[];
+      },
+    };
+    const deletedCaches: string[] = [];
+    const cachesStub = {
+      open: async () => cache,
+      delete: async (name: string) => { deletedCaches.push(name); return true; },
+    };
+    for (let i = 0; i < 50; i++) {
+      tileStore.set(`https://a.tile.openstreetmap.org/13/4633/${2888 + i}.png`, new Response());
+    }
+    storage._store.set('neary-tile-prefetch-v1', JSON.stringify({ 'test-feed': 1_780_000_000_000 }));
+    vi.stubGlobal('caches', cachesStub);
+
+    const count = await deleteTileCache();
+
+    expect(count).toBe(50);
+    expect(deletedCaches).toContain(OSM_TILE_CACHE_NAME);
+    expect(storage._store.get('neary-tile-prefetch-v1')).toBeUndefined();
+    vi.unstubAllGlobals();
+  });
+
+  it('returns 0 when Cache API is unavailable', async () => {
+    vi.stubGlobal('caches', undefined);
+    expect(await deleteTileCache()).toBe(0);
+    vi.unstubAllGlobals();
   });
 });
