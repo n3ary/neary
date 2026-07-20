@@ -1356,16 +1356,15 @@
 </div>
 
 <style>
-  /* Map card height is computed once from the viewport and the
-     fixed chrome offsets above/below. No flex-1 chain involved,
-     so the container is never 0×0 at init and Leaflet measures
-     a real box from the first call. The 18rem subtraction came
-     from the user's measurement: viewport 932 px, intended map
-     card 637 px → 295 px ≈ 18.4 rem reserved for app header,
-     in-page header card + margin, page padding, and the fixed
-     bottom navigation. */
+  /* The map card fills all remaining vertical space in the flex
+     column. Previously used height: calc(100svh - 18rem) which
+     broke when the header card grew tall (many route/network chips)
+     and the total exceeded 18rem — the map would overflow into the
+     bottom nav. flex-1 min-h-0: the card takes exactly what is left
+     after the header card, regardless of how tall that is. */
   :global(.neary-map-card) {
-    height: calc(100svh - 18rem);
+    flex: 1 1 0;
+    min-height: 0;
     position: relative;
   }
   .neary-map {
