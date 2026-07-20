@@ -19,10 +19,13 @@
  * downloading is what gets clients blocked, so the prefetch is
  * deliberately conservative:
  *   - hard budget of PREFETCH_TILE_BUDGET tiles per feed, choosing
- *     the highest zooms that fit (a regional bbox like cluj-napoca
- *     gets z10 only ~192 tiles; a city bbox like oradea gets
- *     z10–z14 ~507 tiles). Everything above that zoom is cached
- *     lazily, when the user actually views it.
+  *     the highest zooms that fit. The budget fills z13 first (the
+  *     map default), then z14, z15... until it runs out. The
+  *     coarse zooms (z10-12) are NOT prefetched — they fill in
+  *     lazily when the user zooms out to orient themselves. A city
+  *     bbox like cluj-napoca gets ~192 z13 tiles, ~768 z14 tiles;
+  *     with PREFETCH_TILE_BUDGET=600 the cache gets z13 + part of
+  *     z14. Everything beyond the budget is still cached lazily.
  *   - at most CONCURRENCY requests in flight.
  *   - skipped entirely on Save-Data / 2g, and re-runs at most once
  *     per PREFETCH_INTERVAL_MS per feed regardless of how often the
@@ -38,8 +41,8 @@ export interface TileCoord {
   y: number;
 }
 
-export const PREFETCH_ZOOM_MIN = 10;
-export const PREFETCH_ZOOM_MAX = 14;
+export const PREFETCH_ZOOM_MIN = 13;
+export const PREFETCH_ZOOM_MAX = 17;
 export const PREFETCH_TILE_BUDGET = 600;
 export const PREFETCH_INTERVAL_MS = 24 * 60 * 60_000;
 const CONCURRENCY = 2;
@@ -114,6 +117,47 @@ function readStamps(): Record<string, number> {
     return JSON.parse(localStorage.getItem(STAMP_KEY) ?? '{}') as Record<string, number>;
   } catch {
     return {};
+  }
+}
+
+/** Returns the number of cached OSM tiles and an estimated byte size.
+ *  Returns null when the Cache API is unavailable. */
+export async function getTileCacheStatus(): Promise<{
+  entries: number;
+  estimatedBytes: number;
+} | null> {
+  if (typeof caches === 'undefined') return null;
+  try {
+    const cache = await caches.open(OSM_TILE_CACHE_NAME);
+    const keys = await cache.keys();
+    const entries = keys.length;
+    // Tiles are ~8-15 KB each. Use 12 KB as a rough average.
+    return { entries, estimatedBytes: entries * 12 * 1024 };
+  } catch {
+    return null;
+  }
+}
+
+/** Deletes all cached OSM tiles. Also clears the prefetch stamp so
+ *  the cache is re-warmed on the next online event. Returns the number
+ *  of entries that were deleted (counted before deletion). */
+export async function deleteTileCache(): Promise<number> {
+  if (typeof caches === 'undefined') return 0;
+  try {
+    const cache = await caches.open(OSM_TILE_CACHE_NAME);
+    const keys = await cache.keys();
+    const count = keys.length;
+    // caches.delete drops the entire named cache store.
+    await caches.delete(OSM_TILE_CACHE_NAME);
+    // Clear prefetch stamps so the next online event re-runs the bbox prefetch.
+    try {
+      localStorage.removeItem(STAMP_KEY);
+    } catch {
+      // privacy mode / quota — stamps stay, harmless
+    }
+    return count;
+  } catch {
+    return 0;
   }
 }
 
