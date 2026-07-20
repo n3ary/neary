@@ -3,11 +3,10 @@
   import '$lib/styles/app.css';
   import { untrack } from 'svelte';
   import { goto } from '$app/navigation';
-  import { page, updated } from '$app/state';
-  import { Heart, MapPin, RefreshCw, Settings } from 'lucide-svelte';
+  import { page } from '$app/state';
+  import { Heart, MapPin, Settings } from 'lucide-svelte';
   import * as Comlink from 'comlink';
   import { AppLayout, Button, InfoCard, type HeaderHealth } from '$lib/ui';
-  import { handleAppUpdate } from '$lib/sw/appUpdate';
   import { BOOT_BIND_STALL_MS } from '$lib/sw/bootWatchdog';
   import { connectionStore } from '$lib/stores/connectionStore.svelte';
   import { feedsStore } from '$lib/stores/feedsStore.svelte';
@@ -23,69 +22,6 @@
   import { scheduleTilePrefetch } from '$lib/map/offlineTiles';
 
   let { children } = $props();
-
-  // App-update detection. SvelteKit's `updated.current` flips to true
-  // when the client's poll of `_app/version.json` (interval set in
-  // svelte.config.js `kit.version`) returns a name different from the
-  // one this session booted with — i.e. a new deploy is live. Never
-  // reload a tab the rider is reading: a hidden tab reloads silently;
-  // a visible tab gets a banner with a manual Reload and the update
-  // applies itself on the next backgrounding (see appUpdate.ts).
-  let updateAvailable = $state(false);
-  // The flow's own reload (marks the action for the re-nag grace
-  // window before reloading); the banner's Reload button must call
-  // this, not a bare location.reload, or the banner comes back.
-  let updateReload = $state<(() => void) | null>(null);
-  // sessionStorage: survives the reload the flow triggers (same tab
-  // session), resets on a genuinely new session — exactly the window
-  // in which a re-prompt would be noise.
-  const UPDATE_ACTED_KEY = 'neary-update-acted-at';
-  const readLastActedAt = (): number | null => {
-    try {
-      const raw = sessionStorage.getItem(UPDATE_ACTED_KEY);
-      const ts = raw == null ? NaN : Number(raw);
-      return Number.isFinite(ts) ? ts : null;
-    } catch {
-      return null;
-    }
-  };
-  const writeLastActedAt = (ts: number) => {
-    try {
-      sessionStorage.setItem(UPDATE_ACTED_KEY, String(ts));
-    } catch {
-      // storage unavailable — suppression just won't persist
-    }
-  };
-  // Dedupe: the version poll AND controllerchange can discover the same
-  // update; whichever fires first owns the flow (a second trigger would
-  // double-register the visibility watcher / re-show the banner).
-  let updateFlowStarted = false;
-  function startUpdateFlow() {
-    if (updateFlowStarted) return;
-    updateFlowStarted = true;
-    handleAppUpdate({
-      isHidden: () => document.visibilityState === 'hidden',
-      onVisibilityChange: (cb) => {
-        document.addEventListener('visibilitychange', cb);
-        return () => document.removeEventListener('visibilitychange', cb);
-      },
-      reload: () => window.location.reload(),
-      preReload: () => {
-        navigator.serviceWorker.controller?.postMessage({ type: 'SKIP_PRECACHE' });
-      },
-      now: () => Date.now(),
-      readLastActedAt,
-      writeLastActedAt,
-      showPrompt: (reload) => {
-        updateReload = reload;
-        updateAvailable = true;
-      },
-    });
-  }
-  $effect(() => {
-    if (!updated.current || typeof window === 'undefined') return;
-    startUpdateFlow();
-  });
 
   // PWA service worker registration. Prod only — in dev the SW
   // would interfere with Vite HMR and the rebuild-on-save loop.
@@ -129,24 +65,6 @@
       });
     }, 0);
     return () => window.clearTimeout(handle);
-  });
-
-  // SW version swap mid-session. Our SW skipWaiting()s and
-  // clients.claim()s existing pages, and its activate handler deletes
-  // the old precache bucket — so the moment our controller changes,
-  // this page's lazy chunks (the GTFS worker bundle, route splits)
-  // may no longer exist anywhere. Run the same hidden-first update
-  // flow the version poll uses. First-install claims are ignored: the
-  // page loaded uncontrolled, its assets came from the network, and
-  // the new SW pruned nothing of ours.
-  $effect(() => {
-    if (typeof navigator === 'undefined') return;
-    if (!('serviceWorker' in navigator)) return;
-    if (!import.meta.env.PROD) return;
-    if (navigator.serviceWorker.controller == null) return;
-    const onClaim = () => startUpdateFlow();
-    navigator.serviceWorker.addEventListener('controllerchange', onClaim);
-    return () => navigator.serviceWorker.removeEventListener('controllerchange', onClaim);
   });
 
   // Background suspend / resume. When the page goes hidden — and in
@@ -590,25 +508,4 @@
 >
   {@render children()}
 </AppLayout>
-
-<!-- Update-available banner (visible-tab half of the option-2 flow in
-     appUpdate.ts). Floats above the bottom nav; the hidden-tab half
-     reloads before this ever paints. z-40: below dialogs/search (z-50),
-     above the bottom nav (z-30). -->
-{#if updateAvailable}
-  <div class="fixed inset-x-0 z-40 px-3 pb-2 bottom-[calc(3.5rem+env(safe-area-inset-bottom,0px))]">
-    <InfoCard variant="primary" title="Update available">
-      {#snippet icon()}<RefreshCw size={16} />{/snippet}
-      {#snippet body()}
-        A new version is ready. Reload to update — or just switch away
-        and come back, it updates on its own.
-      {/snippet}
-      {#snippet actions()}
-        <Button variant="contained" size="small" onclick={() => (updateReload ?? (() => window.location.reload()))()}>
-          Reload
-        </Button>
-      {/snippet}
-    </InfoCard>
-  </div>
-{/if}
 

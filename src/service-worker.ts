@@ -12,20 +12,12 @@
  *     shell + first-paint assets.
  *   - Runtime cache: gtfs.n3ary.com/feeds.json (NetworkFirst) AND
  *     a runtime HTML cache (NetworkFirst, separate bucket). The
- *     runtime HTML cache holds the most recent online HTML, so
- *     offline reads serve what the user had online last.
- *   - Versioning: precache bucket name is `precache-v<version>`. On
- *     activate, any other `precache-v*` cache is deleted so an
- *     outdated shell never gets served from cache.
- *   - skipWaiting + clientsClaim: take over immediately. Stale
- *     shell = 500/white screen, so the trade-off is "existing tabs
- *     may reload mid-interaction" vs "app is broken". We pick the
- *     reload — and it's deliberate, not accidental: the layout
- *     listens for controllerchange and runs the hidden-first
- *     update flow (appUpdate.ts) the moment a new SW claims the
- *     page, so the swap never leaves a tab running on a pruned
- *     precache.
- *   - Navigation requests (req.mode === 'navigate') are
+  *     runtime HTML cache holds the most recent online HTML, so
+  *     offline reads serve what the user had online last.
+  *   - Versioning: precache bucket name is `precache-v<version>`. On
+  *     activate, any other `precache-v*` cache is deleted so an
+  *     outdated shell never gets served from cache.
+  *   - Navigation requests (req.mode === 'navigate') are
  *     NetworkFirst, with the precache bucket as a fallback. This
  *     bypasses the browser's HTTP cache for HTML -- the staleness
  *     class of bug we just shipped (cached old HTML pointing at
@@ -75,8 +67,6 @@ import {
   networkFirstFeedsJson,
   cacheFirstOsmTile,
   OSM_TILE_CACHE_NAME,
-  setSkipPrecacheOnNextNav,
-  skipPrecacheOnNextNav,
 } from './lib/sw/handlers.js';
 
 /** Precache the shell entries the plugin injected. */
@@ -232,13 +222,3 @@ self.addEventListener('fetch', (event) => {
   // offline fallback to the last good snapshot.
 });
 
-// When the banner's Reload is clicked, the layout posts this message
-// before reloading. The old-SW-in-control sets the skip-precache flag,
-// so the navigation fetch bypasses the precache and goes straight to
-// the network — the stale precache from an old-SW-in-control reload
-// can't serve old HTML after a new deploy.
-self.addEventListener('message', (event) => {
-  if (event.data?.type === 'SKIP_PRECACHE') {
-    setSkipPrecacheOnNextNav(true);
-  }
-});
