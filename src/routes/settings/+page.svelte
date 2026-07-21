@@ -159,8 +159,8 @@
   }
 
   /** Force an immediate version check via SvelteKit's updated.check().
-   *  Stores the timestamp in localStorage and auto-reloads if a new
-   *  version is found. */
+   *  Stores the timestamp in localStorage. Does NOT auto-reload —
+   *  the user decides when to refresh. */
   async function handleCheckUpdate(): Promise<void> {
     if (versionCheckInFlight) return;
     versionCheckInFlight = true;
@@ -174,14 +174,7 @@
       } catch {
         // localStorage unavailable; timestamp stays in memory
       }
-      if (hasUpdate || updated.current) {
-        checkUpdateResult = 'found';
-        // Brief pause so the user sees "Update found" before the reload
-        await new Promise((r) => setTimeout(r, 1500));
-        location.reload();
-      } else {
-        checkUpdateResult = 'none';
-      }
+      checkUpdateResult = hasUpdate || updated.current ? 'found' : 'none';
     } catch {
       checkUpdateResult = 'error';
     } finally {
@@ -595,7 +588,7 @@
               {versionCheckInFlight
                 ? 'Checking…'
                 : checkUpdateResult === 'found'
-                  ? 'Update found!'
+                  ? 'Update available'
                   : checkUpdateResult === 'none'
                     ? 'Up to date'
                     : checkUpdateResult === 'error'
@@ -607,7 +600,7 @@
             <Typography variant="caption" class="text-[color:var(--color-fg-muted)]">
               Last checked {formatWhen(lastVersionCheckAt)}
               {#if checkUpdateResult === 'found'}
-                · update found — reloading
+                · update available
               {:else if checkUpdateResult === 'none'}
                 · up to date
               {:else if checkUpdateResult === 'error'}
