@@ -180,6 +180,17 @@
             if (timer) clearTimeout(timer);
             timer = setTimeout(onStall, currentMs);
           },
+          // Stop the stall clock while the app is backgrounded.
+          // The OS may freeze the page for seconds-to-minutes without
+          // firing any JS; a timer set before freeze fires after freeze
+          // and reloads a hidden tab. Disarming here keeps the watchdog
+          // quiet until resumeGtfsSession re-arms it on visibility.
+          disarm: function () {
+            if (timer) {
+              clearTimeout(timer);
+              timer = null;
+            }
+          },
         };
         window.__nearyBoot.arm();
       })();

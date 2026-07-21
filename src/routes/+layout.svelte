@@ -111,6 +111,11 @@
     // bind effect into a full re-bind on resume.
     feedsStore.boundFeedId = null;
     lastBoundFeedKey = null;
+    // Disarm the watchdog — the OS may freeze this tab for seconds
+    // to minutes without firing any JS. A pre-freeze timer that fires
+    // after thaw reloads a hidden tab and the user sees a flash of
+    // the loading screen instead of their previous state.
+    window.__nearyBoot?.disarm();
     void suspendGtfs().catch((e) => {
       console.warn('[pwa] GTFS suspend failed', e);
     });
