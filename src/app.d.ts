@@ -26,6 +26,8 @@ declare global {
       arm(ms?: number): void;
       done(): void;
       beat(): void;
+      /** Stop the stall clock while the app is backgrounded. */
+      disarm(): void;
     };
     __nearyBootHealthy?: boolean;
   }
