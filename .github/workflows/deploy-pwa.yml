@@ -91,6 +91,23 @@ jobs:
       - name: Build production bundle
         run: pnpm run build
 
+      # Prevent Cloudflare from caching service-worker.js. Without this,
+      # the SW is CDN-cached for max-age=14400 (4 h). Even with
+      # updateViaCache:'none' in the registration, browsers that
+      # fetched the SW before a deploy keep the old SW in their own
+      # HTTP cache. On the next visit the old SW runs, finds a version
+      # mismatch with the new app, and calls skipWaiting+clients.claim()
+      # -> page reloads. With no-store the browser always re-fetches the
+      # SW on every navigation so it always gets the latest.
+      - name: Add no-cache header for SW
+        run: |
+          cat > build/_headers << 'HEADERS_EOF'
+          /service-worker.js
+            Cache-Control: no-cache, no-store, must-revalidate
+          HEADERS_EOF
+          echo "Created _headers:"
+          cat build/_headers
+
       # Deploy the static build to Cloudflare Pages via wrangler.
       # Wrangler reads CLOUDFLARE_API_TOKEN + CLOUDFLARE_ACCOUNT_ID from
       # the environment; the token needs the "Cloudflare Pages: Edit"
