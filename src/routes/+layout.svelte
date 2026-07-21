@@ -228,9 +228,19 @@
   // bound, or a bind failure already surfaced via StatusBar. Until
   // one of these holds, the watchdog keeps its stall clock running
   // (reset by download progress beats below).
+  //
+  // Watch the three inputs that genuinely affect health, and nothing
+  // else. The SW's background feeds.json refresh updates feedsStore.feeds
+  // but must NOT re-fire this effect — otherwise the bind effect's
+  // boundFeedId=null clear fires a beat, the SW's new registry has a
+  // different id than the old one, setFeed takes longer than the
+  // watchdog window, and the app reloads for no reason.
   $effect(() => {
     if (typeof window === 'undefined') return;
-    if (userPrefs.feedId == null || feedsStore.boundFeedId != null || bindFailed) {
+    const feedId = userPrefs.feedId;
+    const bound = feedsStore.boundFeedId;
+    const failed = bindFailed;
+    if (feedId == null || bound != null || failed) {
       window.__nearyBoot?.done();
     }
   });
