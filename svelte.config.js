@@ -23,6 +23,17 @@ const config = {
       precompress: false,
       strict: true,
     }),
+    // Without this, SvelteKit auto-generates an inline
+    // `navigator.serviceWorker.register()` call in app.html that has NO
+    // updateViaCache option -- the browser caches the SW for up to 24 h
+    // and never checks for a fresh copy on revisit. The layout's own
+    // register() (with updateViaCache:'none') fires later from the JS
+    // bundle, but the browser may have already stored the first
+    // registration and ignore the second. Setting it here once means
+    // every render of app.html gets the correct option baked in.
+    serviceWorker: {
+      options: { updateViaCache: 'none' },
+    },
     alias: {
       $lib: 'src/lib',
     },
