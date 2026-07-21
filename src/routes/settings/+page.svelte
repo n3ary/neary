@@ -578,13 +578,9 @@
         </Stack>
 
         <Stack spacing={1.5}>
-          <Stack direction="row" spacing={1} align="center" justify="between">
-            <Box class="flex-1 min-w-0">
-              <Typography variant="body2">App version</Typography>
-              <Typography variant="caption">
-                v{version} · first seen {formatWhen(versionFirstSeenAt)}
-              </Typography>
-            </Box>
+          <!-- Row 1: heading + button side by side -->
+          <Stack direction="row" spacing={2} align="center" justify="between">
+            <Typography variant="body2">App version</Typography>
             <Button
               variant="outlined"
               size="small"
@@ -612,6 +608,11 @@
                         : 'Check for updates'}
             </Button>
           </Stack>
+          <!-- Row 2: version + first seen -->
+          <Typography variant="caption">
+            v{version} · first seen {formatWhen(versionFirstSeenAt)}
+          </Typography>
+          <!-- Row 3: last check result (only shown after a check has run) -->
           {#if lastVersionCheckAt && !versionCheckInFlight}
             {@const resultKind = checkUpdateResult ?? (updated.current ? 'found' : null)}
             <Typography variant="caption" class="text-[color:var(--color-fg-muted)]">
