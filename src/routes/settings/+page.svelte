@@ -244,6 +244,20 @@
     } catch {
       // localStorage unavailable; timestamp stays null
     }
+    // Track when the SvelteKit auto-poll (every 60 s) finds a new
+    // version. The manual button also writes here. Either way the
+    // user sees the last check time in Settings.
+    $effect(() => {
+      if (updated.current) {
+        const now = Date.now();
+        lastVersionCheckAt = now;
+        try {
+          localStorage.setItem(VERSION_CHECK_KEY, String(now));
+        } catch {
+          // localStorage unavailable; in-memory is enough for this session
+        }
+      }
+    });
   });
 </script>
 
@@ -593,17 +607,20 @@
                     ? 'Up to date'
                     : checkUpdateResult === 'error'
                       ? 'Check failed'
-                      : 'Check for updates'}
+                      : updated.current
+                        ? 'Update available'
+                        : 'Check for updates'}
             </Button>
           </Stack>
           {#if lastVersionCheckAt && !versionCheckInFlight}
+            {@const resultKind = checkUpdateResult ?? (updated.current ? 'found' : null)}
             <Typography variant="caption" class="text-[color:var(--color-fg-muted)]">
               Last checked {formatWhen(lastVersionCheckAt)}
-              {#if checkUpdateResult === 'found'}
+              {#if resultKind === 'found'}
                 · update available
-              {:else if checkUpdateResult === 'none'}
+              {:else if resultKind === 'none'}
                 · up to date
-              {:else if checkUpdateResult === 'error'}
+              {:else if resultKind === 'error'}
                 · check failed
               {/if}
             </Typography>
