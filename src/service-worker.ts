@@ -121,10 +121,10 @@ self.addEventListener('install', (event) => {
           );
         }
       }
-      // skipWaiting so the new SW activates immediately when the
-      // user reopens the PWA. Without it, the user keeps running
-      // the old SW (and the old shell) until all tabs close.
-      await self.skipWaiting();
+      // The SW deliberately does NOT call skipWaiting() here. Instead it
+      // waits for the app to send 'CHECK_VERSION'. See the 'message'
+      // handler below — the SW compares versions and decides whether to
+      // activate immediately or stay waiting for the next navigation.
     })(),
   );
 });
@@ -147,11 +147,29 @@ self.addEventListener('activate', (event) => {
           )
           .map((k) => caches.delete(k)),
       );
-      // Take over existing clients so the new SW is in effect
-      // without requiring the user to close and reopen.
-      await self.clients.claim();
+      // Deliberately NO clients.claim(): the app sends 'CHECK_VERSION'
+      // and the SW decides whether to activate. The SKIP_WAITING call
+      // (if versions differ) happens in the message handler instead of here.
     })(),
   );
+});
+
+// The app sends CHECK_VERSION with its __APP_VERSION__. The SW compares
+// it against its own VERSION (baked at build time) and decides:
+//   - match     → stays waiting, activates on next navigation
+//   - mismatch  → skipWaiting + clients.claim, page reloads
+// Replies to the app with its VERSION so the app can log it.
+self.addEventListener('message', (event) => {
+  if (!event.source) return;
+  if (event.data?.type === 'CHECK_VERSION') {
+    // App sends its __APP_VERSION__ for comparison. The SW has its own
+    // __APP_VERSION__ baked at build time. Only reload if they differ.
+    const { appVersion } = event.data as { type: string; appVersion: string };
+    if (appVersion !== VERSION) {
+      void self.skipWaiting().then(() => self.clients.claim());
+    }
+    void event.source.postMessage({ type: 'VERSION_CHECKED', swVersion: VERSION });
+  }
 });
 
 self.addEventListener('fetch', (event) => {

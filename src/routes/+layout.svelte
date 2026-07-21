@@ -27,9 +27,14 @@
   // would interfere with Vite HMR and the rebuild-on-save loop.
   // The SW itself lives at src/service-worker.ts; @vite-pwa/sveltekit
   // bundles it and emits it at /service-worker.js (vite.config.ts
-  // config). The SW's `skipWaiting` + `clients.claim` make the
-  // new shell take over the next paint, which is what fixes the
-  // "saved PWA crashes on first open after a deploy" regression.
+  // config). The SW deliberately does NOT call skipWaiting() or
+  // clients.claim() unconditionally. Instead it waits for the app to
+  // send 'CHECK_VERSION' with the app's __APP_VERSION__. The SW compares
+  // that against its own baked __APP_VERSION__ and decides:
+  //   - versions match -> SW stays waiting, activates on next nav,
+  //     no reload, user sees nothing
+  //   - versions differ -> SW calls skipWaiting + clients.claim,
+  //     page reloads on the new shell
   //
   // `updateViaCache: 'none'` tells the browser to bypass its own
   // HTTP cache for the SW file itself. Without this the browser
@@ -60,6 +65,26 @@
         scope: '/',
         type: 'module',
         updateViaCache: 'none',
+      }).then(async (reg) => {
+        // A new SW downloaded but is waiting (skipWaiting is NOT called
+        // in the SW install handler — see service-worker.ts). Send our
+        // app version to the SW and let it decide whether to activate.
+        // If versions match the SW stays waiting and activates on the
+        // next navigation. If they differ the SW calls skipWaiting +
+        // clients.claim itself and the page reloads.
+        if (!reg?.waiting) return;
+        // SW responds with its own version so we can log it.
+        const reply = await new Promise<{ swVersion: string }>((resolve) => {
+          const channel = new MessageChannel();
+          channel.port1.onmessage = (e) => resolve(e.data);
+          reg.waiting!.postMessage(
+            { type: 'CHECK_VERSION', appVersion: __APP_VERSION__ },
+            [channel.port2],
+          );
+        });
+        if (reply.swVersion !== __APP_VERSION__) {
+          console.info(`[pwa] version mismatch: app=${__APP_VERSION__} sw=${reply.swVersion} — reloading`);
+        }
       }).catch((err) => {
         console.warn('[pwa] service worker registration failed', err);
       });

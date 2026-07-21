@@ -8,6 +8,11 @@ declare global {
     // interface Platform {}
   }
 
+  /** App version, injected by Vite's define at build time.
+   *  Matches the precache bucket name in the service worker.
+   *  Available as a global (Vite-replaced) and on window. */
+  const __APP_VERSION__: string;
+
   interface Window {
     /** Boot-stall watchdog, installed by the inline script in
      *  app.html. The layout calls `done()` once the app reaches a
