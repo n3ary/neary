@@ -24,9 +24,11 @@
   /** localStorage key for the last manual version check timestamp. */
   const VERSION_CHECK_KEY = 'neary:version-check-at';
 
-  /** Result of the last manual check: null = never run, 'found' = new version found, 'none' = up to date, 'error' = check failed. */
+  /** Result of the last check: null = never run, 'found' = new version found, 'none' = up to date, 'error' = check failed. */
   let checkUpdateResult = $state<null | 'found' | 'none' | 'error'>(null);
-  /** Timestamp of the last manual check. Loaded from localStorage. */
+  /** The new version detected by the last check (populated when checkUpdateResult is 'found'). */
+  let detectedVersion = $state<string | null>(null);
+  /** Timestamp of the last check. Loaded from localStorage. */
   let lastVersionCheckAt = $state<number | null>(null);
   /** Whether a check is currently in flight. */
   let versionCheckInFlight = $state(false);
@@ -165,6 +167,7 @@
     if (versionCheckInFlight) return;
     versionCheckInFlight = true;
     checkUpdateResult = null;
+    detectedVersion = null;
     try {
       const hasUpdate = await updated.check();
       const now = Date.now();
@@ -174,7 +177,21 @@
       } catch {
         // localStorage unavailable; timestamp stays in memory
       }
-      checkUpdateResult = hasUpdate || updated.current ? 'found' : 'none';
+      if (hasUpdate || updated.current) {
+        checkUpdateResult = 'found';
+        // Fetch the new version string for display.
+        try {
+          const r = await fetch('/_app/version.json');
+          if (r.ok) {
+            const data = (await r.json()) as { version: string };
+            detectedVersion = data.version;
+          }
+        } catch {
+          // best-effort; detectedVersion stays null
+        }
+      } else {
+        checkUpdateResult = 'none';
+      }
     } catch {
       checkUpdateResult = 'error';
     } finally {
@@ -256,6 +273,19 @@
         } catch {
           // localStorage unavailable; in-memory is enough for this session
         }
+        // version already IS the new version after reload;
+        // set detectedVersion so the update message shows it.
+        void (async () => {
+          try {
+            const r = await fetch('/_app/version.json');
+            if (r.ok) {
+              const data = (await r.json()) as { version: string };
+              detectedVersion = data.version;
+            }
+          } catch {
+            // best-effort
+          }
+        })();
       }
     });
   });
@@ -577,10 +607,10 @@
           />
         </Stack>
 
-        <Stack spacing={1.5}>
-          <!-- Row 1: heading + button side by side -->
+        <Stack spacing={1}>
+          <!-- Row 1: version + button -->
           <Stack direction="row" spacing={2} align="center" justify="between">
-            <Typography variant="body2">App version</Typography>
+            <Typography variant="body2" class="font-mono">v{version}</Typography>
             <Button
               variant="outlined"
               size="small"
@@ -608,16 +638,18 @@
                         : 'Check for updates'}
             </Button>
           </Stack>
-          <!-- Row 2: version + first seen -->
-          <Typography variant="caption">
-            v{version} · first seen {formatWhen(versionFirstSeenAt)}
+          <!-- Row 2: when this version was first seen -->
+          <Typography variant="caption" class="text-[color:var(--color-fg-muted)]">
+            Since {formatWhen(versionFirstSeenAt)}
           </Typography>
-          <!-- Row 3: last check result (only shown after a check has run) -->
+          <!-- Row 3: last check result -->
           {#if lastVersionCheckAt && !versionCheckInFlight}
             {@const resultKind = checkUpdateResult ?? (updated.current ? 'found' : null)}
             <Typography variant="caption" class="text-[color:var(--color-fg-muted)]">
-              Last checked {formatWhen(lastVersionCheckAt)}
-              {#if resultKind === 'found'}
+              Checked {formatWhen(lastVersionCheckAt)}
+              {#if resultKind === 'found' && detectedVersion}
+                · update to v{detectedVersion}
+              {:else if resultKind === 'found'}
                 · update available
               {:else if resultKind === 'none'}
                 · up to date
