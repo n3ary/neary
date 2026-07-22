@@ -163,10 +163,34 @@ self.addEventListener('message', (event) => {
   if (!event.source) return;
   if (event.data?.type === 'CHECK_VERSION') {
     // App sends its __APP_VERSION__ for comparison. The SW has its own
-    // __APP_VERSION__ baked at build time. Only reload if they differ.
+    // __APP_VERSION__ baked at build time. Only reload if:
+    //   1. The app version differs from the SW version (new version deployed), AND
+    //   2. version.json ALSO differs from the SW version (confirms the new
+    //      version is fully deployed — prevents reload during a partial deploy
+    //      where the SW file updated but version.json hasn't landed yet).
     const { appVersion } = event.data as { type: string; appVersion: string };
+    console.info(`[sw] CHECK_VERSION: app=${appVersion} sw=${VERSION} match=${appVersion === VERSION}`);
     if (appVersion !== VERSION) {
-      void self.skipWaiting().then(() => self.clients.claim());
+      void fetch('/_app/version.json', { cache: 'no-cache' })
+        .then((r) => r?.ok ? r.json() : null)
+        .then((data: { version?: string } | null) => {
+          const deployedVersion = data?.version ?? null;
+          console.info(`[sw] version.json=${deployedVersion} vs sw=${VERSION}`);
+          if (deployedVersion !== VERSION) {
+            // version.json not yet updated — partial deploy window. Do NOT
+            // reload; the app's mount-time updated.check() will retry.
+            console.info('[sw] partial deploy — skipping reload');
+            return;
+          }
+          console.info('[sw] full deploy confirmed — reloading');
+          void self.skipWaiting().then(() => self.clients.claim());
+        })
+        .catch(() => {
+          // version.json fetch failed — reload anyway, the mount-time
+          // updated.check() will sort it out.
+          console.info('[sw] version.json fetch failed — reloading');
+          void self.skipWaiting().then(() => self.clients.claim());
+        });
     }
     void event.source.postMessage({ type: 'VERSION_CHECKED', swVersion: VERSION });
   }

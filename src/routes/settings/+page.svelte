@@ -36,18 +36,15 @@
   let lastVersionCheckAt = $state<number | null>(null);
   /** Whether a check is currently in flight. */
   let versionCheckInFlight = $state(false);
-  /** Monotonically increasing counter. Bumped every 30 s so the template
-   *  re-renders formatWhen() even when updated.current doesn't change. */
+  /** Drives a $effect that re-renders the "Checked X ago" line every 30 s
+   *  by writing a reactive display value. A $derived with void tick alone
+   *  is unreliable for forcing re-renders across Svelte 5 reactivity
+   *  boundaries; an explicit $effect + $state guarantees it. */
   let displayTickVersionCheck = $state(0);
 
-  /** Display value for "Checked X ago". Always derived from localStorage so
-   *  it reflects elapsed time regardless of when lastVersionCheckAt last
-   *  changed. Forced to update every 30 s by displayTickVersionCheck. */
-  let displayCheckAt = $derived.by(() => {
-    void displayTickVersionCheck; // force re-evaluation on every tick
-    const base = lastVersionCheckAt ?? 0;
-    return base > 0 ? base + displayTickVersionCheck : null;
-  });
+  /** Display value for the last-check timestamp. Set by the ticker $effect
+   *  every 30 s so the "Checked X ago" line always shows live elapsed time. */
+  let displayCheckAtMs = $state<number | null>(null);
 
   const regionNames =
     typeof Intl !== 'undefined' && typeof Intl.DisplayNames === 'function'
@@ -292,6 +289,9 @@
     } catch {
       // localStorage unavailable; timestamp stays null
     }
+    // Initialize displayCheckAtMs immediately so "Checked X ago" shows
+    // right away without waiting for the first ticker tick.
+    displayCheckAtMs = lastVersionCheckAt;
     // Restore the detected version string so "update to vX" survives a
     // SW-triggered or other full-page reload (the ephemeral $state would
     // otherwise be null until the next auto-poll fires).
@@ -301,12 +301,21 @@
     } catch {
       // localStorage unavailable; stays null
     }
-    // Bump displayTickVersionCheck every 30 s so formatWhen() re-renders
-    // the "Checked X ago" line even when updated.current doesn't change.
+    // Bump displayTickVersionCheck every 30 s so the $effect fires and
+    // refreshes displayCheckAtMs + displayDetectedVersion, forcing formatWhen
+    // to re-render with a fresh Date.now().
     const tick = setInterval(() => {
       displayTickVersionCheck++;
     }, 30_000);
     return () => clearInterval(tick);
+  });
+
+  // Ticker: fires on every displayTickVersionCheck change (every 30 s) to
+  // refresh displayCheckAtMs. This forces the template to re-call formatWhen()
+  // with a fresh Date.now(), so "Checked X ago" always shows live elapsed time.
+  $effect(() => {
+    void displayTickVersionCheck; // reactive dep: re-runs on every tick
+    displayCheckAtMs = lastVersionCheckAt;
   });
 
   // Track when the SvelteKit auto-poll (every 60 s) runs. Always
@@ -683,10 +692,10 @@
             Since {formatWhen(versionFirstSeenAt)}
           </Typography>
           <!-- Row 3: last check result -->
-          {#if displayCheckAt && !versionCheckInFlight}
+          {#if displayCheckAtMs && !versionCheckInFlight}
             {@const resultKind = checkUpdateResult ?? (updated.current ? 'found' : null)}
             <Typography variant="caption" class="text-[color:var(--color-fg-muted)]">
-              Checked {formatWhen(displayCheckAt)}
+              Checked {formatWhen(displayCheckAtMs)}
               {#if resultKind === 'found' && detectedVersion}
                 · update to v{detectedVersion}
               {:else if resultKind === 'found'}
