@@ -82,26 +82,33 @@
         // next navigation. If they differ the SW calls skipWaiting +
         // clients.claim itself and the page reloads.
         if (!reg?.waiting) return;
-        // SW responds with its own version so we can log it.
-        const reply = await new Promise<{ swVersion: string }>((resolve) => {
-          const channel = new MessageChannel();
-          channel.port1.onmessage = (e) => resolve(e.data);
-          reg.waiting!.postMessage(
-            { type: 'CHECK_VERSION', appVersion: __APP_VERSION__ },
-            [channel.port2],
-          );
-        });
-        if (reply.swVersion !== __APP_VERSION__) {
-          console.info(`[pwa] version mismatch: app=${__APP_VERSION__} sw=${reply.swVersion} — reloading`);
-          // SW called skipWaiting() + clients.claim() — the page will
-          // reload. Call updated.check() now so updated.current is set
-          // BEFORE the reload: the new page boots with the banner already
-          // visible instead of showing "Checked X minutes ago" until the
-          // next auto-poll fires (up to 60 s later).
-          // updated.check() sets updated.current synchronously before
-          // its fetch resolves, so the SW reload cannot beat it.
-          void updated.check();
-        }
+        // SW responds with its own version and any reload instruction.
+        // Use a one-shot message listener so we don't accumulate handlers.
+        const channel = new MessageChannel();
+        channel.port1.onmessage = async (e) => {
+          const data = e.data;
+          if (data?.type === 'VERSION_CHECKED') {
+            console.info(`[pwa] sw version: ${data.swVersion}`);
+          } else if (data?.type === 'RELOAD_APP') {
+            // SW confirmed full deploy and wants us to reload. Add a
+            // __sw_reload param so the OLD SW's navigation handler
+            // bypasses its runtime HTML cache on this post-update reload
+            // and fetches fresh HTML. See service-worker.ts for why
+            // we do this instead of skipWaiting + clients.claim().
+            console.info('[pwa] SW requested reload — reloading with cache-bust');
+            void updated.check();
+            // Navigate to the same page with a __sw_reload param so the
+            // SW's navigation handler bypasses its runtime HTML cache.
+            // location.reload() doesn't accept a URL arg — use URL reassignment.
+            const reloadUrl = new URL(location.href);
+            reloadUrl.searchParams.set('__sw_reload', String(data.timestamp));
+            location.href = reloadUrl.href;
+          }
+        };
+        reg.waiting!.postMessage(
+          { type: 'CHECK_VERSION', appVersion: __APP_VERSION__ },
+          [channel.port2],
+        );
       }).catch((err) => {
         console.warn('[pwa] service worker registration failed', err);
       });

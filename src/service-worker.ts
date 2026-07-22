@@ -157,17 +157,18 @@ self.addEventListener('activate', (event) => {
 // The app sends CHECK_VERSION with its __APP_VERSION__. The SW compares
 // it against its own VERSION (baked at build time) and decides:
 //   - match     → stays waiting, activates on next navigation
-//   - mismatch  → skipWaiting + clients.claim, page reloads
+//   - mismatch  → sends RELOAD_APP message, app calls location.reload()
 // Replies to the app with its VERSION so the app can log it.
+//
+// Why not skipWaiting + clients.claim() here? Because that triggers a reload
+// controlled by the OLD SW's fetch handler, which serves from the old SW's
+// runtime-html cache first (causing the "update banner persists" bug). By
+// messaging the app to reload with a __sw_reload query param, the OLD SW's
+// navigation handler detects the param, bypasses its own cache, and fetches
+// fresh HTML. The new SW then caches the fresh HTML in its own bucket.
 self.addEventListener('message', (event) => {
   if (!event.source) return;
   if (event.data?.type === 'CHECK_VERSION') {
-    // App sends its __APP_VERSION__ for comparison. The SW has its own
-    // __APP_VERSION__ baked at build time. Only reload if:
-    //   1. The app version differs from the SW version (new version deployed), AND
-    //   2. version.json ALSO differs from the SW version (confirms the new
-    //      version is fully deployed — prevents reload during a partial deploy
-    //      where the SW file updated but version.json hasn't landed yet).
     const { appVersion } = event.data as { type: string; appVersion: string };
     console.info(`[sw] CHECK_VERSION: app=${appVersion} sw=${VERSION} match=${appVersion === VERSION}`);
     if (appVersion !== VERSION) {
@@ -182,14 +183,17 @@ self.addEventListener('message', (event) => {
             console.info('[sw] partial deploy — skipping reload');
             return;
           }
-          console.info('[sw] full deploy confirmed — reloading');
-          void self.skipWaiting().then(() => self.clients.claim());
+          console.info('[sw] full deploy confirmed — requesting app reload');
+          // Signal the app to reload. The app adds ?__sw_reload= to the URL,
+          // which the navigation handler detects to bypass the old runtime
+          // HTML cache on this post-update reload.
+          void event.source.postMessage({ type: 'RELOAD_APP', timestamp: Date.now() });
         })
         .catch(() => {
           // version.json fetch failed — reload anyway, the mount-time
           // updated.check() will sort it out.
-          console.info('[sw] version.json fetch failed — reloading');
-          void self.skipWaiting().then(() => self.clients.claim());
+          console.info('[sw] version.json fetch failed — requesting app reload');
+          void event.source.postMessage({ type: 'RELOAD_APP', timestamp: Date.now() });
         });
     }
     void event.source.postMessage({ type: 'VERSION_CHECKED', swVersion: VERSION });
@@ -205,10 +209,28 @@ self.addEventListener('fetch', (event) => {
   // the gatekeeper for HTML so the browser's HTTP cache can
   // never serve a stale shell.
   if (req.mode === 'navigate') {
+    // Detect a post-update reload triggered by RELOAD_APP. The
+    // ?__sw_reload=<timestamp> param forces this SW (the old one,
+    // still intercepting during the reload) to bypass its runtime
+    // HTML cache and fetch fresh HTML. The param is stripped from
+    // the stored URL so subsequent navigations hit the normal
+    // stale-while-revalidate path.
+    if (url.searchParams.has('__sw_reload')) {
+      url.searchParams.delete('__sw_reload');
+      event.respondWith(
+        fetch(new Request(url.href, { ...req, signal: AbortSignal.timeout(15_000) }), { cache: 'no-cache' })
+          .then((res) => {
+            caches.open(RUNTIME_HTML_CACHE).then((c) => c.put(req, res.clone()));
+            return res;
+          })
+          .catch(() => {
+            // Network down on post-update reload — fall back to precache.
+            return caches.open(PRECACHE_NAME).then((c) => c.match('/') ?? Response.error());
+          }),
+      );
+      return;
+    }
     // waitUntil is load-bearing for the background HTML refresh —
-    // without it the SW can be killed the moment respondWith settles
-    // and the cached shell stays stale forever (the "update banner
-    // insists after updating" bug).
     // without it the SW can be killed the moment respondWith settles
     // and the cached shell stays stale forever (the "update banner
     // insists after updating" bug).
