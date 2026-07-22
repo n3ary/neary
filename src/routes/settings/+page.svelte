@@ -36,6 +36,18 @@
   let lastVersionCheckAt = $state<number | null>(null);
   /** Whether a check is currently in flight. */
   let versionCheckInFlight = $state(false);
+  /** Monotonically increasing counter. Bumped every 30 s so the template
+   *  re-renders formatWhen() even when updated.current doesn't change. */
+  let displayTickVersionCheck = $state(0);
+
+  /** Display value for "Checked X ago". Always derived from localStorage so
+   *  it reflects elapsed time regardless of when lastVersionCheckAt last
+   *  changed. Forced to update every 30 s by displayTickVersionCheck. */
+  let displayCheckAt = $derived.by(() => {
+    void displayTickVersionCheck; // force re-evaluation on every tick
+    const base = lastVersionCheckAt ?? 0;
+    return base > 0 ? base + displayTickVersionCheck : null;
+  });
 
   const regionNames =
     typeof Intl !== 'undefined' && typeof Intl.DisplayNames === 'function'
@@ -289,36 +301,43 @@
     } catch {
       // localStorage unavailable; stays null
     }
-    // Track when the SvelteKit auto-poll (every 60 s) runs. Always
-    // write the timestamp so "Checked X minutes ago" advances even when
-    // no update is found. Only fetch the detected version when the poll
-    // transitions to "update available".
-    let prevUpdatedCurrent = updated.current;
-    $effect(() => {
-      const current = updated.current;
-      if (current === prevUpdatedCurrent) return; // no change — skip
-      prevUpdatedCurrent = current;
-      const now = Date.now();
-      lastVersionCheckAt = now;
-      try {
-        localStorage.setItem(VERSION_CHECK_KEY, String(now));
-      } catch {
-        // localStorage unavailable; in-memory is enough for this session
-      }
-      if (current) {
-        // Update found — fetch the new version string.
-        void (async () => {
-          detectedVersion = await fetchAppVersion();
-          if (detectedVersion) {
-            try {
-              localStorage.setItem(VERSION_DETECTED_KEY, detectedVersion);
-            } catch {
-              // localStorage unavailable
-            }
+    // Bump displayTickVersionCheck every 30 s so formatWhen() re-renders
+    // the "Checked X ago" line even when updated.current doesn't change.
+    const tick = setInterval(() => {
+      displayTickVersionCheck++;
+    }, 30_000);
+    return () => clearInterval(tick);
+  });
+
+  // Track when the SvelteKit auto-poll (every 60 s) runs. Always
+  // write the timestamp so "Checked X minutes ago" advances even when
+  // no update is found. Only fetch the detected version when the poll
+  // transitions to "update available".
+  let prevUpdatedCurrent = updated.current;
+  $effect(() => {
+    const current = updated.current;
+    if (current === prevUpdatedCurrent) return; // no change — skip
+    prevUpdatedCurrent = current;
+    const now = Date.now();
+    lastVersionCheckAt = now;
+    try {
+      localStorage.setItem(VERSION_CHECK_KEY, String(now));
+    } catch {
+      // localStorage unavailable; in-memory is enough for this session
+    }
+    if (current) {
+      // Update found — fetch the new version string.
+      void (async () => {
+        detectedVersion = await fetchAppVersion();
+        if (detectedVersion) {
+          try {
+            localStorage.setItem(VERSION_DETECTED_KEY, detectedVersion);
+          } catch {
+            // localStorage unavailable
           }
-        })();
-      }
-    });
+        }
+      })();
+    }
   });
 </script>
 
@@ -664,10 +683,10 @@
             Since {formatWhen(versionFirstSeenAt)}
           </Typography>
           <!-- Row 3: last check result -->
-          {#if lastVersionCheckAt && !versionCheckInFlight}
+          {#if displayCheckAt && !versionCheckInFlight}
             {@const resultKind = checkUpdateResult ?? (updated.current ? 'found' : null)}
             <Typography variant="caption" class="text-[color:var(--color-fg-muted)]">
-              Checked {formatWhen(lastVersionCheckAt)}
+              Checked {formatWhen(displayCheckAt)}
               {#if resultKind === 'found' && detectedVersion}
                 · update to v{detectedVersion}
               {:else if resultKind === 'found'}
