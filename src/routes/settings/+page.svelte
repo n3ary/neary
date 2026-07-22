@@ -160,6 +160,18 @@
     }
   }
 
+  /** Fetches the current app version string from version.json. */
+  async function fetchAppVersion(): Promise<string | null> {
+    try {
+      const r = await fetch('/_app/version.json');
+      if (!r.ok) return null;
+      const data = (await r.json()) as { version: string };
+      return data.version;
+    } catch {
+      return null;
+    }
+  }
+
   /** Force an immediate version check via SvelteKit's updated.check().
    *  Stores the timestamp in localStorage. Does NOT auto-reload —
    *  the user decides when to refresh. */
@@ -179,16 +191,7 @@
       }
       if (hasUpdate || updated.current) {
         checkUpdateResult = 'found';
-        // Fetch the new version string for display.
-        try {
-          const r = await fetch('/_app/version.json');
-          if (r.ok) {
-            const data = (await r.json()) as { version: string };
-            detectedVersion = data.version;
-          }
-        } catch {
-          // best-effort; detectedVersion stays null
-        }
+        detectedVersion = await fetchAppVersion();
       } else {
         checkUpdateResult = 'none';
       }
@@ -276,15 +279,7 @@
         // version already IS the new version after reload;
         // set detectedVersion so the update message shows it.
         void (async () => {
-          try {
-            const r = await fetch('/_app/version.json');
-            if (r.ok) {
-              const data = (await r.json()) as { version: string };
-              detectedVersion = data.version;
-            }
-          } catch {
-            // best-effort
-          }
+          detectedVersion = await fetchAppVersion();
         })();
       }
     });
@@ -625,17 +620,7 @@
                   class={versionCheckInFlight ? 'animate-spin' : ''}
                 />
               {/snippet}
-              {versionCheckInFlight
-                ? 'Checking…'
-                : checkUpdateResult === 'found'
-                  ? 'Update available'
-                  : checkUpdateResult === 'none'
-                    ? 'Up to date'
-                    : checkUpdateResult === 'error'
-                      ? 'Check failed'
-                      : updated.current
-                        ? 'Update available'
-                        : 'Check for updates'}
+              {versionCheckInFlight ? 'Checking…' : 'Check for updates'}
             </Button>
           </Stack>
           <!-- Row 2: when this version was first seen -->
