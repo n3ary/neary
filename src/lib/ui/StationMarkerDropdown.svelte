@@ -116,13 +116,10 @@
     })),
   ];
 
-  // Filter out the current station's marker: the dropdown is for assigning
-  // a marker to *other* stations. Seeing the current station's marker here
-  // (e.g. "Work" when looking at the Work station) is confusing - that
-  // marker describes where vehicles can go from there, not the station itself.
-  const options = $derived(
-    allOptions.filter((o) => o.marker !== marker),
-  );
+  // Note: the current marker is NOT filtered out — it stays visible in the
+  // list with a highlight so the user can see what's selected. Tapping it
+  // again deselects via the pick() shortcut (marker === next branch).
+  const options = $derived(allOptions);
 </script>
 
 <Popover.Root>
