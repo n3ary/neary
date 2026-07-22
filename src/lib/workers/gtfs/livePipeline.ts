@@ -68,6 +68,12 @@ export function stopLiveTimer(): void {
 export function ensureLiveTimer(): void {
   if (livePollTimerId !== null || typeof setInterval === 'undefined') return;
   livePollTimerId = setInterval(() => void tickLive(), DEFAULT_CONFIG.livePollMs);
+  // Fire eagerly on first start so `lastSnapshot` is populated before any
+  // late-subscriber catch-up fires. Without this, the catch-up in
+  // `subscribeStationBoards` sees `lastSnapshot = null` (no live data yet)
+  // and sends only scheduled vehicles — causing a flicker in StationCard
+  // groups as only-incoming vehicles arrive before the merged push.
+  void tickLive();
 }
 
 /** Drop the cached snapshot — used on feed switch so the new feed's

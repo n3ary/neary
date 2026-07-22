@@ -71,6 +71,17 @@ export function createStationBoardsController(opts: {
   let disposed = false;
 
   const onPush = (payload: StationBoardPush) => {
+    // Guard: skip pushes that don't cover all current board stop IDs.
+    // This handles the race where the catch-up push fires with the stop IDs
+    // the subscription was registered with (oldStops) while boards has already
+    // been updated to a new set (GPS returned newStops). The guard lets that
+    // stale push pass through without overwriting livePerStop — the
+    // subscription's setStopIds will fire shortly with the correct new IDs.
+    const boardIds = new Set((boards ?? []).map((b) => b.stop.id));
+    const pushIds = new Set(payload.map((p) => p.stopId));
+    for (const id of boardIds) {
+      if (!pushIds.has(id)) return;
+    }
     const next: Record<string, Vehicle[]> = {};
     for (const { stopId, vehicles } of payload) next[stopId] = vehicles;
     livePerStop = next;

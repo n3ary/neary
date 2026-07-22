@@ -43,10 +43,12 @@ export async function subscribeStationBoards(
   const key = Symbol();
   const sub: StationSub = { stopIds: new Set(initialStopIds), cb };
   subscribers.set(key, sub);
-  // Late-subscriber catch-up: push immediately with whatever snapshot
-  // we have. Without this the page would wait up to one poll interval
-  // (15 s) for its first live data.
-  void pushOne(sub, getReconciledSnapshot());
+  // NOTE: no immediate catch-up push here. Every `tickLive` call
+  // broadcasts to all station subscribers via `pushAllStationSubscribers`,
+  // so new subscribers automatically receive the next poll's merged
+  // data. Pushing immediately with `getReconciledSnapshot()` before the
+  // first tick would send scheduled-only vehicles (no GPS) and cause
+  // a flicker in StationCard groups before the merged push arrives.
   // Proxy the whole handle so Comlink keeps it as a remote reference.
   // Per-method Comlink.proxy() doesn't help here — Comlink only checks
   // the proxy marker at the TOP of the returned value, so a plain
