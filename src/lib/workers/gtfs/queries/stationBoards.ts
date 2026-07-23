@@ -21,6 +21,7 @@ export function getStationBoard(
   stopId: string,
   nowMs: number,
   windowMinutes: number,
+  hasFrequencies: boolean,
 ): { stop: StopWithDistance; vehicles: Vehicle[] } | null {
   type Row = { stop_id: string; stop_name: string; stop_lat: number; stop_lon: number };
   const rows = selectAll<Row>(
@@ -38,7 +39,7 @@ export function getStationBoard(
       lon: s.stop_lon,
       // distance intentionally absent — no GPS context here.
     },
-    vehicles: getStationArrivals(db, tz, stopId, nowMs, windowMinutes),
+    vehicles: getStationArrivals(db, tz, stopId, nowMs, windowMinutes, hasFrequencies),
   };
 }
 
@@ -54,10 +55,11 @@ export function getStationBoardsNear(
   maxStations: number,
   nowMs: number,
   windowMinutes: number,
+  hasFrequencies: boolean,
 ): { stop: StopWithDistance; vehicles: Vehicle[] }[] {
   const stops = getStopsNear(db, lat, lon, radiusMeters, maxStations);
   return stops.map((stop) => ({
     stop,
-    vehicles: getStationArrivals(db, tz, stop.id, nowMs, windowMinutes),
+    vehicles: getStationArrivals(db, tz, stop.id, nowMs, windowMinutes, hasFrequencies),
   }));
 }

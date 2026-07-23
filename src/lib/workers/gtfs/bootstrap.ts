@@ -517,6 +517,21 @@ export async function bootstrap(
     if (!hasRows) {
       throw new Error('stop_times is empty (truncated import or upstream produced an empty feed)');
     }
+    // Soft-probe for `frequencies` (added by gtfs-publisher#252). Cached
+    // blobs that pre-date the DDL addition report false; the
+    // per-time query modules gate the expansion path on this flag so
+    // the app degrades to schedule-only behaviour without throwing.
+    // The flag is consumed by `state.currentFeedHasFrequencies`, set
+    // by the caller below.
+    const hasFrequencies = (db.selectValue(
+      `SELECT count(*) FROM sqlite_master WHERE type='table' AND name='frequencies'`,
+    ) as number) === 1;
+    // Lift the probe into the worker state so the per-time query
+    // modules can read it without re-running the PRAGMA on every
+    // call. Read by the frequency-expansion gate in
+    // `frequencyExpansion.ts` callers (activeTrips, stationArrivals,
+    // routeSchedule, routeMapView, weeklySchedule).
+    state.currentFeedHasFrequencies = hasFrequencies;
   } catch (e) {
     try { db?.close(); } catch {}
     try { poolUtil.unlink(opfsFile); } catch {}
@@ -582,6 +597,7 @@ export function closeCurrent(): void {
   }
   state.currentFeedTz = null;
   state.currentFeedRtUrl = null;
+  state.currentFeedHasFrequencies = false;
   state.bootstrapping = null;
   // Shape polylines are feed-scoped — invalidate so the next feed
   // can't see stale entries from this one.

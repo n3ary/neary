@@ -16,6 +16,9 @@ Canonical names. Use these in code and docs.
 | **feed** | agency (in v2 UX) | A feed may carry multiple agencies; see [feeds.md](feeds.md) |
 | **ETA** | arrival time, time-to-arrive | "ETA" is short and unambiguous |
 | **bucket** | status, state | Specific term for station-view arrival classification |
+| **frequency-based trip** | repeating trip, headway trip, rec-trip | GTFS `frequencies.txt` model: a trip whose stop_times are reused as offsets for N generated departures, one per `headway_secs` within the frequency window. See [vehicle.md](vehicle.md#frequency-based-trips). |
+| **anchor trip** | base trip, source trip | The single `trips.txt` row whose `stop_times` carry the offsets for a frequency-based service. The one entry that physically exists in `trips` + `stop_times`; the per-departure rows are derived. |
+| **generated departure** | synthetic departure, expansion row | One per-departure row produced by the `frequencyExpansion` helper from a single anchor trip. Identified by `Vehicle.id = "trip:<tripId>@<effectiveStartMin>"` and `schedule.tripStartMin = effectiveStartMin`. |
 
 ## Technical
 

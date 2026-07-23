@@ -4,6 +4,10 @@
  * departure falls in the requested window. Caller controls the
  * window (rest-of-today, tomorrow until noon, night-route past
  * midnight) so this stays a pure window query.
+ *
+ * For frequency-based trips (rows in `frequencies.txt`), each
+ * generated departure is emitted as its own ScheduleTrip with
+ * `tripStartMin` set to the effective departure time.
  */
 
 import type { Database } from '@sqlite.org/sqlite-wasm';
@@ -11,6 +15,10 @@ import type { ScheduleTrip } from '$lib/data/gtfs/types';
 import { timeToMinutes } from '$lib/domain/pipeline/timeUtils';
 import { activeServicesOn } from '../activeServices';
 import { selectAll } from '../sqlHelpers';
+import {
+  expandFrequencyToDepartures,
+  getFrequenciesForServices,
+} from './frequencyExpansion';
 
 export function getRouteSchedule(
   db: Database,
@@ -19,6 +27,7 @@ export function getRouteSchedule(
   localDate: string,
   fromMin: number,
   windowMinutes: number,
+  hasFrequencies: boolean,
 ): ScheduleTrip[] {
   const services = activeServicesOn(db, localDate);
   if (services.length === 0) return [];
@@ -46,7 +55,7 @@ export function getRouteSchedule(
   );
 
   const upper = fromMin + windowMinutes;
-  return rows
+  const out: ScheduleTrip[] = rows
     .map((r) => ({
       tripId: r.trip_id,
       tripStartMin: timeToMinutes(r.trip_start_time),
@@ -54,8 +63,33 @@ export function getRouteSchedule(
       headsign: r.trip_headsign,
       serviceId: r.service_id,
     }))
-    .filter((r) => r.tripStartMin >= fromMin && r.tripStartMin <= upper)
-    .sort((a, b) => a.tripStartMin - b.tripStartMin);
+    .filter((r) => r.tripStartMin >= fromMin && r.tripStartMin <= upper);
+  // Frequency expansion. For each frequencies row whose anchor is
+  // on this (route, direction) and in the active services, emit
+  // one ScheduleTrip per generated departure in the window.
+  if (hasFrequencies) {
+    const freqs = getFrequenciesForServices(db, services);
+    for (const f of freqs) {
+      const anchor = rows.find((r) => r.trip_id === f.trip_id);
+      if (!anchor) continue;
+      const anchorStartMin = timeToMinutes(anchor.trip_start_time);
+      const anchorEndMin = timeToMinutes(anchor.trip_end_time);
+      if (!Number.isFinite(anchorStartMin) || !Number.isFinite(anchorEndMin)) continue;
+      const deps = expandFrequencyToDepartures(f, fromMin, upper);
+      for (const dep of deps) {
+        out.push({
+          tripId: f.trip_id,
+          tripStartMin: dep.effectiveStartMin,
+          // Per-trip end is anchor's last-stop time + the same delta
+          // we applied to the origin.
+          tripEndMin: anchorEndMin + (dep.effectiveStartMin - anchorStartMin),
+          headsign: anchor.trip_headsign,
+          serviceId: anchor.service_id,
+        });
+      }
+    }
+  }
+  return out.sort((a, b) => a.tripStartMin - b.tripStartMin);
 }
 
 /** Distinct route_ids that have at least one trip departing in the
@@ -73,6 +107,7 @@ export function getActiveRouteIdsInWindow(
   localDate: string,
   nowMin: number,
   windowMinutes: number,
+  hasFrequencies: boolean,
 ): string[] {
   const services = activeServicesOn(db, localDate);
   if (services.length === 0) return [];
@@ -103,9 +138,40 @@ export function getActiveRouteIdsInWindow(
   );
 
   const upper = nowMin + windowMinutes;
-  return Array.from(new Set(
+  const out = new Set(
     rows
       .filter((r) => r.trip_start_min >= nowMin && r.trip_start_min <= upper)
       .map((r) => r.route_id),
-  ));
+  );
+  // Frequency-based contributions: a route is "active right now" if
+  // any frequency row on it overlaps the query window. Per-row
+  // expansion is unnecessary — the route set is all we return.
+  if (hasFrequencies) {
+    const freqs = getFrequenciesForServices(db, services);
+    if (freqs.length > 0) {
+      const tripIds = Array.from(new Set(freqs.map((f) => f.trip_id)));
+      // trip_id → route_id lookup. One tiny query; trips are
+      // indexed by PRIMARY KEY.
+      type TripRouteRow = { trip_id: string; route_id: string };
+      const tripRoutes = selectAll<TripRouteRow>(
+        db,
+        `SELECT trip_id, route_id FROM trips
+         WHERE trip_id IN (${tripIds.map(() => '?').join(',')});`,
+        tripIds,
+      );
+      const tripToRoute = new Map(tripRoutes.map((r) => [r.trip_id, r.route_id]));
+      for (const f of freqs) {
+        const startMin = timeToMinutes(f.start_time);
+        const endMin = timeToMinutes(f.end_time);
+        if (!Number.isFinite(startMin) || !Number.isFinite(endMin)) continue;
+        // Frequency window [startMin, endMin) overlaps query window
+        // [nowMin, upper] iff startMin < upper AND endMin > nowMin.
+        if (startMin < upper && endMin > nowMin) {
+          const routeId = tripToRoute.get(f.trip_id);
+          if (routeId) out.add(routeId);
+        }
+      }
+    }
+  }
+  return Array.from(out);
 }

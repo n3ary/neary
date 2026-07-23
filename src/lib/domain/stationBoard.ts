@@ -279,6 +279,27 @@ export function mergeReconciledIntoStationBoard(inputs: StationMergeInputs): Veh
     if (!tid) return v;
     const reconciled = reconciledByTripId.get(tid);
     if (!reconciled || !reconciled.position) return v;
+    // Frequency-aware guard: for a frequency-based trip, the active
+    // set has N generated Vehicles (one per k-th departure), each
+    // with a distinct `schedule.tripStartMin` (the effective time).
+    // The per-stop set also has N rows, one per generated departure
+    // at THIS stop. The matched reconciled row carries ONE specific
+    // generated departure's `tripStartMin`; we must only promote the
+    // per-stop row whose `tripStartMin` matches. Without this check,
+    // every per-stop row for the anchor trip would get the same GPS
+    // position, which is wrong.
+    //
+    // Non-frequency trips pass the check trivially (the anchor's
+    // `tripStartMin` is identical to the active set's entry).
+    const reconciledStart = reconciled.schedule?.tripStartMin;
+    const thisStart = v.schedule.tripStartMin;
+    if (
+      typeof reconciledStart === 'number' &&
+      typeof thisStart === 'number' &&
+      reconciledStart !== thisStart
+    ) {
+      return v;
+    }
     return {
       kind: 'tracked',
       id: v.id,

@@ -98,7 +98,7 @@ async function pushOne(sub: StationSub, snap: ReconciledSnapshot | null): Promis
       vehicles: Vehicle[];
     }> = [];
     for (const stopId of sub.stopIds) {
-      const board = getStationBoard(db, tz, stopId, nowMs, DEFAULT_CONFIG.arrivalsWindowMin);
+      const board = getStationBoard(db, tz, stopId, nowMs, DEFAULT_CONFIG.arrivalsWindowMin, state.currentFeedHasFrequencies);
       if (!board) continue;
       scheduled.push({
         stopId: board.stop.id,

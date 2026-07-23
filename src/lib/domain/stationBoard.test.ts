@@ -674,7 +674,13 @@ describe('mergeReconciledIntoStationBoard', () => {
     lat: number,
     lon: number,
     asOf: number,
+    tripStartMin: number = 0,
   ): Vehicle {
+    // tripStartMin defaults to 0 for back-compat with the original
+    // 6-arg call sites. The frequency-aware promotion guard in
+    // stationBoard.ts requires the per-stop row's tripStartMin to
+    // match the reconciled row's; callers that test frequency-aware
+    // promotion must pass an explicit value.
     return {
       kind: 'tracked',
       id: `trip:${tripId}`,
@@ -683,7 +689,7 @@ describe('mergeReconciledIntoStationBoard', () => {
       tripId,
       directionId: dir,
       confidence: 'medium',
-      schedule: { tripId, scheduledDeparture: 0, tripStartMin: 0, directionId: dir },
+      schedule: { tripId, scheduledDeparture: 0, tripStartMin, directionId: dir },
       position: { lat, lon, source: 'gps', asOf, speedMs: 5 },
       liveSources: ['gtfs-rt'],
     } as Vehicle;
@@ -713,7 +719,9 @@ describe('mergeReconciledIntoStationBoard', () => {
 
   it('promotes a per-stop scheduled row to reconciled when tripId matches', () => {
     const perStop = [perStopScheduled('T1', r24, 0, 500, 540)];
-    const reconciled = [reconciledHit('T1', r24, 0, 46.78, 23.59, 12345)];
+    // Pass tripStartMin=500 to match the per-stop row's value —
+    // the frequency-aware promotion guard requires it.
+    const reconciled = [reconciledHit('T1', r24, 0, 46.78, 23.59, 12345, 500)];
     const out = mergeReconciledIntoStationBoard({
       perStopVehicles: perStop,
       reconciledVehicles: reconciled,

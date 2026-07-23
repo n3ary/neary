@@ -37,6 +37,13 @@ export interface ScheduleRow {
   trip_headsign: string | null;
   stop_lat: number;
   stop_lon: number;
+  /** Optional override for the emitted Vehicle.id. Defaults to
+   *  `trip:${trip_id}` when undefined. Used by the frequency-expansion
+   *  path to encode the generated departure's effective time, so
+   *  two generated departures for the same anchor trip get distinct
+   *  stable ids (and downstream consumers that key on `id` don't
+   *  collapse them). */
+  id?: string;
 }
 
 export interface ScheduleScannerInputs {
@@ -103,7 +110,7 @@ export function scanSchedule(inputs: ScheduleScannerInputs): Vehicle[] {
 
     out.push({
       kind: 'scheduled',
-      id: `trip:${r.trip_id}`,
+      id: r.id ?? `trip:${r.trip_id}`,
       route,
       type,
       tripId: r.trip_id,

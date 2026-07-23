@@ -28,6 +28,13 @@ class WorkerState {
   /** Dwell seconds per stop from the feed's _neary_config timing block.
    *  Used by assembleLiveBoards to thread feed-specific dwell into ETA. */
   currentDwellSec: number = 20;
+  /** True when the bound SQLite blob has a `frequencies` table.
+   *  Set by `bootstrap()` via a `sqlite_master` PRAGMA probe. Cached
+   *  blobs that pre-date gtfs-publisher#252 (the DDL addition) report
+   *  false; per-time query modules gate the frequency-expansion path
+   *  on this so the app degrades to schedule-only behaviour without
+   *  throwing on older blobs. */
+  currentFeedHasFrequencies: boolean = false;
   /** Promise of the in-flight bootstrap when setFeed is mid-fetch.
    *  Used by ensureDb so the very first call can await the bind. */
   bootstrapping: Promise<Database> | null = null;

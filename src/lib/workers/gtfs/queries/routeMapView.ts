@@ -18,6 +18,10 @@ import { MISSING_ROUTE_COLOR, vehicleTypeFromGtfs } from '$lib/domain/types';
 import { activeServicesOn } from '../activeServices';
 import { shapeCache } from '../shapeCache';
 import { selectAll } from '../sqlHelpers';
+import {
+  expandFrequencyToDepartures,
+  getFrequenciesForServices,
+} from './frequencyExpansion';
 import { getRoutesWithSchedule } from './routesWithSchedule';
 
 export function getRouteMapView(
@@ -28,6 +32,7 @@ export function getRouteMapView(
   localMin: number,
   lookbackMin: number,
   lookaheadMin: number,
+  hasFrequencies: boolean,
 ): RouteMapView | null {
   type RouteRow = {
     route_id: string;
@@ -56,7 +61,7 @@ export function getRouteMapView(
   const tables = selectAll<{ name: string }>(
     db,
     `SELECT name FROM sqlite_master WHERE type IN ('table')
-     AND name IN ('_route_tags', 'route_networks');`,
+     AND name IN ('_route_tags', 'route_networks', 'frequencies');`,
   );
   const hasRouteTags = tables.some((t) => t.name === '_route_tags');
   const hasRouteNetworks = tables.some((t) => t.name === 'route_networks');
@@ -132,6 +137,38 @@ export function getRouteMapView(
       }))
       .filter((row) => row.tripStartMin >= lowerMin && row.tripStartMin <= upperMin && row.tripEndMin >= localMin)
       .sort((a, b) => a.tripStartMin - b.tripStartMin);
+    // Frequency expansion: for each frequencies row on this
+    // (route, direction) in the active services, emit one
+    // generated departure in [lowerMin, upperMin]. Use the
+    // anchor's shape_id (shape doesn't change per generated
+    // departure).
+    if (hasFrequencies) {
+      const freqs = getFrequenciesForServices(db, services);
+      for (const f of freqs) {
+        const anchor = tripRows.find((r) => r.trip_id === f.trip_id);
+        if (!anchor) continue;
+        const anchorStartMin = timeToMinutes(anchor.trip_start_time);
+        const anchorEndMin = timeToMinutes(anchor.trip_end_time);
+        if (!Number.isFinite(anchorStartMin) || !Number.isFinite(anchorEndMin)) continue;
+        const deps = expandFrequencyToDepartures(f, lowerMin, upperMin);
+        for (const dep of deps) {
+          const effectiveEndMin = anchorEndMin + (dep.effectiveStartMin - anchorStartMin);
+          if (effectiveEndMin < localMin) continue;
+          activeTripRows.push({
+            trip_id: anchor.trip_id,
+            trip_headsign: anchor.trip_headsign,
+            shape_id: anchor.shape_id,
+            trip_start_time: anchor.trip_start_time,
+            trip_end_time: anchor.trip_end_time,
+            tripStartMin: dep.effectiveStartMin,
+            tripEndMin: effectiveEndMin,
+          });
+        }
+      }
+      // Re-sort after expansion so the map view's "earliest
+      // upcoming" pick is correct.
+      activeTripRows.sort((a, b) => a.tripStartMin - b.tripStartMin);
+    }
   }
 
   // 2) Stops for every active trip, in one query. Skipped when
@@ -139,7 +176,7 @@ export function getRouteMapView(
   // below handles structure-only renders.
   const stopsByTrip = activeTripRows.length === 0
     ? new Map<string, ScheduleTripStop[]>()
-    : loadStopsForTrips(db, activeTripRows.map((t) => t.trip_id));
+    : loadStopsForTrips(db, Array.from(new Set(activeTripRows.map((t) => t.trip_id))));
 
   const trips: RouteMapTrip[] = activeTripRows.map((t) => ({
     tripId: t.trip_id,

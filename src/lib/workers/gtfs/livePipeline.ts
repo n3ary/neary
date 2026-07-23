@@ -123,6 +123,7 @@ export async function tickLive(): Promise<void> {
       nowMs,
       LIVE_RECONCILE_LOOKBACK_MIN,
       LIVE_RECONCILE_LOOKAHEAD_MIN,
+      state.currentFeedHasFrequencies,
     );
     // Enrich observations with authoritative static-feed direction +
     // start_time via a SQL-backed lookup against `active`. Observations

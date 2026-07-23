@@ -74,6 +74,48 @@ Orthogonal to `kind` and to [arrival-buckets](arrival-buckets.md). A
 the depot already broadcasting; `last` and `on-route` rows almost
 always do.
 
+## Frequency-based trips
+
+For trips with rows in `frequencies.txt` (the [GTFS spec's
+headway-based service model](https://gtfs.org/schedule/reference/#frequenciestxt)),
+the active set contains one `Vehicle` per **generated departure** —
+not one per anchor trip. A 15-minute headway running 05:05–22:40
+produces 71 `kind: 'scheduled'` rows, each with a distinct
+`schedule.tripStartMin` (the k-th departure's effective origin time).
+`tripPhase` classification still works unchanged because it's keyed
+on `tripStartMin`.
+
+**Identification.** The `Vehicle.id` for a generated row is
+`trip:<tripId>@<effectiveStartMin>` (the anchor's id without the
+suffix, `trip:<tripId>`, is kept for the original anchor entry where
+present). The `@<min>` suffix is what makes the id stable across
+polls and unique per generated departure.
+
+**Reconciler match key.** Live observations match by the composite
+`(tripId, tripStartMin)` key, not by `tripId` alone. The
+`enrichObservations` index uses `${tripId}|${tripStartMin}` so an
+`UNSCHEDULED` observation on a frequency-based trip (which carries
+the *specific* generated departure's effective start time per the
+[GTFS-RT contract](specs/gtfs-rt-contract.md)) resolves to the
+correct generated row. For observations missing `startTime`, a
+fallback to `tripId`-only matching preserves the legacy lenient
+behaviour for non-conforming producers.
+
+**Per-stop promotion.** The station-board merge in
+[`stationBoard.ts`](../../src/lib/domain/stationBoard.ts) uses the
+same composite key. A frequency-based trip's N per-stop rows each
+match against the N active-set rows by `tripStartMin`; a tolerance
+filter rejects per-stop rows whose `tripStartMin` doesn't match the
+reconciled row's, so the same GPS position doesn't get applied to
+every per-stop entry of an anchor trip.
+
+**Schedule-only fallback.** The publisher's `SCHEMA` adds the
+`frequencies` table in
+[n3ary/gtfs-publisher#252](https://github.com/n3ary/gtfs-publisher/pull/252);
+cached blobs that pre-date that change report `false` from
+`hasFrequenciesTable()` and the per-time query modules fall back to
+schedule-only behaviour without throwing.
+
 ## Visual rendering — kind dot
 
 The `VehicleCard` shows a small dot on the far right encoding `kind`
