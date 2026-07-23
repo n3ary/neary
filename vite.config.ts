@@ -32,31 +32,50 @@ export default defineConfig({
       // and the `define` is applied), and src/routes/+layout.svelte
       // registers the SW in production anyway -- so the dev script
       // is pure overhead in dev.
-      strategies: 'injectManifest',
-      // the plugin generates a final SW with the precache manifest
-      // injected. The default srcDir is 'src' which is where our SW
-      // lives, so we don't override it.
-      // Vite's `define` injects the version at build time. The SW
-      // reads it as `__APP_VERSION__`. We can't import package.json
-      // from the SW because the SW is built by a separate Vite pass
-      // whose module graph doesn't include it.
-      injectManifest: {
-        globPatterns: [
-          // Precache the SvelteKit-emitted shell. The plugin's
-          // default glob also picks up `client/**` from
-          // .svelte-kit/output, which is what we want.
-          // `wasm` is load-bearing: the GTFS worker fetches
-          // sqlite3.wasm at init; without a precache entry an
-          // offline open dies whenever the browser HTTP cache
-          // has evicted it.
-          'client/**/*.{js,css,html,svg,png,ico,webmanifest,wasm}',
+      // TEMPORARY WORKAROUND: switch to generateSW because
+      // @vite-pwa/sveltekit@1.1.0's injectManifest strategy has a bug
+      // where its closeBundle runs BEFORE SvelteKit's closeBundle (which
+      // builds the SW), so client/service-worker.js doesn't exist yet.
+      // generateSW calls api.generateSW() directly without needing a
+      // pre-built SW file. Revert to 'injectManifest' once the plugin
+      // is fixed upstream.
+      strategies: 'generateSW',
+      workbox: {
+        // globDirectory defaults to .svelte-kit/output. The SSR build
+        // populates server/ with prerendered pages + JS chunks; the
+        // secondary non-SSR builds (run by SvelteKit in writeBundle)
+        // populate client/ with JS chunks + CSS.
+        globPatterns: ['client/**/*.{js,css,html,svg,png,ico,webmanifest,wasm}'],
+        globIgnores: ['server/**', 'server/sw.js', 'server/workbox-*.js'],
+        // skipWaiting + clients.claim: new SW takes over immediately on
+        // install. We lose the custom CHECK_VERSION protocol from our
+        // src/service-worker.ts but gain a working build.
+        skipWaiting: true,
+        clientsClaim: true,
+        runtimeCaching: [
+          // OSM tiles: CacheFirst, survives SW updates (not versioned by
+          // app version — tile imagery is data, not shell code).
+          {
+            urlPattern: /^https:\/\/.*\.tile\.openstreetmap\.org\//,
+            handler: 'CacheFirst',
+            options: {
+              cacheName: 'osm-tiles-v1',
+              expiration: { maxEntries: 1200, maxAgeSeconds: 30 * 24 * 60 * 60 },
+              cacheableResponse: { statuses: [0, 200] },
+            },
+          },
+          // gtfs.n3ary.com/feeds.json: NetworkFirst with offline fallback.
+          {
+            urlPattern: /^https:\/\/gtfs\.n3ary\.com\/feeds\.json/,
+            handler: 'NetworkFirst',
+            options: {
+              cacheName: 'feeds-json-v1',
+              networkTimeoutSeconds: 5,
+              expiration: { maxAgeSeconds: 5 * 60 },
+              cacheableResponse: { statuses: [0, 200] },
+            },
+          },
         ],
-        // version.json is NOT precached. It's emitted to build/_app/
-        // by the static adapter after the SW is built, so the glob
-        // can't reach it from .svelte-kit/output/. The version
-        // polling in $app/state still works online; offline it
-        // fails silently and the user keeps running the cached
-        // shell, which is what we want anyway.
       },
       // Manifest comes from static/manifest.json. The plugin picks
       // it up by default; we just override a few fields that the
