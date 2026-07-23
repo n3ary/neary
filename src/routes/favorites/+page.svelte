@@ -637,9 +637,9 @@
     work: 'Work',
     cityCenter: 'City center',
   };
-  // Marker filter chip colors. All markers use amber (--color-favorite)
-  // for consistency. Foregrounds are the theme's matching `-fg` tokens
-  // so the contrast follows light/dark mode.
+  // Marker filter chip colors. All markers use the Neary brand color
+  // (--color-favorite) for consistency. Foregrounds use white; the
+  // fallback is set directly in the MARKER_COLORS fg field.
   const MARKER_COLORS: Record<StationMarker, { bg: string; fg: string }> = {
     favorite: { bg: 'var(--color-favorite)', fg: 'var(--color-favorite-fg, #fff)' },
     home: { bg: 'var(--color-favorite)', fg: 'var(--color-favorite-fg, #fff)' },

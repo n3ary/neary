@@ -27,9 +27,10 @@
   --color-primary: oklch(55% 0.18 255);
   --color-primary-fg: oklch(98% 0 0);
   --color-danger: oklch(60% 0.21 25);
-  /* Favorite marker: warm amber - avoids the alarm red of danger while
-   * keeping the "this is special" celebratory feel. */
-  --color-favorite: oklch(65% 0.20 50);
+  /* Favorite marker: Neary brand indigo-violet (#4F46E5 = oklch(41% 0.94 303)).
+   * The same color as --color-primary but slightly darker in light mode
+   * so it reads as a marker accent rather than a primary action. */
+  --color-favorite: oklch(41% 0.94 303);
   --color-warning: oklch(75% 0.16 80);
   --color-success: oklch(60% 0.16 145);
 
@@ -91,21 +92,21 @@
     --color-border: oklch(28% 0 0);
     --color-primary: oklch(70% 0.16 255);
     --color-primary-fg: oklch(15% 0 0);
-    --color-favorite: oklch(78% 0.18 50);
+    --color-favorite: oklch(56% 0.94 303);
   }
 
-/* System-preference dark when user hasn't pinned */
-@media (prefers-color-scheme: dark) {
-  [data-theme='auto'] {
-    --color-bg: oklch(15% 0 0);
-    --color-surface: oklch(9% 0 0);
-    --color-surface-elevated: oklch(5% 0 0);
-    --color-fg: oklch(96% 0 0);
-    --color-fg-muted: oklch(70% 0 0);
-    --color-border: oklch(28% 0 0);
-    --color-primary: oklch(70% 0.16 255);
-    --color-primary-fg: oklch(15% 0 0);
-    --color-favorite: oklch(78% 0.18 50);
+  /* System-preference dark when user hasn't pinned */
+  @media (prefers-color-scheme: dark) {
+    [data-theme='auto'] {
+      --color-bg: oklch(15% 0 0);
+      --color-surface: oklch(9% 0 0);
+      --color-surface-elevated: oklch(5% 0 0);
+      --color-fg: oklch(96% 0 0);
+      --color-fg-muted: oklch(70% 0 0);
+      --color-border: oklch(28% 0 0);
+      --color-primary: oklch(70% 0.16 255);
+      --color-primary-fg: oklch(15% 0 0);
+      --color-favorite: oklch(56% 0.94 303);
   }
 }
 
